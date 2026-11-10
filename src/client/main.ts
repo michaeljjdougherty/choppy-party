@@ -14,7 +14,7 @@ import { GAME_VIEWS, boardView, mainMenuView, menuView } from './three/views';
 import { preloadAll } from './three/assets';
 import { logo } from './menu';
 import type { BotLevel } from '../shared/bots';
-import { HostLine, LINES, bubble, countIn, finishBanner, hostCorner, pick } from './showtime';
+import { HostLine, LINES, countIn, finishBanner, hostCorner, pick } from './showtime';
 import { getBoard } from '../shared/board/boards';
 import type { View } from './three/stage';
 
@@ -175,15 +175,8 @@ function render(wallT: number, dt: number) {
     bar.classList.add('hidden');
     const view = stage.show('main-menu', () => mainMenuView(stage.env, () => menu.screen));
     view.update(null, [], wallT, dt);
-    hostLine.say(menu.screen === 'title' ? pick(LINES.title, wallT / 9) : pick(LINES.menu, wallT / 9));
-    hostLine.update(dt);
-    if (view.host) {
-      view.host.brian.talking = hostLine.talking;
-      view.host.brian.mood = hostLine.mood;
-    }
     stage.render(dt, wallT);
     menu.draw(ctx, wallT);
-    drawHostBubble(view, menu.screen === 'title' ? 'title' : 'menu');
     if (stage.switches !== seenSwitches) {
       if (seenSwitches > 0) wipeT = 0;
       seenSwitches = stage.switches;
@@ -270,9 +263,7 @@ function hostFor(s: PartyState, view: View, t: number, dt: number) {
   let mood: 'pout' | 'proud' | 'smug' | 'wow' = 'pout';
   switch (s.phase) {
     case 'lobby': {
-      const bots = s.players.some((p) => p.bot);
-      hostLine.say(bots && Math.floor(t / 10) % 2 ? LINES.lobbyBots[0] : pick(LINES.lobby, t / 20));
-      if (b) b.pose = Math.sin(t * 0.5) > 0.4 ? 'wave' : 'idle';
+      hostLine.say('');
       break;
     }
     case 'intro':
@@ -321,39 +312,9 @@ function hostFor(s: PartyState, view: View, t: number, dt: number) {
   }
 }
 
-/** Speech bubble above Brian's head, kept on screen and clear of each screen's main panel. */
-function drawHostBubble(view: View, screen: string, t = 0) {
-  if (screen === 'results' || screen === 'final') {
-    hostCorner(ctx, hostLine, t, 'bl', 500);
-    return;
-  }
-  if (!view.host || !hostLine.text) return;
-  const head = stage.project(view.host.head());
-  if (!head.visible) return;
-  const w = screen === 'intro' ? 560 : 420;
-  let x = head.x - w / 2;
-  let y = head.y - 150;
-  if (screen === 'intro') {
-    // explaining: bubble to his right, under the title card
-    x = head.x + 40;
-    y = 300;
-  } else if (screen === 'results' || screen === 'final') {
-    // above him, below the headline and left of the standings
-    x = Math.min(head.x - w / 2, 670 - w);
-    y = screen === 'final' ? 236 : 196;
-  } else if (screen === 'menu') {
-    x = 40;
-    y = 540;
-  } else if (screen === 'title') {
-    x = head.x + 30;
-    y = head.y - 190;
-  } else if (screen === 'lobby') {
-    x = head.x - w + 40;
-    y = 220;
-  }
-  x = Math.max(16, Math.min(1264 - w, x));
-  y = Math.max(16, Math.min(600, y));
-  bubble(ctx, hostLine, x, y, w, { x: head.x, y: head.y - 10 }, screen === 'intro' ? 24 : 21);
+/** Brian speaks from a corner bust, clear of each screen's main panel. */
+function drawHostBubble(_view: View, screen: string, t = 0) {
+  if (screen === 'results' || screen === 'final' || screen === 'intro') hostCorner(ctx, hostLine, t, 'bl', screen === 'intro' ? 560 : 500);
 }
 
 let lastCount = 99;

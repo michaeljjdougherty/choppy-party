@@ -91,7 +91,7 @@ export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
   const ready = who.filter((p) => s.ready.includes(p.id)).length;
   const pulse = 1 + Math.sin(t * 5) * 0.04;
   ctx.save();
-  ctx.translate(640, 604);
+  ctx.translate(960, 640);
   ctx.scale(pulse, pulse);
   ctx.fillStyle = 'rgba(20,10,50,0.6)';
   roundRect(ctx, -210, -24, 420, 48, 24);

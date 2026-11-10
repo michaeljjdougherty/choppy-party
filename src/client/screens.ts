@@ -19,6 +19,57 @@ function panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
   ctx.fill();
 }
 
+/** Where the lobby's board flyover is drawn (HUD coordinates). */
+export const PREVIEW = { x: 724, y: 252, w: 532, h: 222 };
+
+/** Frame, name, description and player count around the board flyover. */
+function boardCard(ctx: CanvasRenderingContext2D, s: PartyState, id: string): void {
+  const b = getBoard(id);
+  const { x, y, w, h } = PREVIEW;
+  const strip = 76;
+  // white toy-like frame with a drop shadow; the 3D flyover shows through the hole
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  roundRect(ctx, x - 8, y - 2, w + 16, h + strip + 16, 22);
+  ctx.fill();
+  ctx.beginPath();
+  roundRect(ctx, x - 8, y - 8, w + 16, h + strip + 16, 22);
+  ctx.rect(x + w, y, -w, h); // cut the window out (reverse winding)
+  ctx.fillStyle = '#ffffff';
+  ctx.fill('evenodd');
+  ctx.restore();
+  // description strip
+  ctx.fillStyle = '#2a1b5e';
+  ctx.fillRect(x, y + h, w, strip);
+  ribbon(ctx, x + w / 2, y + 4, Math.min(w - 40, 90 + b.name.length * 15), 40, '#9a5bff', b.name, 22);
+  text(ctx, truncate(b.tagline, 58), x + w / 2, y + h + 22, 17, { color: '#ffffff', weight: 700, outline: false });
+  // recommended players chip
+  const [lo, hi] = b.players;
+  const fits = s.players.length >= lo && s.players.length <= hi;
+  const label = `Recommended: ${lo}-${hi}${hi >= 10 ? '+' : ''} players`;
+  ctx.font = '800 16px system-ui, sans-serif';
+  const cw = ctx.measureText(label).width + 40;
+  ctx.fillStyle = fits ? '#21c45a' : '#ffd23f';
+  roundRect(ctx, x + w / 2 - cw / 2, y + h + 38, cw, 28, 14);
+  ctx.fill();
+  peopleIcon(ctx, x + w / 2 - cw / 2 + 16, y + h + 52, fits ? '#ffffff' : '#2a1b5e');
+  text(ctx, label, x + w / 2 + 8, y + h + 53, 16, { color: fits ? '#ffffff' : '#2a1b5e', weight: 800, outline: false });
+}
+
+function peopleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color: string): void {
+  ctx.save();
+  ctx.fillStyle = color;
+  for (const [dx, r] of [[-3, 1], [4, 0.85]] as const) {
+    ctx.beginPath();
+    ctx.arc(x + dx, y - 4 * r, 3.2 * r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + dx, y + 5 * r, 5 * r, 4 * r, 0, Math.PI, 0);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: ScreenCtx): void {
   text(ctx, 'Choppy Party', 640, 74, 84, { color: '#ffd23f' });
   text(ctx, sc.roomCode ? `Room code: ${sc.roomCode}` : sc.status, 640, 136, 28, { color: '#ffffff', weight: 700 });
@@ -28,7 +79,7 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
     text(ctx, 'Controllers: A   ·   Keyboard: Space or Enter', 640, 408, 20, { weight: 600 });
   } else {
     const bots = s.players.filter((p) => p.bot).length;
-    const keysHint = k === 'pad' ? `${A()}: join  ·  ${B()}: leave` : k === 'mouse' ? 'Controllers press A to join' : `1 / 2 / 3: add a CPU  ·  0: remove one  ·  Tab: 2nd keyboard player`;
+    const keysHint = k === 'pad' ? `${A()}: join  ·  ${B()}: leave  ·  X: character  ·  Y: colour` : k === 'mouse' ? 'Click ☺ for a new character, the paint drop for a new colour' : `C: character  ·  V: colour  ·  1/2/3: add CPU  ·  0: remove  ·  Tab: 2nd keyboard`;
     text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? ` (${bots} CPU)` : ''}   ·   ${keysHint}`, 640, 172, 20, {
       color: '#ffe9f6',
       weight: 600,
@@ -40,6 +91,7 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
   const o = OPTIONS[s.selection];
   let sub: string;
   if (o.kind === 'board') {
+    boardCard(ctx, s, o.id);
     const b = getBoard(o.id);
     const best = s.players.length > 0 && recommendedBoard(s.players.length).id === b.id;
     sub = `Best for ${b.players[0]}-${b.players[1]}${b.players[1] >= 10 ? '+' : ''} players${best ? '  ★ Recommended for your group' : ''}  ·  Up/Down: turns`;

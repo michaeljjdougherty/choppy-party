@@ -1,7 +1,17 @@
 import * as THREE from 'three';
 import { CHARACTERS, PLAYER_COLORS } from '../../shared/players';
 import { character } from './assets';
+import { recolor } from './recolor';
 import { mesh, toy } from './kit';
+
+/**
+ * Which character each colour is wearing right now. Players pick their character and colour
+ * separately, and every view builds models from a colour, so the client keeps this up to date.
+ */
+export const COLOR_CHAR = new Map<string, number>();
+export function setCharacters(players: { color: string; char?: number; slot: number }[]): void {
+  for (const p of players) COLOR_CHAR.set(p.color, p.char ?? p.slot);
+}
 
 /** World height of a character at scale 1 (matches the old blob mascots, so gameplay scales still fit). */
 const BASE = 2.3;
@@ -29,9 +39,11 @@ export class ChoppyModel {
   private spawn = { y: 3.2, vy: 0, done: false };
 
   constructor(color: string, scale = 1) {
-    const slot = Math.max(0, PLAYER_COLORS.indexOf(color));
+    const slot = COLOR_CHAR.get(color) ?? Math.max(0, PLAYER_COLORS.indexOf(color));
     const c = CHARACTERS[slot];
     const { scene, animations } = character(c.model);
+    // a colour that isn't the character's own: palette-swap its signature colour
+    if (color.toLowerCase() !== c.color.toLowerCase()) recolor(scene, color, c.model);
     scene.scale.setScalar(BASE);
     this.body.add(scene);
     this.group.add(this.body);

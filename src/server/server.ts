@@ -86,6 +86,8 @@ function cleanRaw(r: any): RawInput | null {
     b: r.b === true,
     aCount: Math.floor(num(r.aCount, 0, 1e9)),
     bCount: Math.floor(num(r.bCount, 0, 1e9)),
+    xCount: Math.floor(num(r.xCount, 0, 1e9)),
+    yCount: Math.floor(num(r.yCount, 0, 1e9)),
   };
 }
 

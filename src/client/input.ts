@@ -20,11 +20,14 @@ interface KeyProfile {
   right: string[];
   a: string[];
   b: string[];
+  /** X / Y: change character / colour in the lobby. */
+  x: string[];
+  y: string[];
 }
 
 /** Two keyboard halves so two people can share one keyboard. */
 const KEY_PROFILES: KeyProfile[] = [
-  { key: 'kb1', label: 'Keys: WASD + Space', up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], a: ['Space', 'KeyE'], b: ['ShiftLeft', 'KeyQ'] },
+  { key: 'kb1', label: 'Keys: WASD + Space', up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], a: ['Space', 'KeyE'], b: ['ShiftLeft', 'KeyQ'], x: ['KeyC'], y: ['KeyV'] },
   {
     key: 'kb2',
     label: 'Keys: Arrows + Enter',
@@ -34,6 +37,8 @@ const KEY_PROFILES: KeyProfile[] = [
     right: ['ArrowRight'],
     a: ['Enter', 'NumpadEnter'],
     b: ['ShiftRight', 'Backspace'],
+    x: ['Comma'],
+    y: ['Period'],
   },
 ];
 /** While only one person is on the keyboard, every key drives them: WASD or arrows, Space or Enter. */
@@ -46,6 +51,8 @@ const SOLO: KeyProfile = {
   right: ['KeyD', 'ArrowRight'],
   a: ['Space', 'KeyE', 'Enter', 'NumpadEnter'],
   b: ['ShiftLeft', 'KeyQ', 'ShiftRight', 'Backspace'],
+  x: ['KeyC', 'Comma'],
+  y: ['KeyV', 'Period'],
 };
 
 export type InputKind = 'pad' | 'keys' | 'mouse';
@@ -54,6 +61,8 @@ const DEADZONE = 0.22;
 // Standard Gamepad mapping: 0 = bottom face button, 1 = right face button, 12-15 = d-pad
 const BTN_A = 0;
 const BTN_B = 1;
+const BTN_X = 2;
+const BTN_Y = 3;
 const BTN_UP = 12, BTN_DOWN = 13, BTN_LEFT = 14, BTN_RIGHT = 15;
 
 export class InputManager {
@@ -66,13 +75,15 @@ export class InputManager {
   soloKeys = true;
   /** What the player last touched, so on-screen prompts can name the right buttons. */
   kind: InputKind = 'keys';
+  private padX = new Map<string, boolean>();
+  private padY = new Map<string, boolean>();
   private nudges = new Map<string, { x: number; y: number; until: number; polls: number }>();
 
   constructor(target: Window = window) {
     for (const p of KEY_PROFILES) {
       this.devices.set(p.key, { key: p.key, label: p.label, raw: blank(), connected: true });
     }
-    const watched = new Set(KEY_PROFILES.flatMap((p) => [...p.up, ...p.down, ...p.left, ...p.right, ...p.a, ...p.b]));
+    const watched = new Set(KEY_PROFILES.flatMap((p) => [...p.up, ...p.down, ...p.left, ...p.right, ...p.a, ...p.b, ...p.x, ...p.y]));
     target.addEventListener('keydown', (e) => {
       if (isTyping(e)) return;
       if (watched.has(e.code)) e.preventDefault();
@@ -89,6 +100,8 @@ export class InputManager {
           d.raw.bCount++;
           this.onBPress(d);
         }
+        if (p.x.includes(e.code)) d.raw.xCount = (d.raw.xCount ?? 0) + 1;
+        if (p.y.includes(e.code)) d.raw.yCount = (d.raw.yCount ?? 0) + 1;
       }
     });
     target.addEventListener('pointermove', () => (this.kind = 'mouse'));
@@ -102,11 +115,13 @@ export class InputManager {
   }
 
   /** A press of A or B from the mouse, for whichever device the click stands in for. */
-  tap(key: string, btn: 'a' | 'b'): void {
+  tap(key: string, btn: 'a' | 'b' | 'x' | 'y'): void {
     const d = this.devices.get(key);
     if (!d) return;
     if (btn === 'a') d.raw.aCount++;
-    else d.raw.bCount++;
+    else if (btn === 'b') d.raw.bCount++;
+    else if (btn === 'x') d.raw.xCount = (d.raw.xCount ?? 0) + 1;
+    else d.raw.yCount = (d.raw.yCount ?? 0) + 1;
   }
 
   /** Hold the stick in a direction briefly (one menu step), for mouse clicks on arrows. */
@@ -138,6 +153,7 @@ export class InputManager {
 
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
     const seen = new Set<string>();
+    const padX = this.padX, padY = this.padY;
     for (const gp of pads) {
       if (!gp || !gp.connected) continue;
       const key = `pad${gp.index}`;
@@ -176,6 +192,11 @@ export class InputManager {
         d.raw.bCount++;
         this.onBPress(d);
       }
+      const bx = pressed(BTN_X), by = pressed(BTN_Y);
+      if (bx && !padX.get(key)) d.raw.xCount = (d.raw.xCount ?? 0) + 1;
+      if (by && !padY.get(key)) d.raw.yCount = (d.raw.yCount ?? 0) + 1;
+      padX.set(key, bx);
+      padY.set(key, by);
       d.raw.x = x;
       d.raw.y = y;
       d.raw.a = a;
@@ -212,7 +233,7 @@ export class InputManager {
 }
 
 function blank(): RawInput {
-  return { x: 0, y: 0, a: false, b: false, aCount: 0, bCount: 0 };
+  return { x: 0, y: 0, a: false, b: false, aCount: 0, bCount: 0, xCount: 0, yCount: 0 };
 }
 
 function shortPadName(id: string): string {

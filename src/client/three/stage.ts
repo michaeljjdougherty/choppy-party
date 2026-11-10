@@ -11,6 +11,8 @@ import { shakeOffset } from './fx';
 import type { SquareBrian } from './brian';
 
 export interface Tag {
+  /** Player id, when the tag belongs to a player. */
+  id?: string;
   pos: THREE.Vector3;
   text: string;
   color?: string;
@@ -95,6 +97,25 @@ export class Stage {
       this.composer.render(dt);
     } else this.renderer.render(this.view.scene, cam);
     cam.position.sub(off);
+  }
+
+  /**
+   * Draw another view into a window of the screen (HUD coordinates), on top of the main render.
+   * Used for the lobby's board flyover.
+   */
+  renderInset(view: View, x: number, y: number, w: number, h: number): void {
+    const r = this.renderer;
+    const size = r.getSize(new THREE.Vector2());
+    const k = size.x / VIEW_W;
+    const vx = x * k, vy = (VIEW_H - y - h) * k, vw = w * k, vh = h * k;
+    view.camera.aspect = w / h;
+    view.camera.updateProjectionMatrix();
+    r.setScissorTest(true);
+    r.setScissor(vx, vy, vw, vh);
+    r.setViewport(vx, vy, vw, vh);
+    r.render(view.scene, view.camera);
+    r.setScissorTest(false);
+    r.setViewport(0, 0, size.x, size.y);
   }
 
   /** World position to HUD coordinates (1280x720 space). */

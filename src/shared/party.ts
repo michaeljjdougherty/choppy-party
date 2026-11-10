@@ -109,11 +109,19 @@ export function addPlayer(s: PartyState, id: string, name?: string): PlayerInfo 
   const used = new Set(s.players.map((p) => p.slot));
   let slot = 0;
   while (used.has(slot)) slot++;
+  // start on the first character and colour nobody has
+  const chars = new Set(s.players.map((p) => p.char ?? p.slot));
+  const colors = new Set(s.players.map((p) => p.color));
+  let char = slot;
+  while (chars.has(char)) char = (char + 1) % PLAYER_COLORS.length;
+  let ci = char;
+  while (colors.has(PLAYER_COLORS[ci])) ci = (ci + 1) % PLAYER_COLORS.length;
   const p: PlayerInfo = {
     id,
     slot,
-    name: (name ?? '').trim().slice(0, 12) || DEFAULT_NAMES[slot],
-    color: PLAYER_COLORS[slot],
+    name: (name ?? '').trim().slice(0, 12) || DEFAULT_NAMES[char],
+    color: PLAYER_COLORS[ci],
+    char,
   };
   s.players.push(p);
   s.scores[id] = 0;
@@ -131,6 +139,30 @@ export function addBot(s: PartyState, level: BotLevel): PlayerInfo | null {
   const p = addPlayer(s, id);
   if (p) p.bot = level;
   return p;
+}
+
+/** Lobby: switch to the next character nobody else is using (the name follows if it was the default). */
+export function cycleCharacter(s: PartyState, p: PlayerInfo): void {
+  const taken = new Set(s.players.filter((q) => q !== p).map((q) => q.char ?? q.slot));
+  const n = PLAYER_COLORS.length;
+  const from = p.char ?? p.slot;
+  let c = from;
+  do c = (c + 1) % n;
+  while (taken.has(c) && c !== from);
+  if (p.name === DEFAULT_NAMES[from]) p.name = DEFAULT_NAMES[c];
+  p.char = c;
+}
+
+/** Lobby: switch to the next colour nobody else is wearing. */
+export function cycleColor(s: PartyState, p: PlayerInfo): void {
+  const taken = new Set(s.players.filter((q) => q !== p).map((q) => q.color));
+  const n = PLAYER_COLORS.length;
+  let i = PLAYER_COLORS.indexOf(p.color);
+  for (let k = 0; k < n; k++) {
+    i = (i + 1) % n;
+    if (!taken.has(PLAYER_COLORS[i])) break;
+  }
+  p.color = PLAYER_COLORS[i];
 }
 
 /** Remove the most recently added bot. */
@@ -256,6 +288,11 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
         if (kind === 'mix') s.roundsIdx = Math.max(0, Math.min(ROUND_OPTIONS.length - 1, s.roundsIdx + d));
         else s.turnsIdx = Math.max(0, Math.min(TURN_OPTIONS.length - 1, s.turnsIdx + d));
         s.navCooldown = 0.22;
+      }
+      for (const p of s.players) {
+        const inp = inputs[p.id];
+        if (inp?.xPressed) cycleCharacter(s, p);
+        if (inp?.yPressed) cycleColor(s, p);
       }
       if (hostIn.aPressed && s.players.length > 0) startParty(s);
       break;

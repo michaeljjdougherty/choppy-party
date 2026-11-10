@@ -13,6 +13,9 @@ export interface RawInput {
   b: boolean;
   aCount: number; // total A presses ever
   bCount: number;
+  /** X / Y presses (lobby: change character / colour). Optional so old clients still work. */
+  xCount?: number;
+  yCount?: number;
 }
 
 /** Input as a minigame sees it on one tick. */
@@ -25,6 +28,8 @@ export interface TickInput {
   bPressed: boolean;
   aTaps: number; // presses since last tick (for mashing)
   bTaps: number;
+  xPressed?: boolean;
+  yPressed?: boolean;
 }
 
 export const NO_INPUT: TickInput = { x: 0, y: 0, a: false, b: false, aPressed: false, bPressed: false, aTaps: 0, bTaps: 0 };
@@ -34,7 +39,9 @@ export interface PlayerInfo {
   id: string;
   name: string;
   color: string;
-  slot: number; // 0..9, picks colour and face
+  slot: number; // 0..9, join order
+  /** Which character model (index into CHARACTERS). Defaults to the slot. */
+  char?: number;
   /** Team games: 0 or 1. Set by the board for Stew Battles. */
   team?: number;
   /** Computer player and how good it is. */
@@ -90,6 +97,8 @@ export function toTickInput(raw: RawInput, prev: RawInput | undefined): TickInpu
     bPressed: bTaps > 0,
     aTaps: Math.min(aTaps, 4),
     bTaps: Math.min(bTaps, 4),
+    xPressed: (raw.xCount ?? 0) > (prev?.xCount ?? raw.xCount ?? 0),
+    yPressed: (raw.yCount ?? 0) > (prev?.yCount ?? raw.yCount ?? 0),
   };
 }
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import { BOT_LABEL } from '../../../shared/bots';
-import { hostId, standings, type PartyState } from '../../../shared/party';
+import { hostId, OPTIONS, standings, type PartyState } from '../../../shared/party';
 import { ChoppyModel } from '../choppy';
 import { checkerTexture, makeScene, mesh, toy } from '../kit';
 import { place } from '../assets';
@@ -115,7 +115,7 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
   scene.add(podium);
 
 
-  const models = new Map<string, { m: ChoppyModel; target: THREE.Vector3; scale: number }>();
+  const models = new Map<string, { m: ChoppyModel; target: THREE.Vector3; scale: number; look: string }>();
   let state: PartyState | null = null;
   let players: PlayerInfo[] = [];
 
@@ -129,12 +129,15 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
           : null;
     podium.visible = !!sorted;
     if (!sorted) {
-      const gap = Math.min(1.9, 16 / Math.max(1, n));
+      // with a board picked, the right side of the stage shows its flyover, so everyone shuffles left
+      const board = s.phase === 'lobby' && OPTIONS[s.selection]?.kind === 'board';
+      const gap = board ? Math.min(1.5, 6.2 / Math.max(1, n - 1)) : Math.min(1.9, 16 / Math.max(1, n));
+      const cx = board ? -3.0 : 0;
       [...s.players]
         .sort((a, b) => a.slot - b.slot)
         .forEach((p, i) => {
           const e = models.get(p.id);
-          if (e) e.target.set((i - (n - 1) / 2) * gap, 0, 1);
+          if (e) e.target.set(cx + (i - (n - 1) / 2) * gap, 0, 1);
         });
       return;
     }
@@ -161,11 +164,23 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
       players = ps;
       // add/remove models as people join and leave
       for (const p of ps) {
-        if (!models.has(p.id)) {
+        const look = `${p.color}|${p.char ?? p.slot}`;
+        const old = models.get(p.id);
+        if (old && old.look !== look) {
+          // swapped character or colour: rebuild in place with a little hop
+          const m = new ChoppyModel(p.color, 0.8);
+          m.group.position.copy(old.m.group.position);
+          m.group.position.y += 0.6;
+          scene.remove(old.m.group);
+          scene.add(m.group);
+          old.m = m;
+          old.look = look;
+          fx.sparkle(m.group.position.clone().setY(m.group.position.y + 1), p.color, 14);
+        } else if (!old) {
           const m = new ChoppyModel(p.color, 0.8);
           m.group.position.set(0, 6, 1);
           scene.add(m.group);
-          models.set(p.id, { m, target: new THREE.Vector3(), scale: 0.8 });
+          models.set(p.id, { m, target: new THREE.Vector3(), scale: 0.8, look });
         }
       }
       for (const [id, e] of models) {
@@ -249,6 +264,7 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
           subColor = '#4cd97b';
         }
         return {
+          id: p.id,
           pos: new THREE.Vector3(pos.x, pos.y - 0.3, pos.z),
           text: p.name,
           color: p.color,

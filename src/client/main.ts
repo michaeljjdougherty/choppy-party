@@ -3,7 +3,7 @@ import { getGame } from '../shared/games';
 import { FINISH_T, FIRST_GAME, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
-import { drawFinal, drawIntro, drawLobby, drawResults } from './screens';
+import { PREVIEW, drawFinal, drawIntro, drawLobby, drawResults } from './screens';
 import { loadSamples, sfx, unlockAudio } from './sfx';
 import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
@@ -17,6 +17,8 @@ import type { BotLevel } from '../shared/bots';
 import { HostLine, LINES, countIn, finishBanner, hostCorner, pick } from './showtime';
 import { getBoard } from '../shared/board/boards';
 import type { View } from './three/stage';
+import { setCharacters } from './three/choppy';
+import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
 import { attachUi, beginUi, button, endUi, pointerAt, takeStrayClick } from './ui';
 import { setPromptKind } from './prompts';
 
@@ -235,6 +237,39 @@ function mouseFallback() {
 }
 
 /** Clickable lobby controls: back, CPUs, mode arrows, turns, start. */
+let lastTags: Tag[] = [];
+let previewsLive = false;
+
+/** "Character" and "Colour" buttons under each local player on the lobby stage. */
+function lookButtons(s: PartyState, mine: Set<string>) {
+  for (const tg of lastTags) {
+    if (!tg.id || !mine.has(tg.id)) continue;
+    const p = s.players.find((q) => q.id === tg.id);
+    if (!p || p.bot) continue;
+    const at = stage.project(tg.pos);
+    if (!at.visible) continue;
+    const dev = deviceOf(p.id);
+    const w = 46, h = 30, y = at.y + 18;
+    if (button(ctx, '☺', at.x - w - 3, y, w, h, { color: '#9a5bff', size: 18 })) (input.tap(dev, 'x'), sfx.move());
+    if (button(ctx, '', at.x + 3, y, w, h, { color: p.color, size: 16 })) (input.tap(dev, 'y'), sfx.move());
+    // paint-drop icon on the colour button
+    ctx.save();
+    ctx.fillStyle = lightness(p.color) > 0.7 ? '#2a1b5e' : '#ffffff';
+    ctx.beginPath();
+    const cx = at.x + 3 + w / 2, cy = y + h / 2 + 3;
+    ctx.arc(cx, cy, 6, 0, Math.PI);
+    ctx.lineTo(cx, cy - 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function lightness(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+}
+
 function lobbyButtons(s: PartyState) {
   if (!session) return;
   if (button(ctx, '◀  Back', 16, 16, 150, 50, { color: '#6b6f86', size: 20 })) {
@@ -243,6 +278,7 @@ function lobbyButtons(s: PartyState) {
   }
   const mine = session.localIds();
   const humans = [...mine];
+  lookButtons(s, mine);
   // the CPU row
   const full = s.players.length >= MAX_PLAYERS;
   const bots = s.players.filter((p) => p.bot).length;
@@ -269,7 +305,7 @@ function lobbyButtons(s: PartyState) {
   if (button(ctx, '▶', 980, 572, 64, 52, { color: '#9a5bff', size: 26 })) (input.nudge(dev, 1, 0), sfx.move());
   const kind = OPTIONS[s.selection].kind;
   if (kind !== 'game') {
-    text(ctx, kind === 'mix' ? 'Rounds' : 'Turns', 160, 548, 18, { weight: 800 });
+    text(ctx, kind === 'mix' ? 'Rounds' : 'Turns', 160, 698, 18, { weight: 800 });
     if (button(ctx, '+', 130, 566, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, -1), sfx.move());
     if (button(ctx, '−', 130, 626, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, 1), sfx.move());
   }
@@ -292,6 +328,7 @@ function renderScreens(wallT: number, dt: number) {
     return;
   }
   const s = session.view();
+  if (s) setCharacters(s.players);
   statusEl.textContent = session.status();
   if (!s) {
     ctx.fillStyle = '#1a1033';
@@ -318,7 +355,19 @@ function renderScreens(wallT: number, dt: number) {
   }
   hostFor(s, view, wallT, dt);
   stage.render(dt, wallT);
-  drawTags(view.tags());
+  // lobby: a live flyover of the board that's picked
+  const opt = OPTIONS[s.selection];
+  if (s.phase === 'lobby' && opt?.kind === 'board') {
+    const pv = boardPreview(stage.env, opt.id);
+    pv.update(null, [], wallT, dt);
+    stage.renderInset(pv, PREVIEW.x, PREVIEW.y, PREVIEW.w, PREVIEW.h);
+    previewsLive = true;
+  } else if (s.phase !== 'lobby' && previewsLive) {
+    clearBoardPreviews();
+    previewsLive = false;
+  }
+  lastTags = view.tags();
+  drawTags(lastTags);
   if (stage.switches !== seenSwitches) {
     // skip the wipe for the very first scene
     if (seenSwitches > 0) wipeT = 0;

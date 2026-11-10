@@ -23,6 +23,18 @@ npm run build && npm start   # production: one Node process serves the game and 
 
 In the lobby, press A on any device to join and B to leave. The first player is the host: Left/Right picks a game or party mode, Up/Down sets the number of rounds, A starts.
 
+## Modes
+
+From the main menu: **Party Boards** (roll the dice block, race around a board, buy crowns for 20 coins, a minigame after every turn), **Minigame Mix**, **Free Play** and **Play Online**.
+
+| Board | Best for | Gimmick |
+| --- | --- | --- |
+| Lantern Hollow | 4-6 players | Event spaces swap day and night, opening different routes; pay the Wisp to rob the leader |
+| Cosmo Junction | 6-8 players | Laser Lane through the middle counts down and blasts coins off anyone in it; warp pads |
+| Gold Rush Gulch | 8+ players | Two crowns at once, steam train between stations, gold-or-dynamite mine shafts |
+
+The lobby picks the best board for your head count automatically; the host can still change it.
+
 ## Online
 
 Click **Host online** to open a room; share the 4-letter code or the `?room=CODE` link. Each browser can bring up to 4 local players. The server runs every round (30 ticks/s) and sends snapshots; browsers send inputs and draw, blending between snapshots. A dropped browser can reload the link and pick its players back up.
@@ -32,6 +44,7 @@ Click **Host online** to open a room; share the 4-letter code or the `?room=CODE
 - `src/shared/types.ts` minigame interface and input types
 - `src/shared/party.ts` party flow: lobby, intro, play, results, final scores
 - `src/shared/games/` one file per minigame; register new ones in `games/index.ts`
+- `src/shared/board/` board mode: layouts (`boards.ts`), rules (`engine.ts`)
 - `src/client/` input manager, local and online sessions, menu HUD screens
 - `src/client/three/` 3D renderer: stage, the Choppy character model, and one 3D view per minigame in `views/`
 - `src/server/server.ts` WebSocket room server and static file server

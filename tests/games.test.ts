@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GAMES } from '../src/shared/games';
 import { DT, NO_INPUT, type Inputs, type PlayerInfo, type TickInput } from '../src/shared/types';
-import { addPlayer, createParty, placementsFrom, stepParty, type PartyState } from '../src/shared/party';
+import { FIRST_MIX, addPlayer, createParty, placementsFrom, stepParty, type PartyState } from '../src/shared/party';
 import { rand } from '../src/shared/rng';
 import { shrinkingRink, type RinkState } from '../src/shared/games/shrinkingRink';
 import { quickDrawCactus, type QuickDrawState } from '../src/shared/games/quickDrawCactus';
@@ -98,6 +98,7 @@ describe('party flow', () => {
     const s: PartyState = createParty(3);
     for (let i = 0; i < 10; i++) addPlayer(s, `p${i}`);
     expect(addPlayer(s, 'extra')).toBeNull();
+    s.selection = FIRST_MIX;
     s.roundsIdx = 0; // 3 rounds
     const tapAll = (): Inputs =>
       Object.fromEntries(s.players.map((p) => [p.id, { ...NO_INPUT, a: true, aPressed: true, aTaps: 1 }]));

@@ -1,5 +1,7 @@
 import { GAMES, getGame } from '../shared/games';
-import { MAX_PLAYERS, ROUND_OPTIONS, selectionLabel, standings, type PartyState } from '../shared/party';
+import { MAX_PLAYERS, OPTIONS, ROUND_OPTIONS, selectionLabel, standings, type PartyState } from '../shared/party';
+import { getBoard, recommendedBoard } from '../shared/board/boards';
+import { crownIcon } from './boardHud';
 import { playerById, roundRect, text } from '../shared/draw';
 
 /** 2D overlays for the menu screens. The 3D party stage is drawn underneath by the menu view. */
@@ -29,10 +31,18 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
 
   panel(ctx, 220, 556, 840, 130);
   text(ctx, `◀  ${selectionLabel(s)}  ▶`, 640, 598, 36, { color: '#fff' });
-  const sub =
-    s.selection === 0
-      ? `Up/Down: ${ROUND_OPTIONS.join(' / ')} rounds  ·  ${GAMES.length} games in the mix`
-      : `${getGame(GAMES[s.selection - 1].id).mode}  ·  ${GAMES[s.selection - 1].blurb}`;
+  const o = OPTIONS[s.selection];
+  let sub: string;
+  if (o.kind === 'board') {
+    const b = getBoard(o.id);
+    const best = s.players.length > 0 && recommendedBoard(s.players.length).id === b.id;
+    sub = `Best for ${b.players[0]}-${b.players[1]}${b.players[1] >= 10 ? '+' : ''} players${best ? '  ★ Recommended for your group' : ''}  ·  Up/Down: turns`;
+  } else if (o.kind === 'mix') {
+    sub = `Up/Down: ${ROUND_OPTIONS.join(' / ')} rounds  ·  ${GAMES.length} games in the mix`;
+  } else {
+    const g = getGame(o.id);
+    sub = `${g.mode}  ·  ${g.blurb}`;
+  }
   text(ctx, truncate(sub, 92), 640, 636, 17, { color: '#e8ddff', weight: 500, outline: false });
   if (s.players.length) {
     text(ctx, 'Host: Left/Right to choose, A to start', 640, 664, 17, { color: '#ffd23f', weight: 700, outline: false });
@@ -54,7 +64,8 @@ export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState): void {
 
 export function drawResults(ctx: CanvasRenderingContext2D, s: PartyState): void {
   const g = getGame(s.gameId!);
-  text(ctx, g.name, 940, 54, 40, { color: '#ffd23f' });
+  const onBoard = !!s.board;
+  text(ctx, onBoard ? `${g.name}: coins won` : g.name, 940, 54, 40, { color: '#ffd23f' });
   const rows = s.placements;
   const rowH = Math.min(54, 560 / Math.max(1, rows.length));
   panel(ctx, 640, 86, 600, rowH * rows.length + 24, 0.5);
@@ -69,10 +80,11 @@ export function drawResults(ctx: CanvasRenderingContext2D, s: PartyState): void 
     ctx.fill();
     text(ctx, p.name, 766, y, 23, { align: 'left' });
     text(ctx, pl.label, 1070, y, 18, { align: 'right', weight: 500, color: '#e8ddff' });
-    text(ctx, pl.points ? `+${pl.points}` : '', 1130, y, 22, { color: '#4cd97b' });
-    text(ctx, String(s.scores[pl.id] ?? 0), 1195, y, 22, { color: '#fff' });
+    text(ctx, pl.points ? `+${pl.points}` : '', 1130, y, 22, { color: onBoard ? '#ffd23f' : '#4cd97b' });
+    text(ctx, onBoard ? `${s.board!.players[pl.id]?.coins ?? 0}¢` : String(s.scores[pl.id] ?? 0), 1195, y, 22, { color: '#fff' });
   });
-  text(ctx, 'Host: A to continue', 940, 694, 18, { weight: 700 });
+  const more = onBoard && s.board!.turn < s.board!.maxTurns ? 'Host: A to go back to the board' : 'Host: A to continue';
+  text(ctx, more, 940, 694, 18, { weight: 700 });
 }
 
 export function drawFinal(ctx: CanvasRenderingContext2D, s: PartyState): void {
@@ -91,7 +103,12 @@ export function drawFinal(ctx: CanvasRenderingContext2D, s: PartyState): void {
     ctx.arc(806, y, 11, 0, Math.PI * 2);
     ctx.fill();
     text(ctx, p.name, 830, y, 22, { align: 'left' });
-    text(ctx, `${r.score} pts`, 1150, y, 22, { align: 'right' });
+    if (s.board) {
+      const bp = s.board.players[r.id];
+      crownIcon(ctx, 1030, y, 1.1);
+      text(ctx, String(bp?.crowns ?? 0), 1050, y, 22, { align: 'left' });
+      text(ctx, `${bp?.coins ?? 0}¢`, 1160, y, 22, { align: 'right' });
+    } else text(ctx, `${r.score} pts`, 1150, y, 22, { align: 'right' });
   });
   text(ctx, 'Host: A to return to the lobby', 940, 694, 18, { weight: 700 });
 }

@@ -3,13 +3,27 @@ import { NO_INPUT } from './types';
 import { GAMES, getGame } from './games';
 import { PLAYER_COLORS, DEFAULT_NAMES } from './players';
 import { shuffle, type Rng } from './rng';
+import { BOARDS, getBoard, recommendedBoard } from './board/boards';
+import { awardMinigame, boardRanking, createBoard, stepBoard } from './board/engine';
+import type { BoardState } from './board/types';
 
 export const MAX_PLAYERS = 10;
 export const ROUND_OPTIONS = [3, 5, 10];
+export const TURN_OPTIONS = [5, 10, 15, 20];
+
+/** Everything the host can pick in the lobby, in order. */
+export type PartyOption = { kind: 'board'; id: string } | { kind: 'mix' } | { kind: 'game'; id: string };
+export const OPTIONS: PartyOption[] = [
+  ...BOARDS.map((b) => ({ kind: 'board' as const, id: b.id })),
+  { kind: 'mix' },
+  ...GAMES.map((g) => ({ kind: 'game' as const, id: g.id })),
+];
+export const FIRST_MIX = BOARDS.length;
+export const FIRST_GAME = BOARDS.length + 1;
 /** Party points by finishing place. Ties share the better place. */
 export const PLACE_POINTS = [5, 3, 2, 1];
 
-export type Phase = 'lobby' | 'intro' | 'play' | 'results' | 'final';
+export type Phase = 'lobby' | 'board' | 'intro' | 'play' | 'results' | 'final';
 
 export interface Placement {
   id: string;
@@ -24,9 +38,14 @@ export interface PartyState {
   phaseT: number;
   players: PlayerInfo[];
   scores: Record<string, number>;
-  /** 0 = party mode, 1.. = a single game (GAMES[selection - 1]) */
+  /** Index into OPTIONS. */
   selection: number;
   roundsIdx: number;
+  turnsIdx: number;
+  mode: PartyOption['kind'];
+  board: BoardState | null;
+  /** While true, the lobby keeps picking the best board for the current player count. */
+  autoPick: boolean;
   round: number;
   playlist: string[];
   gameId: string | null;
@@ -45,6 +64,10 @@ export function createParty(seed: number): PartyState {
     scores: {},
     selection: 0,
     roundsIdx: 1,
+    turnsIdx: 1,
+    mode: 'board',
+    board: null,
+    autoPick: true,
     round: 0,
     playlist: [],
     gameId: null,
@@ -88,8 +111,14 @@ export function removePlayer(s: PartyState, id: string): boolean {
 }
 
 export function selectionLabel(s: PartyState): string {
-  if (s.selection === 0) return `Party: ${ROUND_OPTIONS[s.roundsIdx]} random rounds`;
-  return GAMES[s.selection - 1].name;
+  const o = OPTIONS[s.selection];
+  if (o.kind === 'board') return `${getBoard(o.id).name}: ${TURN_OPTIONS[s.turnsIdx]} turns`;
+  if (o.kind === 'mix') return `Minigame Mix: ${ROUND_OPTIONS[s.roundsIdx]} rounds`;
+  return getGame(o.id).name;
+}
+
+function eligibleGames(n: number): string[] {
+  return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && g.mode === 'Free-for-all').map((g) => g.id);
 }
 
 export function totalRounds(s: PartyState): number {
@@ -105,22 +134,35 @@ function setPhase(s: PartyState, phase: Phase): void {
 function startParty(s: PartyState): void {
   const n = s.players.length;
   for (const p of s.players) s.scores[p.id] = 0;
-  if (s.selection === 0) {
-    const pool = GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers).map((g) => g.id);
-    const rounds = ROUND_OPTIONS[s.roundsIdx];
-    const list: string[] = [];
-    while (list.length < rounds) {
-      const batch = shuffle(s.rng, [...pool]);
-      // avoid the same game twice in a row across batches
-      if (list.length && batch[0] === list[list.length - 1] && batch.length > 1) batch.push(batch.shift()!);
-      list.push(...batch);
-    }
-    s.playlist = list.slice(0, rounds);
-  } else {
-    s.playlist = [GAMES[s.selection - 1].id];
-  }
+  const o = OPTIONS[s.selection];
+  s.mode = o.kind;
+  s.board = null;
   s.round = 0;
+  if (o.kind === 'board') {
+    s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
+    s.board = createBoard(o.id, s.players.map((p) => p.id), TURN_OPTIONS[s.turnsIdx], s.rng.seed);
+    s.playlist = [];
+    setPhase(s, 'board');
+    return;
+  }
+  if (o.kind === 'mix') {
+    s.playlist = makePlaylist(s, eligibleGames(n), ROUND_OPTIONS[s.roundsIdx]);
+  } else {
+    s.playlist = [o.id];
+  }
   beginRound(s);
+}
+
+function makePlaylist(s: PartyState, pool: string[], rounds: number): string[] {
+  const list: string[] = [];
+  if (!pool.length) pool = GAMES.map((g) => g.id);
+  while (list.length < rounds) {
+    const batch = shuffle(s.rng, [...pool]);
+    // avoid the same game twice in a row across batches
+    if (list.length && batch[0] === list[list.length - 1] && batch.length > 1) batch.push(batch.shift()!);
+    list.push(...batch);
+  }
+  return list.slice(0, rounds);
 }
 
 function beginRound(s: PartyState): void {
@@ -150,15 +192,39 @@ export function stepParty(s: PartyState, inputs: Inputs, dt: number): void {
   switch (s.phase) {
     case 'lobby': {
       s.navCooldown = Math.max(0, s.navCooldown - dt);
-      const options = GAMES.length + 1;
+      const options = OPTIONS.length;
+      const kind = OPTIONS[s.selection].kind;
+      if (s.autoPick && kind === 'board' && s.players.length) {
+        const want = OPTIONS.findIndex((o) => o.kind === 'board' && o.id === recommendedBoard(s.players.length).id);
+        if (want >= 0) s.selection = want;
+      }
       if (s.navCooldown === 0 && Math.abs(hostIn.x) > 0.6) {
         s.selection = (s.selection + (hostIn.x > 0 ? 1 : -1) + options) % options;
         s.navCooldown = 0.22;
-      } else if (s.navCooldown === 0 && s.selection === 0 && Math.abs(hostIn.y) > 0.6) {
-        s.roundsIdx = Math.max(0, Math.min(ROUND_OPTIONS.length - 1, s.roundsIdx + (hostIn.y < 0 ? 1 : -1)));
+        s.autoPick = false;
+      } else if (s.navCooldown === 0 && kind !== 'game' && Math.abs(hostIn.y) > 0.6) {
+        const d = hostIn.y < 0 ? 1 : -1;
+        if (kind === 'mix') s.roundsIdx = Math.max(0, Math.min(ROUND_OPTIONS.length - 1, s.roundsIdx + d));
+        else s.turnsIdx = Math.max(0, Math.min(TURN_OPTIONS.length - 1, s.turnsIdx + d));
         s.navCooldown = 0.22;
       }
       if (hostIn.aPressed && s.players.length > 0) startParty(s);
+      break;
+    }
+    case 'board': {
+      const b = s.board!;
+      stepBoard(b, inputs, dt);
+      if (b.sub === 'done') {
+        // everyone has moved: time for this turn's minigame
+        const pool = eligibleGames(s.players.length);
+        const recent = s.playlist.slice(-2);
+        const fresh = pool.filter((g) => !recent.includes(g));
+        const pickFrom = fresh.length ? fresh : pool;
+        s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
+        s.playlist.push(pickFrom[Math.abs(s.rng.seed) % pickFrom.length]);
+        s.round = s.playlist.length - 1;
+        beginRound(s);
+      }
       break;
     }
     case 'intro': {
@@ -174,13 +240,33 @@ export function stepParty(s: PartyState, inputs: Inputs, dt: number): void {
       g.step(s.game, inputs, dt);
       if (g.isOver(s.game)) {
         s.placements = placementsFrom(g.results(s.game));
-        for (const pl of s.placements) s.scores[pl.id] = (s.scores[pl.id] ?? 0) + pl.points;
+        if (s.board) {
+          // on a board, minigames pay out coins instead of party points
+          const coins = awardMinigame(s.board, s.placements);
+          for (const pl of s.placements) pl.points = coins[pl.id] ?? 0;
+          for (const p of Object.values(s.board.players)) s.scores[p.id] = p.coins;
+        } else {
+          for (const pl of s.placements) s.scores[pl.id] = (s.scores[pl.id] ?? 0) + pl.points;
+        }
         setPhase(s, 'results');
       }
       break;
     }
     case 'results': {
       if ((hostIn.aPressed && s.phaseT > 1.5) || s.phaseT > 8) {
+        if (s.board) {
+          if (s.board.turn >= s.board.maxTurns) {
+            for (const r of boardRanking(s.board)) s.scores[r.id] = r.value;
+            setPhase(s, 'final');
+          } else {
+            s.board.turn++;
+            s.board.cur = 0;
+            s.board.sub = 'turnIntro';
+            s.board.t = 0;
+            setPhase(s, 'board');
+          }
+          break;
+        }
         s.round++;
         if (s.round >= s.playlist.length) setPhase(s, 'final');
         else beginRound(s);
@@ -192,6 +278,7 @@ export function stepParty(s: PartyState, inputs: Inputs, dt: number): void {
         s.gameId = null;
         s.game = null;
         s.playlist = [];
+        s.board = null;
         setPhase(s, 'lobby');
       }
       break;

@@ -1,0 +1,610 @@
+import * as THREE from 'three';
+import type { PlayerInfo } from '../../../shared/types';
+import type { PartyState } from '../../../shared/party';
+import { getBoard } from '../../../shared/board/boards';
+import { currentPlayer, exits } from '../../../shared/board/engine';
+import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
+import { roundedRect } from '../../../shared/board/layout';
+import { ChoppyModel } from '../choppy';
+import { darken, makeScene, mesh, toy } from '../kit';
+import type { Tag, View } from '../stage';
+
+const SPACE_COLORS: Record<SpaceType, string> = {
+  blue: '#2f7dff',
+  red: '#ff3b4e',
+  event: '#21c45a',
+  lucky: '#ffc21a',
+  wisp: '#9a5bff',
+  station: '#ff8a1f',
+  counter: '#ff3fd2',
+};
+const SPACE_ICON: Record<SpaceType, string> = {
+  blue: '+',
+  red: '−',
+  event: '!',
+  lucky: '?',
+  wisp: '☾',
+  station: '$',
+  counter: '⚡',
+};
+
+function iconTexture(icon: string, color: string): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = color;
+  g.beginPath();
+  g.arc(64, 64, 64, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.22)';
+  g.beginPath();
+  g.arc(64, 64, 50, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#ffffff';
+  g.font = '900 78px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(icon, 64, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function makeCrown(): THREE.Group {
+  const g = new THREE.Group();
+  const gold = new THREE.MeshStandardMaterial({ color: '#ffcc33', roughness: 0.22, metalness: 0.75, emissive: '#5a3a00' });
+  const band = mesh(new THREE.CylinderGeometry(0.55, 0.5, 0.35, 28, 1, true), gold);
+  band.material = gold.clone();
+  (band.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+  g.add(band);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const spike = mesh(new THREE.ConeGeometry(0.13, 0.42, 10), gold);
+    spike.position.set(Math.cos(a) * 0.52, 0.36, Math.sin(a) * 0.52);
+    g.add(spike);
+    const ball = mesh(new THREE.SphereGeometry(0.08, 10, 8), gold);
+    ball.position.set(Math.cos(a) * 0.52, 0.6, Math.sin(a) * 0.52);
+    g.add(ball);
+  }
+  const gemMat = new THREE.MeshStandardMaterial({ color: '#ff3b6b', roughness: 0.1, emissive: '#550018' });
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + Math.PI / 5;
+    const gem = mesh(new THREE.SphereGeometry(0.08, 10, 8), gemMat);
+    gem.position.set(Math.cos(a) * 0.53, 0, Math.sin(a) * 0.53);
+    g.add(gem);
+  }
+  return g;
+}
+
+/** Theme dressing. Returns a per-frame animator. */
+type Dresser = (scene: THREE.Scene, def: BoardDef) => (s: BoardState, t: number, dt: number) => void;
+
+const hollowDecor: Dresser = (scene, def) => {
+  const island = mesh(new THREE.CylinderGeometry(24, 22, 2, 64), toy('#4c7a3a', 0.9), { cast: false, receive: true });
+  island.scale.z = 0.72;
+  island.position.y = -1.05;
+  scene.add(island);
+  const cliff = mesh(new THREE.CylinderGeometry(22, 12, 8, 64), toy('#6b4b36', 0.9), { cast: false, receive: true });
+  cliff.scale.z = 0.72;
+  cliff.position.y = -6;
+  scene.add(cliff);
+  // crooked trees and pumpkins around the edge
+  const trunk = toy('#4a3426', 0.8);
+  const leaves = [toy('#5a3d8c', 0.6), toy('#2f6e5a', 0.6), toy('#7a3d6e', 0.6)];
+  const pumpkin = toy('#ff7a1a', 0.45);
+  for (let i = 0; i < 26; i++) {
+    const a = (i / 26) * Math.PI * 2;
+    const r = 18 + (i % 3) * 1.6;
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r * 0.66;
+    // tall trees only along the back and far sides, so they never block the follow camera
+    if (i % 2 === 0 && (z < 2 || Math.abs(x) > 17)) {
+      const tr = mesh(new THREE.CylinderGeometry(0.25, 0.45, 3, 7), trunk);
+      tr.position.set(x, 1.5, z);
+      tr.rotation.z = Math.sin(i) * 0.25;
+      scene.add(tr);
+      const top = mesh(new THREE.SphereGeometry(1.5 + (i % 3) * 0.3, 14, 10), leaves[i % 3]);
+      top.position.set(x + Math.sin(i) * 0.5, 3.6, z);
+      top.scale.y = 0.8;
+      scene.add(top);
+    } else {
+      const p = mesh(new THREE.SphereGeometry(0.6, 16, 12), pumpkin);
+      p.scale.y = 0.7;
+      p.position.set(x, 0.42, z);
+      scene.add(p);
+      const face = mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffe066' }), { cast: false });
+      face.position.set(x * 0.97, 0.5, z * 0.97);
+      scene.add(face);
+    }
+  }
+  // the manor at the top of the board
+  const wall = toy('#7d6aa8', 0.7);
+  const roof = toy('#3b2d5c', 0.6);
+  const glow = new THREE.MeshBasicMaterial({ color: '#ffd76a' });
+  const manor = new THREE.Group();
+  const body = mesh(new THREE.BoxGeometry(6, 4, 3), wall, { receive: true });
+  body.position.y = 2;
+  const top = mesh(new THREE.ConeGeometry(4.6, 2.6, 4), roof);
+  top.position.y = 5.3;
+  top.rotation.y = Math.PI / 4;
+  const tower = mesh(new THREE.CylinderGeometry(0.9, 0.9, 6, 12), wall);
+  tower.position.set(3.2, 3, 0.2);
+  const towerTop = mesh(new THREE.ConeGeometry(1.2, 2, 12), roof);
+  towerTop.position.set(3.2, 7, 0.2);
+  manor.add(body, top, tower, towerTop);
+  for (const [x, y] of [[-1.6, 2.6], [0, 2.6], [1.6, 2.6], [3.2, 4.4]] as [number, number][]) {
+    const w = mesh(new THREE.PlaneGeometry(0.7, 0.9), glow, { cast: false });
+    w.position.set(x, y, 1.52);
+    manor.add(w);
+  }
+  manor.position.set(-5, 0, -12.5);
+  scene.add(manor);
+  // lantern posts
+  const posts: THREE.Mesh[] = [];
+  for (const [x, z] of [[-14, -9], [14, -9], [-14, 9], [14, 9], [-6, 0], [6, 0]] as [number, number][]) {
+    const post = mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.4, 6), trunk);
+    post.position.set(x, 1.2, z);
+    scene.add(post);
+    const lamp = mesh(new THREE.BoxGeometry(0.45, 0.55, 0.45), new THREE.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ffb020', emissiveIntensity: 1 }));
+    lamp.position.set(x, 2.6, z);
+    scene.add(lamp);
+    posts.push(lamp);
+  }
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(4, 32, 16), new THREE.MeshBasicMaterial({ color: '#fff6d6', fog: false }));
+  moon.position.set(30, 26, -60);
+  scene.add(moon);
+  const hemi = scene.children.find((c) => (c as THREE.HemisphereLight).isHemisphereLight) as THREE.HemisphereLight;
+  const sun = scene.children.find((c) => (c as THREE.DirectionalLight).isDirectionalLight) as THREE.DirectionalLight;
+  const daySky = new THREE.Color('#ffb38a');
+  const nightSky = new THREE.Color('#1d1846');
+  const bg = new THREE.Color();
+  scene.background = bg;
+  let k = 0;
+  // closed routes fade out
+  const gateLinks = Object.values(def.nodes).filter((n) => n.gate);
+  void gateLinks;
+  return (s, t, dt) => {
+    k += ((s.night ? 1 : 0) - k) * Math.min(1, dt * 2);
+    bg.copy(daySky).lerp(nightSky, k);
+    if (scene.fog) (scene.fog as THREE.Fog).color.copy(bg);
+    hemi.intensity = 0.9 - k * 0.45;
+    sun.intensity = 2.2 - k * 1.3;
+    sun.color.set(k > 0.5 ? '#9fb3ff' : '#ffe0b8');
+    moon.visible = k > 0.3;
+    posts.forEach((p, i) => ((p.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.6 + k * 1.6 + Math.sin(t * 6 + i) * 0.1));
+  };
+};
+
+const cosmoDecor: Dresser = (scene) => {
+  scene.fog = null;
+  // starfield
+  const starGeo = new THREE.BufferGeometry();
+  const pos: number[] = [];
+  for (let i = 0; i < 900; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const e = Math.random() * 0.9 + 0.05;
+    const r = 120;
+    pos.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r - 20, Math.sin(a) * Math.cos(e) * r);
+  }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: '#ffffff', size: 0.6, sizeAttenuation: true })));
+  // station deck under the ring
+  const deck = mesh(new THREE.CylinderGeometry(22, 21, 1, 72), toy('#2c3360', 0.4), { cast: false, receive: true });
+  deck.scale.z = 0.66;
+  deck.position.y = -0.55;
+  scene.add(deck);
+  const rim = mesh(new THREE.TorusGeometry(22, 0.35, 10, 90), new THREE.MeshStandardMaterial({ color: '#45e3ff', emissive: '#1aa8d6', emissiveIntensity: 0.9 }));
+  rim.scale.y = 0.66;
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = -0.1;
+  scene.add(rim);
+  // planets
+  const planets: THREE.Object3D[] = [];
+  const p1 = mesh(new THREE.SphereGeometry(6, 32, 20), toy('#ff7ab8', 0.5), { cast: false });
+  p1.position.set(-36, 10, -40);
+  const ring = mesh(new THREE.TorusGeometry(9, 0.6, 8, 64), toy('#ffd1ec', 0.5), { cast: false });
+  ring.rotation.x = 1.2;
+  p1.add(ring);
+  const p2 = mesh(new THREE.SphereGeometry(3.5, 32, 20), toy('#5ad6a0', 0.5), { cast: false });
+  p2.position.set(38, 14, -46);
+  const p3 = mesh(new THREE.SphereGeometry(2, 24, 16), toy('#ffcf4a', 0.4), { cast: false });
+  p3.position.set(18, 22, -50);
+  scene.add(p1, p2, p3);
+  planets.push(p1, p2, p3);
+  // laser cannon at the right end of the lane, aiming back along it
+  const cannon = new THREE.Group();
+  const base = mesh(new THREE.CylinderGeometry(1.4, 1.8, 1.2, 20), toy('#5b647d', 0.35));
+  base.position.y = 0.6;
+  const barrel = mesh(new THREE.CylinderGeometry(0.55, 0.75, 3.4, 20), toy('#e6e9f5', 0.3));
+  barrel.rotation.z = Math.PI / 2;
+  barrel.position.set(-1.2, 1.9, 0);
+  const tip = mesh(new THREE.TorusGeometry(0.6, 0.18, 10, 20), new THREE.MeshStandardMaterial({ color: '#ff3fd2', emissive: '#ff3fd2', emissiveIntensity: 1 }));
+  tip.rotation.y = Math.PI / 2;
+  tip.position.set(-2.9, 1.9, 0);
+  cannon.add(base, barrel, tip);
+  cannon.position.set(21.5, 0, 0);
+  scene.add(cannon);
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.5, 40, 16, 1, true),
+    new THREE.MeshBasicMaterial({ color: '#ff5ae0', transparent: true, opacity: 0.8 }),
+  );
+  beam.rotation.z = Math.PI / 2;
+  beam.position.set(0, 1.9, 0);
+  beam.visible = false;
+  scene.add(beam);
+  let lastCounter = -1;
+  let fire = 0;
+  return (s, t, dt) => {
+    if (lastCounter !== -1 && s.counter > lastCounter) fire = 1.2;
+    lastCounter = s.counter;
+    fire = Math.max(0, fire - dt);
+    beam.visible = fire > 0;
+    beam.scale.x = beam.scale.z = 0.4 + Math.sin(t * 40) * 0.15 + fire;
+    planets.forEach((p, i) => (p.rotation.y = t * (0.1 + i * 0.05)));
+    (tip.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.6 + (1 - s.counter / 8) * 2 + Math.sin(t * 8) * 0.2;
+  };
+};
+
+const gulchDecor: Dresser = (scene, def) => {
+  const sand = mesh(new THREE.CircleGeometry(120, 48), toy('#e8b273', 0.9), { cast: false, receive: true });
+  sand.rotation.x = -Math.PI / 2;
+  sand.position.y = -0.05;
+  scene.add(sand);
+  const rock = toy('#c4673e', 0.85);
+  for (let i = 0; i < 9; i++) {
+    const w = 4 + (i % 3) * 2;
+    const m = mesh(new THREE.CylinderGeometry(w, w * 1.2, 6 + (i % 2) * 4, 8), rock, { receive: true });
+    m.position.set(-48 + i * 12, 3, -34 - (i % 3) * 6);
+    scene.add(m);
+  }
+  // town buildings inside the loop
+  const woods = ['#b0703e', '#c9874d', '#9a5a32', '#d49a5c'];
+  for (let i = 0; i < 8; i++) {
+    const x = -13 + (i % 4) * 8.6;
+    const z = i < 4 ? -5 : 5;
+    if (Math.abs(x - -7.5) < 2.2 || Math.abs(x - 7.5) < 2.2) continue; // keep the cut-throughs clear
+    const h = 2.5 + (i % 3) * 0.8;
+    const b = mesh(new THREE.BoxGeometry(4, h, 3.2), toy(woods[i % 4], 0.8), { receive: true });
+    b.position.set(x, h / 2, z);
+    scene.add(b);
+    const front = z < 0 ? 1.62 : -1.62;
+    const facade = mesh(new THREE.BoxGeometry(4.4, 1.2, 0.3), toy(darken(woods[i % 4], 0.2), 0.8));
+    facade.position.set(x, h + 0.5, z + front);
+    scene.add(facade);
+    const roofM = mesh(new THREE.BoxGeometry(4.3, 0.25, 3.6), toy('#7a3b2a', 0.7));
+    roofM.position.set(x, h + 0.1, z);
+    scene.add(roofM);
+    const door = mesh(new THREE.BoxGeometry(0.9, 1.5, 0.1), toy('#5a3520', 0.7), { cast: false });
+    door.position.set(x, 0.75, z + front + (front > 0 ? 0.02 : -0.02));
+    scene.add(door);
+    for (const wxo of [-1.3, 1.3]) {
+      const win = mesh(new THREE.BoxGeometry(0.8, 0.7, 0.1), new THREE.MeshStandardMaterial({ color: '#ffe9a8', emissive: '#806020', roughness: 0.3 }), { cast: false });
+      win.position.set(x + wxo, h * 0.62, z + front + (front > 0 ? 0.02 : -0.02));
+      scene.add(win);
+    }
+  }
+  // cacti
+  const green = toy('#3fae55', 0.5);
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    const c = mesh(new THREE.CapsuleGeometry(0.4, 1.8, 6, 10), green);
+    c.position.set(Math.cos(a) * 30, 1.3, Math.sin(a) * 20);
+    scene.add(c);
+  }
+  // railway around the outside and a little train
+  const trackPts = roundedRect(50, 34, 8, 220);
+  const tie = toy('#6b4a2b', 0.9);
+  const tiesGeo = new THREE.BoxGeometry(0.25, 0.12, 1.4);
+  trackPts.forEach(([x, z], i) => {
+    if (i % 2) return;
+    const [nx, nz] = trackPts[(i + 1) % trackPts.length];
+    const t = mesh(tiesGeo, tie, { cast: false, receive: true });
+    t.position.set(x, 0.06, z);
+    t.rotation.y = -Math.atan2(nz - z, nx - x);
+    scene.add(t);
+  });
+  const train = new THREE.Group();
+  const cars: THREE.Group[] = [];
+  const carColors = ['#d12f2f', '#2f62d1', '#2fa152'];
+  for (let i = 0; i < 3; i++) {
+    const car = new THREE.Group();
+    const body = mesh(new THREE.BoxGeometry(2.2, 1.2, 1.3), toy(carColors[i], 0.45));
+    body.position.y = 0.95;
+    car.add(body);
+    if (i === 0) {
+      const boiler = mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.6, 16), toy('#2b2b33', 0.4));
+      boiler.rotation.z = Math.PI / 2;
+      boiler.position.set(0.9, 1.1, 0);
+      const stack = mesh(new THREE.CylinderGeometry(0.22, 0.32, 0.8, 12), toy('#2b2b33', 0.4));
+      stack.position.set(1.4, 2.0, 0);
+      car.add(boiler, stack);
+    }
+    for (const sx of [-0.7, 0.7])
+      for (const sz of [-0.66, 0.66]) {
+        const w = mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.15, 14), toy('#222', 0.5));
+        w.rotation.x = Math.PI / 2;
+        w.position.set(sx, 0.32, sz);
+        car.add(w);
+      }
+    cars.push(car);
+    train.add(car);
+  }
+  scene.add(train);
+  // station platforms
+  for (const st of def.stations ?? []) {
+    const n = def.nodes[st];
+    const pf = mesh(new THREE.BoxGeometry(3, 0.4, 2), toy('#8a5a34', 0.8), { receive: true });
+    pf.position.set(n.x * 1.12, 0.2, n.z * 1.17);
+    scene.add(pf);
+    const roof = mesh(new THREE.BoxGeometry(3.4, 0.2, 2.4), toy('#c43c3c', 0.6));
+    roof.position.set(n.x * 1.12, 2.6, n.z * 1.17);
+    scene.add(roof);
+  }
+  const at = (u: number) => {
+    const k = ((u % 1) + 1) % 1 * trackPts.length;
+    const i = Math.floor(k);
+    const f = k - i;
+    const a = trackPts[i];
+    const b = trackPts[(i + 1) % trackPts.length];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, Math.atan2(b[1] - a[1], b[0] - a[0])] as const;
+  };
+  return (_s, t) => {
+    cars.forEach((car, i) => {
+      const [x, z, ang] = at(t * 0.012 - i * 0.014);
+      car.position.set(x, 0, z);
+      car.rotation.y = -ang;
+    });
+  };
+};
+
+const DECOR: Record<BoardDef['theme'], Dresser> = { hollow: hollowDecor, cosmo: cosmoDecor, gulch: gulchDecor };
+const SKY: Record<BoardDef['theme'], [string, string, [string, number, number] | undefined]> = {
+  hollow: ['#ff9a7a', '#ffd8b0', ['#ffb38a', 40, 110]],
+  cosmo: ['#05041a', '#2a1660', undefined],
+  gulch: ['#4ab3ff', '#ffe2b0', ['#ffe2b0', 60, 140]],
+};
+const PATH_COLOR: Record<BoardDef['theme'], string> = { hollow: '#d9b98a', cosmo: '#9fb4ff', gulch: '#a8743f' };
+
+export function boardView(env: THREE.Texture, party: PartyState, players: PlayerInfo[]): View {
+  const def = getBoard(party.board!.boardId);
+  const [top, bottom, fog] = SKY[def.theme];
+  const scene = makeScene(env, { skyTop: top, skyBottom: bottom, fog, shadowSize: 30, sunDir: [12, 26, 16] });
+  const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 400);
+  const animateDecor = DECOR[def.theme](scene, def);
+
+  // spaces
+  const tileGeo = new THREE.CylinderGeometry(0.9, 1.0, 0.32, 36);
+  const rimMat = toy('#ffffff', 0.35);
+  const capGeo = new THREE.CircleGeometry(0.78, 36);
+  const capMats = new Map<SpaceType, THREE.Material>();
+  const tileMats = new Map<SpaceType, THREE.Material>();
+  for (const n of Object.values(def.nodes)) {
+    if (!capMats.has(n.type)) {
+      capMats.set(n.type, new THREE.MeshStandardMaterial({ map: iconTexture(SPACE_ICON[n.type], SPACE_COLORS[n.type]), roughness: 0.35 }));
+      tileMats.set(n.type, toy(darken(SPACE_COLORS[n.type], 0.15), 0.4));
+    }
+    const tile = mesh(tileGeo, [tileMats.get(n.type)!, rimMat, rimMat], { receive: true });
+    tile.position.set(n.x, 0.16, n.z);
+    scene.add(tile);
+    const cap = mesh(capGeo, capMats.get(n.type)!, { cast: false, receive: true });
+    cap.rotation.x = -Math.PI / 2;
+    cap.position.set(n.x, 0.33, n.z);
+    scene.add(cap);
+    if (def.theme === 'cosmo') {
+      const pillar = mesh(new THREE.CylinderGeometry(0.6, 0.3, 1.2, 12), toy('#7b86b8', 0.3));
+      pillar.position.set(n.x, -0.45, n.z);
+      scene.add(pillar);
+    }
+  }
+  // paths between spaces
+  const pathMat = toy(PATH_COLOR[def.theme], 0.7);
+  const gatedPaths: { mesh: THREE.Mesh; to: string; from: string }[] = [];
+  for (const n of Object.values(def.nodes)) {
+    for (const to of n.next) {
+      const m2 = def.nodes[to];
+      const dx = m2.x - n.x;
+      const dz = m2.z - n.z;
+      const len = Math.hypot(dx, dz);
+      if (len > 6) continue; // long jumps (none today) are not drawn
+      const p = mesh(new THREE.BoxGeometry(len, 0.12, 0.42), n.gate ? pathMat.clone() : pathMat, { cast: false, receive: true });
+      p.position.set((n.x + m2.x) / 2, 0.08, (n.z + m2.z) / 2);
+      p.rotation.y = -Math.atan2(dz, dx);
+      scene.add(p);
+      if (n.gate) gatedPaths.push({ mesh: p, from: n.id, to });
+    }
+  }
+
+  // crowns
+  const crownPool: THREE.Group[] = [];
+  const ringMat = new THREE.MeshBasicMaterial({ color: '#ffe36e', transparent: true, opacity: 0.55, depthWrite: false });
+  // branch arrows
+  const arrowMat = toy('#ffffff', 0.3);
+  const arrowSel = toy('#ffd23f', 0.3);
+  const arrows: THREE.Mesh[] = [];
+  for (let i = 0; i < 3; i++) {
+    const a = mesh(new THREE.ConeGeometry(0.35, 0.9, 12), arrowMat);
+    a.visible = false;
+    scene.add(a);
+    arrows.push(a);
+  }
+  // dice block
+  const diceMat = toy('#ffffff', 0.25);
+  const dice = mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), [
+    diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'),
+  ]);
+  void diceMat;
+  dice.visible = false;
+  scene.add(dice);
+
+  const models = new Map<string, ChoppyModel>();
+  for (const p of players) {
+    const m = new ChoppyModel(p.color, 0.55);
+    models.set(p.id, m);
+    scene.add(m.group);
+  }
+
+  // whole-board framing for the start of each turn
+  const xs = Object.values(def.nodes).map((n) => n.x);
+  const span = Math.max(...xs) - Math.min(...xs);
+  const overview = new THREE.Vector3(0, span * 0.75, span * 0.62);
+  const camPos = overview.clone();
+  const camLook = new THREE.Vector3();
+  let last = party.board!;
+  const pos = new Map<string, THREE.Vector3>();
+
+  function spotFor(b: BoardState, id: string): THREE.Vector3 {
+    const me = b.players[id];
+    const n = def.nodes[me.node];
+    const cur = currentPlayer(b);
+    if (b.hop && id === cur) {
+      const from = def.nodes[b.hop.from];
+      const to = def.nodes[b.hop.to];
+      const f = Math.max(0, Math.min(1, b.hop.t));
+      const arc = Math.sin(f * Math.PI) * (b.hop.t < 0 || Math.hypot(to.x - from.x, to.z - from.z) > 6 ? 4 : 0.9);
+      return new THREE.Vector3(from.x + (to.x - from.x) * f, 0.33 + arc, from.z + (to.z - from.z) * f);
+    }
+    // spread out players sharing a space; the current player stands in the middle
+    const here = b.order.filter((o) => b.players[o].node === me.node && !(b.hop && o === cur));
+    if (here.length <= 1 || id === cur) return new THREE.Vector3(n.x, 0.33, n.z);
+    const others = here.filter((o) => o !== cur);
+    const k = others.indexOf(id);
+    const a = (k / others.length) * Math.PI * 2;
+    return new THREE.Vector3(n.x + Math.cos(a) * 0.75, 0.33, n.z + Math.sin(a) * 0.75);
+  }
+
+  return {
+    scene,
+    camera,
+    update(s: PartyState, _ps, t, dt) {
+      const b = s.board;
+      if (!b) return;
+      last = b;
+      animateDecor(b, t, dt);
+      const cur = currentPlayer(b);
+
+      for (const g of gatedPaths) {
+        const open = exits(def, b, g.from).includes(g.to);
+        const m = g.mesh.material as THREE.MeshStandardMaterial;
+        m.transparent = true;
+        m.opacity += ((open ? 1 : 0.15) - m.opacity) * Math.min(1, dt * 4);
+      }
+
+      // crowns
+      crownPool.forEach((c) => (c.visible = false));
+      b.crowns.forEach((nodeId, i) => {
+        while (crownPool.length <= i) {
+          const c = makeCrown();
+          const glow = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.3, 36), ringMat);
+          glow.rotation.x = -Math.PI / 2;
+          glow.position.y = -1.85;
+          c.add(glow);
+          scene.add(c);
+          crownPool.push(c);
+        }
+        const c = crownPool[i];
+        const n = def.nodes[nodeId];
+        c.visible = true;
+        c.position.set(n.x, 2.2 + Math.sin(t * 2 + i) * 0.15, n.z);
+        c.rotation.y = t * 1.2;
+      });
+
+      for (const [id, m] of models) {
+        if (!b.players[id]) continue;
+        const target = spotFor(b, id);
+        const p = pos.get(id) ?? target.clone();
+        if (id === cur && b.hop) p.copy(target);
+        else p.lerp(target, Math.min(1, dt * 10));
+        pos.set(id, p);
+        m.group.position.copy(p);
+        const moving = id === cur && !!b.hop;
+        if (moving) {
+          const to = def.nodes[b.hop!.to];
+          m.group.rotation.y = Math.atan2(to.x - p.x, to.z - p.z);
+        } else {
+          m.group.rotation.y += (Math.atan2(camera.position.x - p.x, camera.position.z - p.z) - m.group.rotation.y) * Math.min(1, dt * 4);
+        }
+        m.update(dt, { speed: moving ? 0.8 : 0, happy: id === cur && b.sub === 'rolled', t });
+      }
+
+      // dice above the current player while rolling
+      const cp = pos.get(cur) ?? new THREE.Vector3();
+      dice.visible = b.sub === 'roll' || b.sub === 'rolled';
+      dice.position.set(cp.x, cp.y + 2.4 + (b.sub === 'rolled' ? Math.min(1, b.t * 4) * 0.6 : Math.sin(t * 5) * 0.1), cp.z);
+      if (b.sub === 'roll') dice.rotation.set(t * 7, t * 9, t * 5);
+      else dice.rotation.set(0, 0, 0);
+
+      // branch arrows
+      arrows.forEach((a) => (a.visible = false));
+      if (b.sub === 'branch' && b.branch) {
+        const here = def.nodes[b.players[cur].node];
+        b.branch.options.forEach((o, i) => {
+          const a = arrows[i];
+          if (!a) return;
+          const n = def.nodes[o];
+          const ang = Math.atan2(n.z - here.z, n.x - here.x);
+          a.visible = true;
+          a.material = i === b.branch!.sel ? arrowSel : arrowMat;
+          const bob = i === b.branch!.sel ? Math.sin(t * 8) * 0.15 : 0;
+          a.position.set(here.x + Math.cos(ang) * (1.6 + bob), 0.9, here.z + Math.sin(ang) * (1.6 + bob));
+          a.rotation.set(0, 0, 0);
+          a.rotation.z = -Math.PI / 2;
+          a.rotation.y = -ang;
+          a.scale.setScalar(i === b.branch!.sel ? 1.25 : 0.9);
+        });
+      }
+
+      // camera: overview at the top of a turn, then follow whoever is moving
+      const wantOverview = b.sub === 'turnIntro' && b.cur === 0 && b.t < 2;
+      const goalPos = wantOverview ? overview : new THREE.Vector3(cp.x, cp.y + 10.5, cp.z + 10.5);
+      const goalLook = wantOverview ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(cp.x, cp.y + 0.6, cp.z);
+      camPos.lerp(goalPos, Math.min(1, dt * 2.2));
+      camLook.lerp(goalLook, Math.min(1, dt * 3));
+      camera.position.copy(camPos);
+      camera.lookAt(camLook);
+    },
+    tags(): Tag[] {
+      const b = last;
+      const cur = currentPlayer(b);
+      const out: Tag[] = [];
+      for (const p of players) {
+        const v = pos.get(p.id);
+        if (!v) continue;
+        const isCur = p.id === cur;
+        let sub: string | undefined;
+        if (isCur && b.sub === 'rolled') sub = String(b.roll);
+        else if (isCur && (b.sub === 'move' || b.sub === 'branch' || b.sub === 'prompt') && b.stepsLeft > 0) sub = String(b.stepsLeft);
+        if (!isCur) continue; // keep the screen calm: only the mover is labelled
+        out.push({
+          pos: new THREE.Vector3(v.x, v.y + (isCur && sub ? 2.6 : 1.7), v.z),
+          text: p.name,
+          color: p.color,
+          sub,
+          subColor: '#ffd23f',
+        });
+      }
+      return out;
+    },
+  };
+}
+
+function diceFace(label: string): THREE.Material {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const grad = g.createLinearGradient(0, 0, 128, 128);
+  grad.addColorStop(0, '#fff7c2');
+  grad.addColorStop(1, '#ffd23f');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  g.strokeStyle = '#ff8a1f';
+  g.lineWidth = 10;
+  g.strokeRect(5, 5, 118, 118);
+  g.fillStyle = '#ff3b4e';
+  g.font = '900 84px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(label, 64, 70);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshStandardMaterial({ map: t, roughness: 0.3 });
+}

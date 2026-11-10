@@ -28,7 +28,12 @@ export class LocalSession implements Session {
   private acc = 0;
   private prev = new Map<string, RawInput>();
 
-  constructor(private input: InputManager) {}
+  constructor(
+    private input: InputManager,
+    startSelection = 0,
+  ) {
+    this.state.selection = startSelection;
+  }
 
   status() {
     return 'Local play';

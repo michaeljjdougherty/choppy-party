@@ -17,3 +17,5 @@ export const GAME_VIEWS: Record<string, Factory> = {
 };
 
 export { menuView } from './menu';
+export { mainMenuView } from './mainMenu';
+export { boardView } from './board';

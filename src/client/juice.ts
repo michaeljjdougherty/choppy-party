@@ -150,7 +150,8 @@ export function watch(s: PartyState): void {
   if (now.phase === 'lobby' && now.sel !== was.sel) sfx.move();
 
   if (b) {
-    if (now.sub === 'rolled' && was.sub === 'roll') sfx.dice();
+    if (now.sub === 'rolling' && was.sub !== 'rolling') sfx.diceSpin();
+    if (now.sub === 'rolled' && was.sub !== 'rolled') sfx.diceHit();
     for (const id of Object.keys(now.nodes)) {
       if (was.nodes[id] !== undefined && was.nodes[id] !== now.nodes[id]) sfx.step();
       if ((now.crowns[id] ?? 0) > (was.crowns[id] ?? 0)) {

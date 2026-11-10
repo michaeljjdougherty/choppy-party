@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOARDS, getBoard } from '../src/shared/board/boards';
-import { createBoard, finishEvent, forwardDist, hurt, placeChest, stepBoard } from '../src/shared/board/engine';
+import { ROLL_SHOW, createBoard, finishEvent, forwardDist, hurt, placeChest, stepBoard } from '../src/shared/board/engine';
 import { DT, NO_INPUT, type Inputs } from '../src/shared/types';
 import { addPlayer, createParty, OPTIONS, stepParty } from '../src/shared/party';
 
@@ -59,7 +59,7 @@ describe('board layer', () => {
     s.players.b.node = before.id;
     s.sub = 'rolled';
     s.roll = s.stepsLeft = 1;
-    run(s, {}, 1.6);
+    run(s, {}, ROLL_SHOW + 0.8);
     expect(s.players.b.hp).toBe(30 - s.preset.postSting);
     expect(s.players.a.hp).toBe(20 + s.preset.postStingHeal);
   });
@@ -85,7 +85,7 @@ describe('board layer', () => {
     s.players.b.node = before.id;
     s.sub = 'rolled';
     s.roll = s.stepsLeft = 1;
-    run(s, {}, 1.6);
+    run(s, {}, ROLL_SHOW + 0.8);
     expect(s.sub).toBe('wheel');
     expect(s.event!.wheel!.sort()).toEqual(['a', 'c']);
     run(s, {}, 3.2);

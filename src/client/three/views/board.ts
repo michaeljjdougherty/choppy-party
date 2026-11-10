@@ -960,11 +960,13 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     arrows.push(a);
   }
   // dice block
-  const diceMat = toy('#ffffff', 0.25);
-  const dice = mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), [
-    diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'),
-  ]);
-  void diceMat;
+  const blank = [diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?')];
+  const dice = mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), blank);
+  // spinning faces flicker through numbers; the result face goes on every side when it lands
+  const faces = new Map<string, THREE.Material>();
+  const face = (n: number) => faces.get(String(n)) ?? faces.set(String(n), diceFace(String(n))).get(String(n))!;
+  let diceShown = -1;
+  let wasSub = '';
   dice.visible = false;
   scene.add(dice);
 
@@ -1212,15 +1214,47 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         } else {
           m.group.rotation.y += (Math.atan2(camera.position.x - p.x, camera.position.z - p.z) - m.group.rotation.y) * Math.min(1, dt * 4);
         }
-        m.update(dt, { speed: 0, jump: lift / 0.55, happy: id === cur && b.sub === 'rolled', t });
+        const hit = id === cur && b.sub === 'rolling' && b.t < 0.45 ? Math.sin((b.t / 0.45) * Math.PI) : 0;
+        m.update(dt, { speed: 0, jump: Math.max(hit, lift / 0.55), happy: id === cur && b.sub === 'rolled', t });
       }
 
       // dice above the current player while rolling
       const cp = pos.get(cur) ?? new THREE.Vector3();
-      dice.visible = b.sub === 'roll' || b.sub === 'rolled';
-      dice.position.set(cp.x, cp.y + 2.4 + (b.sub === 'rolled' ? Math.min(1, b.t * 4) * 0.6 : Math.sin(t * 5) * 0.1), cp.z);
-      if (b.sub === 'roll') dice.rotation.set(t * 7, t * 9, t * 5);
-      else dice.rotation.set(0, 0, 0);
+      // roll: the die bobs; rolling: it spins hard, rises and shakes; rolled: it snaps to the number and pops
+      dice.visible = b.sub === 'roll' || b.sub === 'rolling' || b.sub === 'rolled';
+      const camYaw = Math.atan2(camera.position.x - cp.x, camera.position.z - cp.z);
+      if (b.sub === 'roll') {
+        if (diceShown !== 0) (dice.material = blank), (diceShown = 0);
+        dice.position.set(cp.x, cp.y + 2.4 + Math.sin(t * 5) * 0.1, cp.z);
+        dice.rotation.set(t * 1.4, t * 1.9, t * 1.1);
+        dice.scale.setScalar(1);
+      } else if (b.sub === 'rolling') {
+        const k = Math.min(1, b.t / 1.3);
+        const spin = 9 + k * 14;
+        const n = 1 + (Math.floor(t * (10 + k * 10)) % 10);
+        if (diceShown !== -n) (dice.material = [face(n), face(n), face(n), face(n), face(n), face(n)]), (diceShown = -n);
+        dice.position.set(cp.x + Math.sin(t * 61) * 0.05 * k, cp.y + 2.5 + k * 0.9, cp.z + Math.cos(t * 53) * 0.05 * k);
+        dice.rotation.set(t * spin, t * spin * 1.3, t * spin * 0.7);
+        dice.scale.setScalar(1 + k * 0.25);
+      } else if (b.sub === 'rolled') {
+        if (diceShown !== 100 + b.roll) {
+          const f = face(b.roll);
+          dice.material = [f, f, f, f, f, f];
+          diceShown = 100 + b.roll;
+        }
+        if (wasSub !== 'rolled') {
+          fx.party(dice.position.clone());
+          fx.sparkle(dice.position.clone(), '#ffe066', 22);
+          shake(0.25);
+        }
+        // overshoot pop, then settle facing the camera
+        const e = Math.min(1, b.t / 0.45);
+        const pop = 1.25 + Math.sin(e * Math.PI) * 0.7 * (1 - e * 0.5) + (1 - e) * 0.2;
+        dice.scale.setScalar(pop);
+        dice.position.set(cp.x, cp.y + 3.4, cp.z);
+        dice.rotation.set(0, camYaw, 0);
+      }
+      wasSub = b.sub;
 
       // branch arrows
       arrows.forEach((a) => (a.visible = false));

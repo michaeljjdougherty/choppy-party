@@ -14,7 +14,10 @@ export const STEW_GAMES = ['rope-pull', 'crate-grab'];
 
 const AUTO_ROLL = 8; // seconds before the game rolls for an idle player
 const AUTO_CHOICE = 7;
-const BANNER = 1.6;
+const BANNER = 2;
+/** The die spins this long before the number shows, then the number stays up for ROLL_SHOW. */
+export const ROLL_SPIN = 1.3;
+export const ROLL_SHOW = 1.7;
 const WHEEL_TIME = 3;
 
 export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number): BoardState {
@@ -200,7 +203,7 @@ export function winnerGoesFirst(s: BoardState, placements: { id: string; place: 
   s.order = [...s.wonFirst, ...base.filter((id) => !won.has(id))];
 }
 
-const ORDER_SHOW = 3.2;
+const ORDER_SHOW = 4.5;
 
 /** Game start: everyone rolls together. Numbers never repeat, so there are no ties. */
 function stepOrderRoll(s: BoardState, inputs: Inputs): void {
@@ -299,7 +302,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
   s.fx = s.fx.filter((f) => f.t < 2);
   if (s.sub === 'done' || s.sub === 'event') return;
   if (s.sub === 'roundEnd') {
-    if (s.t > 2.6) set(s, 'done');
+    if (s.t > 3.2) set(s, 'done');
     return;
   }
   if (s.sub === 'orderRoll' || s.sub === 'orderShow') {
@@ -321,7 +324,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         }
         break;
       }
-      if (s.t > (s.cur === 0 ? 2.2 : 0.9)) set(s, 'roll');
+      if (s.t > (s.cur === 0 ? 3 : 1.6)) set(s, 'roll');
       break;
 
     case 'roll': {
@@ -343,13 +346,17 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         me.rollCap = 0;
         me.rollBonus = 0;
         me.dice = 1;
-        set(s, 'rolled');
+        set(s, 'rolling');
       }
       break;
     }
 
+    case 'rolling':
+      if (s.t > ROLL_SPIN) set(s, 'rolled');
+      break;
+
     case 'rolled':
-      if (s.t > 0.9) set(s, 'move');
+      if (s.t > ROLL_SHOW) set(s, 'move');
       break;
 
     case 'move': {
@@ -434,7 +441,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       break;
 
     case 'land':
-      if (s.t > BANNER + 0.2) endTurn(s, def);
+      if (s.t > BANNER + 0.6) endTurn(s, def);
       break;
   }
 }

@@ -202,7 +202,8 @@ export type BoardSub =
   | 'orderShow' // the turn order is shown before turn 1
   | 'turnIntro'
   | 'roll'
-  | 'rolled'
+  | 'rolling' // the die spins for a moment of suspense
+  | 'rolled' // the number flashes up
   | 'move'
   | 'branch'
   | 'prompt'
@@ -270,4 +271,4 @@ export interface BoardState {
 export const WISP_PRICE = 10;
 export const TRAIN_PRICE = 5;
 export const COUNTER_START = 8;
-export const HOP_TIME = 0.34;
+export const HOP_TIME = 0.42;

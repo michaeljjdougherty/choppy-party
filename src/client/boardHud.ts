@@ -1,4 +1,5 @@
 import { A, B, STICK } from './prompts';
+import { slam, sunburst } from './showtime';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
 import { currentPlayer } from '../shared/board/engine';
@@ -101,6 +102,16 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     text(ctx, `${name}: ${A()} to roll${canItem ? `   ·   ${B()} to use an item` : ''}`, 640, 110, 32, { color: '#ffffff' });
     const bonus = [mine.dice > 1 ? '2 dice' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `max ${mine.rollCap}` : ''].filter(Boolean).join('  ');
     if (bonus) text(ctx, bonus, 640, 150, 26, { color: '#ffd23f' });
+  } else if (b.sub === 'rolling') {
+    text(ctx, `${name} is rolling...`, 640, 110, 32, { color: '#ffffff' });
+  } else if (b.sub === 'rolled') {
+    // the number slams in big, with a sunburst behind it
+    sunburst(ctx, 640, 190, 260, b.t * 3, me?.color ?? '#ffd23f', 0.45 * Math.max(0, 1 - b.t / 1.6), 16);
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, Math.max(0, (1.7 - b.t) * 3));
+    slam(ctx, String(b.roll), 640, 190, 170, b.t, '#ffd23f');
+    ctx.restore();
+    if (b.t > 0.35) text(ctx, `${name} moves ${b.roll} space${b.roll === 1 ? '' : 's'}!`, 640, 300, 28, { color: me?.color ?? '#fff' });
   } else if (b.sub === 'branch') {
     text(ctx, `Pick a path: ${STICK()} to aim, ${A()} to go`, 640, 110, 32, { color: '#ffffff' });
   } else if (b.sub === 'wheel' && b.event?.wheel) {

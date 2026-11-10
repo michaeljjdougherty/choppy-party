@@ -127,6 +127,20 @@ export const sfx = {
     play(stepFlip ? 'step1' : 'step2', 0.7, 1.1, 0.1) || tone(300, 460, 0.07, 'sine', 0.2);
     tone(320, 520, 0.06, 'sine', 0.08);
   },
+  /** The die spinning: clicks that speed up for a second. */
+  diceSpin: () => {
+    let at = 0;
+    for (let i = 0; i < 14; i++) {
+      tone(700 + (i % 3) * 120, 640, 0.03, 'square', 0.06, at);
+      at += 0.13 - i * 0.0065;
+    }
+  },
+  /** The number lands. */
+  diceHit: () => {
+    tone(523, 523, 0.12, 'square', 0.12);
+    tone(659, 659, 0.12, 'square', 0.12, 0.08);
+    tone(1047, 1047, 0.3, 'square', 0.12, 0.16);
+  },
   dice: () => {
     for (let i = 0; i < 4; i++) tone(900 + i * 140, 700, 0.04, 'square', 0.08, i * 0.05);
   },

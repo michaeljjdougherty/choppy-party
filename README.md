@@ -1,0 +1,40 @@
+# Choppy Party
+
+A browser party game for 2 to 10 players: local on one screen, online with room codes, or both at once. Gamepads (any standard pad via the Gamepad API) and keyboards are supported.
+
+Design doc (all 30 planned minigames, stack, architecture): https://claude.ai/artifact/47BsotP3fLpMUh3W5wRCHP
+
+## Run it
+
+```bash
+npm install
+npm run dev          # Vite on http://localhost:5173 + room server on :8787
+npm test             # game logic tests
+npm run build && npm start   # production: one Node process serves the game and rooms on :8787
+```
+
+## Controls
+
+| Input | Move | A | B |
+| --- | --- | --- | --- |
+| Gamepad | Left stick or d-pad | Bottom face button | Right face button |
+| Keyboard 1 | WASD | Space | Left Shift |
+| Keyboard 2 | Arrows | Enter | Right Shift |
+
+In the lobby, press A on any device to join and B to leave. The first player is the host: Left/Right picks a game or party mode, Up/Down sets the number of rounds, A starts.
+
+## Online
+
+Click **Host online** to open a room; share the 4-letter code or the `?room=CODE` link. Each browser can bring up to 4 local players. The server runs every round (30 ticks/s) and sends snapshots; browsers send inputs and draw, blending between snapshots. A dropped browser can reload the link and pick its players back up.
+
+## Layout
+
+- `src/shared/types.ts` minigame interface and input types
+- `src/shared/party.ts` party flow: lobby, intro, play, results, final scores
+- `src/shared/games/` one file per minigame; register new ones in `games/index.ts`
+- `src/client/` input manager, local and online sessions, menu screens
+- `src/server/server.ts` WebSocket room server and static file server
+
+## Adding a minigame
+
+Implement `Minigame` (setup, step, isOver, results, draw), keep state plain JSON, use the seeded RNG in `src/shared/rng.ts` for randomness, and add it to `GAMES`. The tests in `tests/games.test.ts` automatically check every registered game finishes, ranks every player, is deterministic and survives a JSON round trip.

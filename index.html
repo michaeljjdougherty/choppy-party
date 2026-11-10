@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Choppy Party</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0b0f1e; overflow: hidden; font-family: system-ui, sans-serif; }
+      #game { position: absolute; inset: 0; margin: auto; display: block; background: #000; }
+      #bar {
+        position: absolute; top: 10px; right: 10px; display: flex; gap: 8px; align-items: center;
+        background: rgba(0,0,0,0.55); padding: 8px 10px; border-radius: 12px; color: #fff; font-size: 14px; z-index: 2;
+      }
+      #bar button, #bar input {
+        font: inherit; border-radius: 8px; border: 1px solid #556; padding: 6px 10px; background: #1d2440; color: #fff;
+      }
+      #bar button { cursor: pointer; }
+      #bar button:hover { background: #2c3766; }
+      #bar input { width: 70px; text-transform: uppercase; letter-spacing: 2px; }
+      #bar.hidden { display: none; }
+      #toast {
+        position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: #c0392b; color: #fff;
+        padding: 8px 14px; border-radius: 10px; display: none; z-index: 3;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game" width="1280" height="720"></canvas>
+    <div id="bar">
+      <span id="status">Local play</span>
+      <button id="host">Host online</button>
+      <input id="code" maxlength="4" placeholder="CODE" aria-label="Room code" />
+      <button id="joinBtn">Join</button>
+      <button id="localBtn" style="display:none">Back to local</button>
+    </div>
+    <div id="toast"></div>
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>

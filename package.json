@@ -1,0 +1,27 @@
+{
+  "name": "choppy-party",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"tsx watch src/server/server.ts\"",
+    "dev:client": "vite",
+    "dev:server": "tsx watch src/server/server.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "NODE_ENV=production tsx src/server/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vitest": "^2.1.8"
+  }
+}

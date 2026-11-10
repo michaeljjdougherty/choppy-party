@@ -8,7 +8,7 @@ import { roundedRect } from '../../../shared/board/layout';
 import { ChoppyModel } from '../choppy';
 import { Fx, shake } from '../fx';
 import { darken, makeScene, mesh, toy } from '../kit';
-import { place } from '../assets';
+import { place, sky, texture } from '../assets';
 import type { Tag, View } from '../stage';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
@@ -161,10 +161,45 @@ const hollowDecor: Dresser = (scene, def) => {
   scene.add(moon);
   const hemi = scene.children.find((c) => (c as THREE.HemisphereLight).isHemisphereLight) as THREE.HemisphereLight;
   const sun = scene.children.find((c) => (c as THREE.DirectionalLight).isDirectionalLight) as THREE.DirectionalLight;
+  // graveyard behind the board (Kenney Graveyard Kit)
+  const G = 2.6;
+  for (let i = 0; i < 12; i++) place(scene, 'graveyard/iron-fence', -16 + i * G, 0, -17.2, { s: G });
+  place(scene, 'graveyard/iron-fence-border-gate', 15.5, 0, -17.2, { s: G });
+  const stones = ['graveyard/gravestone-round', 'graveyard/gravestone-cross', 'graveyard/gravestone-bevel', 'graveyard/gravestone-decorative'];
+  for (let i = 0; i < 10; i++) {
+    const x = (i < 5 ? -18 : 12) + (i % 5) * 1.6;
+    const z = -15.2 + ((i * 7) % 3) * 0.9;
+    place(scene, stones[i % 4], x, 0, z, { s: G, ry: Math.sin(i * 3) * 0.25 });
+  }
+  place(scene, 'graveyard/crypt', 17.5, 0, -12.5, { s: G * 1.3, ry: -0.5 });
+  place(scene, 'graveyard/coffin', -20.5, 0, -12, { s: G, ry: 0.4 });
+  for (const [x, z] of [[-21, -2], [21.5, 1], [-20, 8], [20, 9.5], [-8, -16], [3, -16.5]] as [number, number][]) {
+    place(scene, x > 0 ? 'graveyard/pine-crooked' : 'graveyard/pine-fall', x, 0, z, { s: 2.6, ry: x });
+  }
+  for (const [x, z, tall] of [[-3, 3, 0], [3.5, -3, 1], [-11, 3.2, 1], [11, -3, 0], [-1, -9, 0], [9.5, 8, 1], [-15, 11.5, 0]] as [number, number, number][]) {
+    place(scene, tall ? 'graveyard/pumpkin-tall-carved' : 'graveyard/pumpkin-carved', x, 0, z, { s: 2.4, ry: x });
+  }
+  for (const [x, z] of [[-4.5, -15.5], [8, -15.5]] as [number, number][]) place(scene, 'graveyard/fire-basket', x, 0, z, { s: 2.4 });
+  place(scene, 'graveyard/candle-multiple', -13, 0, -13.6, { s: 2.6 });
+  // ghosts drift around the graveyard, only out at night
+  const ghosts: THREE.Object3D[] = [];
+  for (let i = 0; i < 4; i++) {
+    const g = place(scene, 'graveyard/character-ghost', 0, 0, 0, { s: 2.6, shadow: false });
+    g.traverse((m) => {
+      const mm = m as THREE.Mesh;
+      if (mm.isMesh) {
+        mm.material = (mm.material as THREE.Material).clone();
+        (mm.material as THREE.Material).transparent = true;
+      }
+    });
+    ghosts.push(g);
+  }
+  const morning = sky('morning');
+  const nightTex = sky('night');
   const daySky = new THREE.Color('#ffb38a');
   const nightSky = new THREE.Color('#1d1846');
   const bg = new THREE.Color();
-  scene.background = bg;
+  scene.background = morning ?? bg;
   let k = 0;
   // closed routes fade out
   const gateLinks = Object.values(def.nodes).filter((n) => n.gate);
@@ -173,6 +208,21 @@ const hollowDecor: Dresser = (scene, def) => {
     k += ((s.night ? 1 : 0) - k) * Math.min(1, dt * 2);
     bg.copy(daySky).lerp(nightSky, k);
     if (scene.fog) (scene.fog as THREE.Fog).color.copy(bg);
+    // swap skyboxes at dusk, dipping the brightness through the swap
+    if (morning && nightTex) {
+      scene.background = k < 0.5 ? morning : nightTex;
+      scene.backgroundIntensity = 0.3 + 0.7 * Math.abs(2 * k - 1);
+    }
+    ghosts.forEach((g, i) => {
+      const a = t * 0.35 + (i / ghosts.length) * Math.PI * 2;
+      g.position.set(Math.cos(a) * (6 + i * 2.5), 1.2 + Math.sin(t * 2 + i) * 0.4, -14 + Math.sin(a) * 2.2);
+      g.rotation.y = -a;
+      g.visible = k > 0.05;
+      g.traverse((m) => {
+        const mm = m as THREE.Mesh;
+        if (mm.isMesh) (mm.material as THREE.MeshStandardMaterial).opacity = k * 0.85;
+      });
+    });
     hemi.intensity = 0.9 - k * 0.45;
     sun.intensity = 2.2 - k * 1.3;
     sun.color.set(k > 0.5 ? '#9fb3ff' : '#ffe0b8');
@@ -183,6 +233,39 @@ const hollowDecor: Dresser = (scene, def) => {
 
 const cosmoDecor: Dresser = (scene) => {
   scene.fog = null;
+  const nebula = sky('space-nebula');
+  if (nebula) scene.background = nebula;
+  // Kenney Space Kit: hangar, dishes, rockets, astronauts and craters out on the deck
+  place(scene, 'space/hangar_roundGlass', -2, -0.05, -15.5, { s: 3.2 });
+  place(scene, 'space/satelliteDish_large', -17, -0.05, -8, { s: 3.4, ry: 0.6 });
+  place(scene, 'space/satelliteDish', 17.5, -0.05, -8.5, { s: 3.2, ry: -0.8 });
+  place(scene, 'space/machine_wireless', 16, -0.05, 9.5, { s: 3, ry: 2.6 });
+  place(scene, 'space/machine_generator', -16.5, -0.05, 9.5, { s: 3, ry: 0.4 });
+  place(scene, 'space/craft_racer', -9.5, -0.05, -10.5, { s: 2.4, ry: 0.9 });
+  place(scene, 'space/craft_speederA', 17, -0.05, 12.5, { s: 2.2, ry: -2.4 });
+  place(scene, 'space/astronautA', -3.2, -0.05, 2.6, { s: 1.6, ry: 0.4 });
+  place(scene, 'space/astronautB', 3.4, -0.05, -2.6, { s: 1.6, ry: 3.4 });
+  place(scene, 'space/alien', 12, -0.05, -10.5, { s: 1.6, ry: -0.6 });
+  place(scene, 'space/rover', -12.5, -0.05, -1.2, { s: 4, ry: 1.2 });
+  for (const [x, z, big] of [[-5, -9, 1], [7, -9.5, 0], [-11, 10, 0], [5, 10.5, 1], [13, 2.5, 0]] as [number, number, number][]) {
+    place(scene, big ? 'space/craterLarge' : 'space/crater', x, -0.04, z, { s: 3.2, shadow: false });
+  }
+  for (const [x, z] of [[-19.5, 2], [19, -3], [-7, 12.5], [14, -12.6]] as [number, number][]) place(scene, 'space/rock_crystalsLargeA', x, -0.05, z, { s: 2.6, ry: x });
+  place(scene, 'station/computer-wide', -14.5, -0.05, -10.6, { s: 2.4, ry: 0.5 });
+  place(scene, 'station/container-tall', 18.5, -0.05, 5.5, { s: 2.2 });
+  place(scene, 'station/container', 19.8, -0.05, 7.2, { s: 2.2, ry: 0.4 });
+  // laser gates mark both ends of Laser Lane
+  place(scene, 'modspace/gate-lasers', -18.5, -0.05, 0, { s: 0.75, ry: Math.PI / 2 });
+  // a small rocket on a launch pad
+  const rocket = new THREE.Group();
+  let y = 0;
+  for (const [part, h] of [['space/rocket_baseA', 1.6], ['space/rocket_fuelA', 0.5], ['space/rocket_sidesA', 1.0], ['space/rocket_topA', 0.8]] as [string, number][]) {
+    place(rocket, part, 0, y, 0, { s: 1 });
+    y += h;
+  }
+  rocket.scale.setScalar(1.8);
+  rocket.position.set(-20, -0.05, -6.5);
+  scene.add(rocket);
   // starfield
   const starGeo = new THREE.BufferGeometry();
   const pos: number[] = [];
@@ -195,7 +278,9 @@ const cosmoDecor: Dresser = (scene) => {
   starGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: '#ffffff', size: 0.6, sizeAttenuation: true })));
   // station deck under the ring
-  const deck = mesh(new THREE.CylinderGeometry(22, 21, 1, 72), toy('#2c3360', 0.4), { cast: false, receive: true });
+  const grid = texture('proto-dark', 9, 9);
+  const deckMat = grid ? new THREE.MeshStandardMaterial({ map: grid, color: '#8c9cff', roughness: 0.45 }) : toy('#2c3360', 0.4);
+  const deck = mesh(new THREE.CylinderGeometry(22, 21, 1, 72), deckMat, { cast: false, receive: true });
   deck.scale.z = 0.66;
   deck.position.y = -0.55;
   scene.add(deck);
@@ -217,24 +302,18 @@ const cosmoDecor: Dresser = (scene) => {
   p3.position.set(18, 22, -50);
   scene.add(p1, p2, p3);
   planets.push(p1, p2, p3);
-  // prototype-kit station hardware around the deck
+  // space-kit hardware around the rim of the deck
   for (let i = 0; i < 14; i++) {
     const a = (i / 14) * Math.PI * 2;
     const x = Math.cos(a) * 21;
     const z = Math.sin(a) * 13.6;
     if (Math.abs(z) < 3 && x > 0) continue; // leave room for the cannon
-    place(scene, i % 2 ? 'proto/column-rounded' : 'proto/column', x, -0.05, z, { s: 3 });
+    if (z > 4) continue; // keep the camera side clear
+    place(scene, i % 3 === 0 ? 'space/machine_wireless' : i % 3 === 1 ? 'station/container-tall' : 'space/satelliteDish', x, -0.05, z, { s: 2.6, ry: -a + Math.PI / 2 });
   }
   for (const [x, z, ry] of [[-6, -5.5, 0.3], [6, 5.5, 3.4], [-9, 5, 2.4], [9, -5, -0.5]] as [number, number, number][]) {
-    place(scene, 'proto/figurine-large', x, -0.05, z, { s: 3.2, ry });
+    place(scene, 'space/meteor', x, -0.3, z, { s: 2.2, ry });
   }
-  for (const [x, z] of [[-12, -3.5], [12, 3.5], [0, -6], [0, 6]] as [number, number][]) {
-    place(scene, 'proto/indicator-special-cross', x, -0.03, z, { s: 3, shadow: false });
-  }
-  place(scene, 'proto/vehicle-convertible', -13.5, -0.05, 6.2, { s: 2.2, ry: 0.7 });
-  place(scene, 'proto/crate-color', 13, -0.05, -6.5, { s: 2.6, ry: 0.3 });
-  place(scene, 'proto/crate-color', 14.2, -0.05, -5.6, { s: 2.2, ry: 1 });
-
   // laser cannon at the right end of the lane, aiming back along it
   const cannon = new THREE.Group();
   const base = mesh(new THREE.CylinderGeometry(1.4, 1.8, 1.2, 20), toy('#5b647d', 0.35));
@@ -334,31 +413,18 @@ const gulchDecor: Dresser = (scene, def) => {
     t.rotation.y = -Math.atan2(nz - z, nx - x);
     scene.add(t);
   });
+  const daySky = sky('day');
+  if (daySky) scene.background = daySky;
   const train = new THREE.Group();
-  const cars: THREE.Group[] = [];
-  const carColors = ['#d12f2f', '#2f62d1', '#2fa152'];
-  for (let i = 0; i < 3; i++) {
-    const car = new THREE.Group();
-    const body = mesh(new THREE.BoxGeometry(2.2, 1.2, 1.3), toy(carColors[i], 0.45));
-    body.position.y = 0.95;
-    car.add(body);
-    if (i === 0) {
-      const boiler = mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.6, 16), toy('#2b2b33', 0.4));
-      boiler.rotation.z = Math.PI / 2;
-      boiler.position.set(0.9, 1.1, 0);
-      const stack = mesh(new THREE.CylinderGeometry(0.22, 0.32, 0.8, 12), toy('#2b2b33', 0.4));
-      stack.position.set(1.4, 2.0, 0);
-      car.add(boiler, stack);
-    }
-    for (const sx of [-0.7, 0.7])
-      for (const sz of [-0.66, 0.66]) {
-        const w = mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.15, 14), toy('#222', 0.5));
-        w.rotation.x = Math.PI / 2;
-        w.position.set(sx, 0.32, sz);
-        car.add(w);
-      }
-    cars.push(car);
-    train.add(car);
+  const cars: THREE.Object3D[] = [];
+  // Kenney Train Kit: a steam locomotive pulling coal, lumber and boxcars
+  for (const [i, name] of ['train/train-locomotive-a', 'train/train-carriage-coal', 'train/train-carriage-lumber', 'train/train-carriage-box'].entries()) {
+    const holder = new THREE.Group();
+    // the kit's trains point down +z; turn them to run along +x like our track maths expects
+    place(holder, name, 0, 0, 0, { s: 1.15, ry: Math.PI / 2 });
+    holder.userData.gap = i * 0.021;
+    cars.push(holder);
+    train.add(holder);
   }
   scene.add(train);
   place(scene, 'pirate/tower-complete-small', -27, 0, -2, { s: 1.2 });
@@ -391,7 +457,7 @@ const gulchDecor: Dresser = (scene, def) => {
   };
   return (_s, t) => {
     cars.forEach((car, i) => {
-      const [x, z, ang] = at(t * 0.012 - i * 0.014);
+      const [x, z, ang] = at(t * 0.012 - (car.userData.gap as number));
       car.position.set(x, 0, z);
       car.rotation.y = -ang;
     });

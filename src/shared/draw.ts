@@ -82,7 +82,16 @@ export function text(
   opts: { color?: string; align?: CanvasTextAlign; weight?: number; outline?: boolean } = {},
 ): void {
   ctx.save();
-  ctx.font = `${opts.weight ?? 700} ${size}px system-ui, sans-serif`;
+  // big headline text uses the chunky Kenney Future font (UI Pack); body text stays system-ui for readability
+  const headline = size >= 30 && /[A-Za-z]/.test(s);
+  ctx.font = headline ? `${size}px 'Kenney Future Narrow', system-ui, sans-serif` : `${opts.weight ?? 700} ${size}px system-ui, sans-serif`;
+  // the Kenney font is set wide; pull the letters in a little
+  if (headline && 'letterSpacing' in ctx) {
+    const c = ctx as unknown as { letterSpacing: string; wordSpacing: string };
+    c.letterSpacing = `${-size * 0.06}px`;
+    // the tighter letters swallow the gaps between words, so open those back up
+    c.wordSpacing = `${size * 0.35}px`;
+  }
   ctx.textAlign = opts.align ?? 'center';
   ctx.textBaseline = 'middle';
   if (opts.outline !== false) {

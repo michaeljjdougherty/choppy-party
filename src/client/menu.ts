@@ -126,7 +126,7 @@ export class MainMenu {
 
   draw(ctx: CanvasRenderingContext2D, t: number): void {
     if (this.screen === 'title') {
-      logo(ctx, 640, 150, 1.0, t);
+      logo(ctx, 640, 255, 1.45, t);
       const pulse = 1 + Math.sin(t * 5) * 0.04;
       ctx.save();
       ctx.translate(640, 620);
@@ -139,7 +139,7 @@ export class MainMenu {
       text(ctx, 'Pads: bottom face button  ·  Keys: Space or Enter', 640, 690, 18, { weight: 600 });
       return;
     }
-    logo(ctx, 340, 140, 0.8, t);
+    logo(ctx, 330, 160, 0.95, t);
     const items = this.items();
     if (this.screen === 'online') text(ctx, 'Play Online', 960, 70, 36, { color: '#fff' });
     items.forEach((it, i) => {
@@ -197,7 +197,31 @@ function shade(hex: string, amt: number): string {
 }
 
 /** Bubbly two-line wordmark. */
+/** Michael's Choppy Party logo art (background removed), drawn with a gentle bounce. */
+const logoImg = new Image();
+logoImg.src = 'logo.png';
+
 export function logo(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, t: number): void {
+  if (logoImg.complete && logoImg.naturalWidth > 0) {
+    // the art is ~1.1:1; at scale 1 it is 300 px tall, centred on (x, y)
+    const h = 300 * s;
+    const w = (h * logoImg.naturalWidth) / logoImg.naturalHeight;
+    const squash = 1 + Math.sin(t * 3.2) * 0.025;
+    ctx.save();
+    ctx.translate(x, y + Math.sin(t * 1.6) * 4 * s);
+    ctx.rotate(Math.sin(t * 1.1) * 0.025);
+    ctx.scale(1 / squash, squash);
+    ctx.shadowColor = 'rgba(20,10,50,0.45)';
+    ctx.shadowBlur = 18 * s;
+    ctx.shadowOffsetY = 8 * s;
+    ctx.drawImage(logoImg, -w / 2, -h / 2, w, h);
+    ctx.restore();
+    return;
+  }
+  textLogo(ctx, x, y, s, t);
+}
+
+function textLogo(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, t: number): void {
   const colors = ['#ff4d5a', '#ff8a1f', '#ffd23f', '#21c45a', '#2f8cff', '#9a5bff'];
   ctx.save();
   ctx.translate(x, y);

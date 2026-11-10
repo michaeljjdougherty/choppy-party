@@ -70,6 +70,23 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
   }
   place(scene, 'platformer/chest', 7.8, 0, 1.6, { s: 2, ry: -0.6 });
   place(scene, 'platformer/barrel', -8, 0, 1.4, { s: 2, ry: 0.5 });
+  // party gifts and candy (Kenney Holiday Kit)
+  const gifts = ['holiday/present-a-cube', 'holiday/present-b-round', 'holiday/present-a-rectangle', 'holiday/present-b-cube'];
+  for (const [i, [x, z, ry]] of ([[-9.6, 3.4, 0.3], [-8.6, 4.4, 1.1], [-10.4, 4.6, 2], [9.4, 3.6, -0.4], [10.3, 4.6, 0.9], [8.9, 4.9, 2.2]] as [number, number, number][]).entries()) {
+    place(scene, gifts[i % gifts.length], x, 0, z, { s: 2.6, ry });
+  }
+  place(scene, 'holiday/present-a-cube', -9.6, 0.78, 3.4, { s: 1.8, ry: 0.9 });
+  for (const [x, z, red] of [[-11, 1.5, 1], [11, 1.5, 0], [-11.5, -1.5, 0], [11.5, -1.5, 1]] as [number, number, number][]) {
+    place(scene, red ? 'holiday/candy-cane-red' : 'holiday/candy-cane-green', x, 0, z, { s: 4, ry: x > 0 ? Math.PI : 0 });
+  }
+  // string lights between the flags
+  for (const [x, z, ry] of [[-7.25, -4.25, -1.06], [7.25, -4.25, 1.06], [0, -6.5, 0]] as [number, number, number][]) {
+    const len = ry === 0 ? 12 : 5;
+    for (let k = 0; k < len / 2.5; k++) {
+      const f = (k + 0.5) / (len / 2.5) - 0.5;
+      place(scene, 'holiday/lights-colored', x + Math.cos(-ry) * f * len, 3.3 - Math.cos(f * Math.PI) * 0.3, z + Math.sin(-ry) * f * len, { s: 2.5, ry, shadow: false });
+    }
+  }
 
   // podium (results and final screens)
   const podium = new THREE.Group();

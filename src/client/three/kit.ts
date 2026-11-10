@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sky, type SkyName } from './assets';
 
 /** Shared look: glossy, saturated "painted toy" plastic. */
 export function toy(color: THREE.ColorRepresentation, rough = 0.42): THREE.MeshStandardMaterial {
@@ -69,12 +70,17 @@ export interface SceneOpts {
   sunColor?: string;
   sunIntensity?: number;
   shadowSize?: number;
+  /** A Kenney skybox; the gradient colours are the fallback. */
+  sky?: SkyName;
+  skyRotation?: number;
 }
 
 /** A scene with sky, soft fill light and one shadow-casting sun. */
 export function makeScene(env: THREE.Texture, o: SceneOpts): THREE.Scene {
   const scene = new THREE.Scene();
-  scene.background = skyTexture(o.skyTop, o.skyBottom);
+  const real = o.sky ? sky(o.sky) : null;
+  scene.background = real ?? skyTexture(o.skyTop, o.skyBottom);
+  if (real && o.skyRotation) scene.backgroundRotation.set(0, o.skyRotation, 0);
   scene.environment = env;
   scene.environmentIntensity = 0.4;
   if (o.fog) scene.fog = new THREE.Fog(o.fog[0], o.fog[1], o.fog[2]);
@@ -125,4 +131,56 @@ export function disposeTree(o: THREE.Object3D): void {
     if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
     else if (mat) mat.dispose();
   });
+}
+
+/**
+ * Cartoon water to match the Kenney kits: flat glossy blue with soft wave bands and white
+ * glints, drawn once on a tileable canvas. Call `update(t)` each frame to make it drift.
+ */
+export function toonWater(base: string, repeat: number): { material: THREE.MeshStandardMaterial; update: (t: number) => void } {
+  const S = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = base;
+  c.fillRect(0, 0, S, S);
+  // wave bands: sine curves with a whole number of periods so the tile wraps cleanly
+  const light = '#' + lighten(base, 0.18).getHexString();
+  for (let i = 0; i < 5; i++) {
+    const y0 = (i / 5) * S + 10;
+    c.strokeStyle = i % 2 ? light : '#' + lighten(base, 0.1).getHexString();
+    c.lineWidth = 6;
+    c.lineCap = 'round';
+    c.beginPath();
+    for (let x = 0; x <= S; x += 4) {
+      const y = y0 + Math.sin((x / S) * Math.PI * 2 * 2 + i) * 7;
+      if (x === 0) c.moveTo(x, y);
+      else c.lineTo(x, y);
+    }
+    c.stroke();
+  }
+  // little white glints
+  c.fillStyle = 'rgba(255,255,255,0.85)';
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 26; i++) {
+    const x = rnd() * S;
+    const y = rnd() * S;
+    const w = 6 + rnd() * 12;
+    c.beginPath();
+    c.ellipse(x, y, w, 2.2, 0, 0, Math.PI * 2);
+    c.fill();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeat, repeat);
+  tex.anisotropy = 4;
+  const material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.18, metalness: 0.05 });
+  return {
+    material,
+    update(t: number) {
+      tex.offset.set((t * 0.012) % 1, (Math.sin(t * 0.4) * 0.02 + t * 0.006) % 1);
+    },
+  };
 }

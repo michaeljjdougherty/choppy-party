@@ -70,3 +70,14 @@ Click **Host online** to open a room; share the 4-letter code or the `?room=CODE
 ## Adding a minigame
 
 Implement `Minigame` (setup, step, isOver, results, and a 2D HUD `draw`), add a 3D view in `src/client/three/views/` and register it in `GAME_VIEWS`, keep state plain JSON, use the seeded RNG in `src/shared/rng.ts` for randomness, and add it to `GAMES`. The tests in `tests/games.test.ts` automatically check every registered game finishes, ranks every player, is deterministic and survives a JSON round trip.
+
+## Pack-based minigames (wave 2)
+
+Built around the Kenney packs:
+
+- **Meteor Shower** (Space Kit): dodge meteors on a moon base, three hearts, craters slow you down.
+- **Present Pile-Up** (Holiday Kit): time your drop to stack the swinging gift; misses knock gifts off.
+- **Graveyard Shift** (Graveyard Kit): collect candles at night while ghosts rise from the graves.
+- **Train Hop** (Train Kit): grab coins on the rails, get off the track when the signal flashes.
+
+The logo (`public/logo.png`) has a transparent background and shows on the title, loading and main menu screens.

@@ -10,7 +10,7 @@ import type { Tag, View } from '../stage';
 const DROP_HEIGHT = 13;
 
 export function coinsView(env: THREE.Texture, state: CloudburstState, players: PlayerInfo[]): View {
-  const scene = makeScene(env, { skyTop: '#6ccaff', skyBottom: '#e6f7ff', fog: ['#cdeeff', 35, 80], shadowSize: 22 });
+  const scene = makeScene(env, { sky: 'day', skyTop: '#6ccaff', skyBottom: '#e6f7ff', fog: ['#cdeeff', 35, 80], shadowSize: 22 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
   camera.position.set(0, 15.5, 15.5);
   camera.lookAt(0, 0, 1.2);

@@ -1,10 +1,10 @@
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
-import { FIRST_GAME, FIRST_MIX, addPlayer } from '../shared/party';
+import { FIRST_GAME, FIRST_MIX, addPlayer, startParty } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { drawFinal, drawIntro, drawLobby, drawResults } from './screens';
-import { sfx, unlockAudio } from './sfx';
+import { loadSamples, sfx, unlockAudio } from './sfx';
 import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
 import { MainMenu } from './menu';
@@ -275,7 +275,7 @@ function drawLoading(done: number, total: number) {
   g.addColorStop(1, '#c9f0ff');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-  logo(ctx, 640, 270, 1, loadT);
+  logo(ctx, 640, 255, 1.3, loadT);
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   roundRect(ctx, 390, 470, 500, 34, 17);
   ctx.fill();
@@ -285,7 +285,7 @@ function drawLoading(done: number, total: number) {
   text(ctx, `Loading party supplies… ${done}/${total}`, 640, 540, 22, { weight: 700 });
 }
 drawLoading(0, 1);
-preloadAll(drawLoading).then(() => requestAnimationFrame(frame));
+Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px 'Kenney Future Narrow'").catch(() => undefined)]).then(() => requestAnimationFrame(frame));
 
 // expose for automated smoke tests
 (window as any).__choppy = {
@@ -299,5 +299,10 @@ preloadAll(drawLoading).then(() => requestAnimationFrame(frame));
   addBots(n: number) {
     const st = (session as any)?.state;
     for (let i = 0; i < n && st; i++) addPlayer(st, `bot${i}`);
+  },
+  /** Test helper: start whatever is selected in a local lobby. */
+  start() {
+    const st = (session as any)?.state;
+    if (st) startParty(st);
   },
 };

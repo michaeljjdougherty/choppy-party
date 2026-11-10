@@ -5,6 +5,10 @@ import { rinkView } from './rink';
 import { quickDrawView } from './quickdraw';
 import { pancakeView } from './pancake';
 import { coinsView } from './coins';
+import { meteorView } from './meteor';
+import { presentView } from './presents';
+import { graveyardView } from './graveyard';
+import { trainView } from './train';
 
 type Factory = (env: THREE.Texture, state: any, players: PlayerInfo[]) => View;
 
@@ -14,6 +18,10 @@ export const GAME_VIEWS: Record<string, Factory> = {
   'quick-draw-cactus': quickDrawView,
   'pancake-panic': pancakeView,
   'coin-cloudburst': coinsView,
+  'meteor-shower': meteorView,
+  'present-pile-up': presentView,
+  'graveyard-shift': graveyardView,
+  'train-hop': trainView,
 };
 
 export { menuView } from './menu';

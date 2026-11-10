@@ -131,7 +131,7 @@ function setPhase(s: PartyState, phase: Phase): void {
   s.ready = [];
 }
 
-function startParty(s: PartyState): void {
+export function startParty(s: PartyState): void {
   const n = s.players.length;
   for (const p of s.players) s.scores[p.id] = 0;
   const o = OPTIONS[s.selection];

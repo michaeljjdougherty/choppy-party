@@ -61,10 +61,15 @@ interface Seen {
   crowns: Record<string, number>;
   sub: string;
   gameCoins: Record<string, number>;
+  air: Record<string, boolean>;
+  pops: Record<string, number>;
+  stacks: Record<string, number>;
   stuns: Record<string, boolean>;
   bombs: number;
   alive: number;
   sel: string;
+  /** Wave 2 games: a few counters per player and per game. */
+  marks: Record<string, number>;
 }
 let seen: Seen | null = null;
 
@@ -81,7 +86,8 @@ export function watch(s: PartyState): void {
     coins: number;
     stun: number;
   }[];
-  const skaters = (s.phase === 'play' && Array.isArray(g?.skaters) ? g!.skaters : []) as { alive: boolean }[];
+  const skaters = (s.phase === 'play' && Array.isArray(g?.skaters) ? g!.skaters : []) as { id: string; alive: boolean; z: number; vz: number }[];
+  const stacks = (s.phase === 'play' && g?.stacks && typeof g.stacks === 'object' ? g.stacks : {}) as Record<string, number>;
   const drops = (s.phase === 'play' && Array.isArray(g?.drops) ? g!.drops : []) as { kind: string; fall: number }[];
   const now: Seen = {
     phase: s.phase,
@@ -91,15 +97,23 @@ export function watch(s: PartyState): void {
     crowns: {},
     sub: b?.sub ?? '',
     gameCoins: Object.fromEntries(runners.map((r) => [r.id, r.coins])),
+    air: Object.fromEntries([...runners, ...skaters].map((r) => [r.id, ((r as { z?: number }).z ?? 0) > 1])),
+    pops: Object.fromEntries(skaters.map((k) => [k.id, k.vz])),
+    stacks: { ...stacks },
     stuns: Object.fromEntries(runners.map((r) => [r.id, r.stun > 0])),
     bombs: drops.filter((d) => d.kind === 'anvil' && d.fall <= 0).length,
     alive: skaters.filter((k) => k.alive).length,
     sel: `${s.selection}:${s.roundsIdx}:${s.turnsIdx}`,
+    marks: s.phase === 'play' && g ? marks(g) : {},
   };
   if (b) for (const [id, p] of Object.entries(b.players)) {
     now.nodes[id] = p.node;
     now.coins[id] = p.coins;
     now.crowns[id] = p.crowns;
+  }
+  for (const list of ['astros', 'keepers', 'hoppers'] as const) {
+    const arr = s.phase === 'play' && Array.isArray(g?.[list]) ? (g![list] as { id: string; z: number }[]) : [];
+    for (const r of arr) now.air[r.id] = r.z > 1;
   }
   const was = seen;
   seen = now;
@@ -117,6 +131,16 @@ export function watch(s: PartyState): void {
     }
   }
   if (now.phase === 'lobby' && now.players > was.players) sfx.join();
+  if (now.phase === 'lobby' && now.players < was.players) sfx.leave();
+  for (const id of Object.keys(now.air)) {
+    if (was.air[id] && !now.air[id]) sfx.land();
+  }
+  for (const id of Object.keys(now.pops)) {
+    if (now.pops[id] > 150 && (was.pops[id] ?? 0) <= 150) sfx.bump();
+  }
+  for (const id of Object.keys(now.stacks)) {
+    if (now.stacks[id] > (was.stacks[id] ?? 0)) sfx.plate();
+  }
   if (now.phase === 'lobby' && now.sel !== was.sel) sfx.move();
 
   if (b) {
@@ -124,6 +148,7 @@ export function watch(s: PartyState): void {
     for (const id of Object.keys(now.nodes)) {
       if (was.nodes[id] !== undefined && was.nodes[id] !== now.nodes[id]) sfx.step();
       if ((now.crowns[id] ?? 0) > (was.crowns[id] ?? 0)) {
+        sfx.bell();
         sfx.fanfare();
         burst(60);
       } else if ((now.coins[id] ?? 0) > (was.coins[id] ?? 0)) sfx.coin();
@@ -131,9 +156,53 @@ export function watch(s: PartyState): void {
     }
   }
   for (const id of Object.keys(now.gameCoins)) {
-    if (now.gameCoins[id] > (was.gameCoins[id] ?? 0)) sfx.coin();
+    const gain = now.gameCoins[id] - (was.gameCoins[id] ?? 0);
+    if (gain >= 5) sfx.gem();
+    else if (gain > 0) sfx.coin();
     if (now.stuns[id] && !was.stuns[id]) sfx.boing();
   }
   if (now.bombs > was.bombs) sfx.boom();
+  const m = now.marks;
+  const pm = was.marks;
+  const up = (k: string) => (m[k] ?? 0) > (pm[k] ?? 0) && k in pm;
+  for (const k of Object.keys(m)) {
+    if (!up(k)) continue;
+    if (k === 'booms') sfx.boom();
+    else if (k === 'trains') sfx.horn();
+    else if (k.startsWith('hurt:') || k.startsWith('scared:')) sfx.boing();
+    else if (k.startsWith('out:')) {
+      sfx.boing();
+      sfx.lose();
+    } else if (k.startsWith('candles:') || k.startsWith('coins:')) sfx.coin();
+    else if (k.startsWith('gifts:')) sfx.plate();
+    else if (k.startsWith('tumbles:')) sfx.lose();
+  }
   if (now.alive < was.alive && now.phase === 'play' && was.phase === 'play') sfx.lose();
+}
+
+/** Counters that only go up when something worth a sound happens in a wave 2 game. */
+function marks(g: Record<string, unknown>): Record<string, number> {
+  const out: Record<string, number> = {};
+  const list = <T>(k: string) => (Array.isArray(g[k]) ? (g[k] as T[]) : []);
+  // every impact leaves a crater, so a rising crater count means a meteor just hit
+  if (Array.isArray(g.craters)) out.booms = (g.craters as unknown[]).length;
+  for (const a of list<{ id: string; hearts: number; outAt: number }>('astros')) {
+    out[`hurt:${a.id}`] = 3 - a.hearts;
+    out[`out:${a.id}`] = a.outAt >= 0 ? 1 : 0;
+  }
+  for (const k of list<{ id: string; candles: number; scared: number }>('keepers')) {
+    out[`candles:${k.id}`] = k.candles;
+    // rises by one each time a ghost gets you (scared jumps back to full)
+    out[`scared:${k.id}`] = k.scared > 1.05 ? 1 : 0;
+  }
+  for (const p of list<{ id: string; gifts: number[]; tumbles: number }>('piles')) {
+    out[`gifts:${p.id}`] = p.gifts.length;
+    out[`tumbles:${p.id}`] = p.tumbles;
+  }
+  for (const h of list<{ id: string; coins: number; outAt: number }>('hoppers')) {
+    out[`coins:${h.id}`] = h.coins;
+    out[`out:${h.id}`] = h.outAt >= 0 ? 1 : 0;
+  }
+  if (Array.isArray(g.trains)) out.trains = (g.trains as { warn: number }[]).filter((t) => t.warn <= 0).length;
+  return out;
 }

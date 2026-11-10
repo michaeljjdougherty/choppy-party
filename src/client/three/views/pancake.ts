@@ -2,14 +2,14 @@ import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import type { PancakeState } from '../../../shared/games/pancakePanic';
 import { ChoppyModel } from '../choppy';
-import { place } from '../assets';
+import { place, prop, texture } from '../assets';
 import { checkerTexture, makeScene, mesh, toy } from '../kit';
 import type { Tag, View } from '../stage';
 
 const MAX_CAKES = 400;
 
 export function pancakeView(env: THREE.Texture, state: PancakeState, players: PlayerInfo[]): View {
-  const scene = makeScene(env, { skyTop: '#ffd7a8', skyBottom: '#fff3e2', sunDir: [6, 16, 12] });
+  const scene = makeScene(env, { skyTop: '#ffd7a8', skyBottom: '#fff3e2', sunDir: [6, 16, 12], shadowSize: 24 });
   const camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 200);
 
   const cloth = checkerTexture('#e53b46', '#fff6ec', 2, 64);
@@ -20,19 +20,40 @@ export function pancakeView(env: THREE.Texture, state: PancakeState, players: Pl
   });
   table.rotation.x = -Math.PI / 2;
   scene.add(table);
-  // kitchen wall
-  const wall = mesh(new THREE.PlaneGeometry(80, 30), toy('#ffe2b8', 0.9), { cast: false, receive: true });
+  // tiled kitchen wall (Kenney retro fantasy tiles)
+  const tiles = texture('floor_tiles_tan_small', 40, 15);
+  const wall = mesh(new THREE.PlaneGeometry(80, 30), tiles ? new THREE.MeshStandardMaterial({ map: tiles, roughness: 0.5 }) : toy('#ffe2b8', 0.9), {
+    cast: false,
+    receive: true,
+  });
   wall.position.set(0, 15, -12);
   scene.add(wall);
 
-  // a cosy kitchen shelf behind the plates
-  place(scene, 'pirate/crate-bottles', -9, 0, -7, { s: 1.3, ry: 0.3 });
-  place(scene, 'pirate/barrel', 9.5, 0, -7, { s: 1.3 });
-  place(scene, 'pirate/barrel', 11, 0, -6.2, { s: 1.1, ry: 1 });
-  place(scene, 'pirate/bottle-large', -6.8, 0, -6.4, { s: 1.6 });
-  place(scene, 'pirate/bottle-large', 7.6, 0, -6.6, { s: 1.4, ry: 1 });
-  place(scene, 'platformer/flowers-tall', -11.5, 0, -5.5, { s: 2.2 });
-  place(scene, 'pirate/crate', 12.5, 0, -8.2, { s: 1.4, ry: -0.3 });
+  // a full kitchen along the back wall (Kenney Furniture Kit, scaled up to toy size)
+  const K = 5;
+  const row = ['kitchenFridge', 'kitchenCabinet', 'kitchenStove', 'kitchenCabinet', 'kitchenSink', 'kitchenCabinet', 'kitchenStove', 'kitchenCabinet', 'kitchenCabinet', 'kitchenFridge'];
+  row.forEach((name, i) => {
+    const x = (i - (row.length - 1) / 2) * 0.43 * K;
+    place(scene, `furniture/${name}`, x, 0, -11.9, { s: K });
+    if (name === 'kitchenCabinet' && i % 2 === 1) place(scene, 'furniture/kitchenCabinetUpper', x, 3.8, -11.9, { s: K });
+  });
+  place(scene, 'furniture/kitchenCoffeeMachine', -6.5, 2.25, -11.6, { s: K * 0.8 });
+  place(scene, 'furniture/kitchenMicrowave', 4.3, 2.25, -11.6, { s: K * 0.8 });
+  place(scene, 'furniture/toaster', 8.6, 2.25, -11.4, { s: K * 0.9 });
+  place(scene, 'furniture/kitchenBlender', -2.2, 2.25, -11.4, { s: K * 0.9 });
+  place(scene, 'furniture/pottedPlant', 12.8, 0, -10.5, { s: K * 0.8 });
+  place(scene, 'furniture/pottedPlant', -12.8, 0, -10.5, { s: K * 0.8, ry: 1 });
+  // breakfast spread on the table (Kenney Food Kit)
+  const F = 3.2;
+  for (const [name, x, z, ry] of [
+    ['food/bottle-ketchup', -9.6, -3.2, 0.3], ['food/honey', -7.8, -4.4, 0], ['food/whipped-cream', -6.2, -3.5, 1],
+    ['food/mug', 6.4, -3.4, 2], ['food/cup-coffee', 8.2, -4.2, 0.5], ['food/frying-pan', 10.2, -3, 1.2],
+    ['food/strawberry', -4.6, -4.6, 0], ['food/strawberry', -4.1, -4.1, 1], ['food/waffle', 4.4, -4.6, 0.3],
+    ['food/croissant', 2.4, -4.8, 1.4], ['food/apple', -2.6, -4.9, 0], ['food/banana', 0.2, -5, 0.6],
+    ['food/cupcake', -11.5, -4.2, 0], ['food/donut-sprinkles', 12, -4.5, 0],
+  ] as [string, number, number, number][]) {
+    place(scene, name, x, 0, z, { s: name === 'food/bottle-ketchup' ? 1.3 : F, ry });
+  }
   const n = state.ids.length;
   const gap = 2.3;
   const plateMat = toy('#ffffff', 0.15);
@@ -51,9 +72,16 @@ export function pancakeView(env: THREE.Texture, state: PancakeState, players: Pl
   state.ids.forEach((id, i) => {
     const p = players.find((q) => q.id === id);
     const x = (i - (n - 1) / 2) * gap;
-    const plate = mesh(new THREE.CylinderGeometry(0.95, 0.75, 0.1, 40), plateMat, { receive: true });
-    plate.position.set(x, 0.05, 0);
-    scene.add(plate);
+    // a real dinner plate from the Food Kit (falls back to a plain disc)
+    const plate = prop('food/plate', 2.2);
+    if (plate.children.length) {
+      plate.position.set(x, 0, 0);
+      scene.add(plate);
+    } else {
+      const disc = mesh(new THREE.CylinderGeometry(0.95, 0.75, 0.1, 40), plateMat, { receive: true });
+      disc.position.set(x, 0.05, 0);
+      scene.add(disc);
+    }
     const stack = new THREE.InstancedMesh(cakeGeo, cakeMat, MAX_CAKES);
     stack.castShadow = true;
     stack.receiveShadow = true;

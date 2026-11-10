@@ -1,16 +1,17 @@
 import * as THREE from 'three';
 import { ChoppyModel } from '../choppy';
-import { makeScene, mesh, toy } from '../kit';
+import { makeScene, mesh, toy, toonWater } from '../kit';
 import { place } from '../assets';
 import type { Tag, View } from '../stage';
 import { PLAYER_COLORS } from '../../../shared/players';
 
 /** Title and main menu: a little party island where the Choppies dance around a giant dice block. */
 export function mainMenuView(env: THREE.Texture, screen: () => string = () => 'title'): View {
-  const scene = makeScene(env, { skyTop: '#3ba7ff', skyBottom: '#c9f0ff', fog: ['#c9f0ff', 40, 120], shadowSize: 16 });
+  const scene = makeScene(env, { sky: 'day', skyTop: '#3ba7ff', skyBottom: '#c9f0ff', fog: ['#c9f0ff', 40, 120], shadowSize: 16 });
   const camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.1, 300);
 
-  const sea = mesh(new THREE.CircleGeometry(200, 64), toy('#1e9be8', 0.15), { cast: false, receive: true });
+  const water = toonWater('#1e9be8', 60);
+  const sea = mesh(new THREE.CircleGeometry(200, 64), water.material, { cast: false, receive: true });
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = -1.2;
   scene.add(sea);
@@ -86,6 +87,7 @@ export function mainMenuView(env: THREE.Texture, screen: () => string = () => 't
     scene,
     camera,
     update(_s, _p, t, dt) {
+      water.update(t);
       // title: island centred under the logo; menu: island on the left, buttons on the right
       const sway = Math.sin(t * 0.15) * 1.2;
       const onMenu = screen() !== 'title';

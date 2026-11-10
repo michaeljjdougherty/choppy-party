@@ -59,19 +59,74 @@ function noise(dur: number, vol = 0.3, cutoff = 1200): void {
   src.start();
 }
 
+// ---- recorded sounds (Kenney Interface Sounds, Impact Sounds, UI Audio) ------------------------
+const SAMPLES = [
+  'move', 'select', 'back', 'join', 'leave', 'lose', 'drop', 'gem', 'bong', 'pluck', 'step1', 'step2', 'bump', 'bump-big',
+  'land', 'thud', 'bell', 'plate', 'wood', 'metal', 'glass', 'switch', 'click',
+] as const;
+type Sample = (typeof SAMPLES)[number];
+const buffers = new Map<Sample, AudioBuffer>();
+
+/** Fetch and decode every sample. Safe to call before the first click (the context starts suspended). */
+export async function loadSamples(): Promise<void> {
+  const a = ctx();
+  if (!a) return;
+  await Promise.all(
+    SAMPLES.map(async (n) => {
+      try {
+        const res = await fetch(`sfx/${n}.ogg`);
+        buffers.set(n, await a.decodeAudioData(await res.arrayBuffer()));
+      } catch {
+        // missing or undecodable: the synth fallback plays instead
+      }
+    }),
+  );
+}
+
+/** Play a sample with a little random pitch so repeats don't sound robotic. Returns false if unavailable. */
+function play(n: Sample, vol = 0.6, pitch = 1, jitter = 0.08): boolean {
+  const a = ctx();
+  const buf = buffers.get(n);
+  if (!a || !master || !buf || a.state !== 'running') return false;
+  const src = a.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = pitch * (1 + (Math.random() * 2 - 1) * jitter);
+  const g = a.createGain();
+  g.gain.value = vol;
+  src.connect(g).connect(master);
+  src.start();
+  return true;
+}
+let stepFlip = false;
+
 export const sfx = {
-  move: () => tone(520, 640, 0.06, 'triangle', 0.18),
+  move: () => play('move', 0.5, 1, 0.03) || tone(520, 640, 0.06, 'triangle', 0.18),
   select: () => {
+    if (play('select', 0.7, 1, 0)) return;
     tone(660, 990, 0.09, 'square', 0.15);
     tone(990, 1320, 0.1, 'square', 0.12, 0.07);
   },
-  back: () => tone(500, 300, 0.1, 'triangle', 0.18),
+  back: () => play('back', 0.6, 1, 0) || tone(500, 300, 0.1, 'triangle', 0.18),
   join: () => {
+    if (play('join', 0.7, 1.1, 0.05)) return;
     tone(400, 800, 0.12, 'triangle', 0.22);
     tone(800, 1200, 0.1, 'triangle', 0.16, 0.08);
   },
-  boing: () => tone(180, 520, 0.16, 'sine', 0.3),
-  step: () => tone(300, 460, 0.07, 'sine', 0.2),
+  leave: () => play('leave', 0.6) || tone(500, 300, 0.1, 'triangle', 0.18),
+  boing: () => {
+    play('bump-big', 0.6);
+    tone(180, 520, 0.16, 'sine', 0.22);
+  },
+  bump: () => play('bump', 0.55, 1.1, 0.15),
+  land: () => play('land', 0.4, 1.2, 0.15),
+  gem: () => play('gem', 0.6) || tone(1500, 2400, 0.15, 'sine', 0.15),
+  plate: () => play('plate', 0.35, 1.2, 0.2),
+  bell: () => play('bell', 0.5, 1, 0),
+  step: () => {
+    stepFlip = !stepFlip;
+    play(stepFlip ? 'step1' : 'step2', 0.7, 1.1, 0.1) || tone(300, 460, 0.07, 'sine', 0.2);
+    tone(320, 520, 0.06, 'sine', 0.08);
+  },
   dice: () => {
     for (let i = 0; i < 4; i++) tone(900 + i * 140, 700, 0.04, 'square', 0.08, i * 0.05);
   },
@@ -79,10 +134,16 @@ export const sfx = {
     tone(988, 988, 0.06, 'square', 0.12);
     tone(1319, 1319, 0.16, 'square', 0.12, 0.06);
   },
-  lose: () => tone(420, 160, 0.3, 'sawtooth', 0.12),
+  lose: () => play('lose', 0.5) || tone(420, 160, 0.3, 'sawtooth', 0.12),
   boom: () => {
+    play('thud', 0.8, 0.8, 0.1);
     noise(0.45, 0.5, 700);
     tone(120, 40, 0.4, 'sine', 0.4);
+  },
+  horn: () => {
+    // a two-tone steam whistle
+    tone(392, 392, 0.5, 'sawtooth', 0.07);
+    tone(494, 494, 0.5, 'sawtooth', 0.06);
   },
   whistle: () => {
     tone(1900, 2100, 0.12, 'sine', 0.18);

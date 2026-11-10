@@ -4,18 +4,19 @@ import type { RinkState } from '../../../shared/games/shrinkingRink';
 import { ChoppyModel } from '../choppy';
 import { place } from '../assets';
 import { Fx, shake } from '../fx';
-import { PX, makeScene, mesh, toy, wx, wz, yaw } from '../kit';
+import { PX, makeScene, mesh, toy, wx, wz, yaw, toonWater } from '../kit';
 import type { Tag, View } from '../stage';
 
 const SCALE = 0.82; // drawn a little larger than the collision radius, cartoon style
 
 export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerInfo[]): View {
-  const scene = makeScene(env, { skyTop: '#5ec8ff', skyBottom: '#d8f3ff', fog: ['#bfe8ff', 30, 70] });
+  const scene = makeScene(env, { sky: 'day', skyTop: '#5ec8ff', skyBottom: '#d8f3ff', fog: ['#bfe8ff', 30, 70] });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
   camera.position.set(0, 12.5, 14.5);
   camera.lookAt(0, 0, 0.9);
 
-  const sea = mesh(new THREE.CircleGeometry(80, 64), toy('#1273d6', 0.12), { cast: false, receive: true });
+  const water = toonWater('#1273d6', 22);
+  const sea = mesh(new THREE.CircleGeometry(80, 64), water.material, { cast: false, receive: true });
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = -0.5;
   scene.add(sea);
@@ -73,6 +74,7 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
     scene,
     camera,
     update(s: RinkState, _players, t, dt) {
+      water.update(t);
       ships.forEach((o, i) => {
         o.position.y = -1.1 + Math.sin(t * 0.9 + i * 2) * 0.15;
         o.rotation.z = Math.sin(t * 0.7 + i) * 0.04;

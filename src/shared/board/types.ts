@@ -198,6 +198,8 @@ export interface BoardEvent {
 }
 
 export type BoardSub =
+  | 'orderRoll' // game start: everyone rolls at once for turn order
+  | 'orderShow' // the turn order is shown before turn 1
   | 'turnIntro'
   | 'roll'
   | 'rolled'
@@ -227,6 +229,12 @@ export interface BoardState {
   turn: number; // 1-based
   maxTurns: number;
   order: string[];
+  /** Turn order from the opening roll; the minigame winner jumps ahead of it each turn. */
+  baseOrder: string[];
+  /** Opening roll per player (1 to 10, no two the same). Missing until they roll. */
+  orderRolls: Record<string, number>;
+  /** Players who won the last minigame and so go first this turn. */
+  wonFirst: string[];
   cur: number;
   sub: BoardSub;
   t: number;

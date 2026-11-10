@@ -563,6 +563,10 @@ function rinkBot(g: RinkState, id: string, sk: Skill, mem: BotMem, r: Rng): Tick
 /* ------------------------------------------------------------------ board */
 
 function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): TickInput {
+  if (b.sub === 'orderRoll') {
+    remember(mem, 'orderRoll', randRange(r, 0.8, 2.2));
+    return !b.orderRolls[id] && mem.t > mem.wait ? press() : NO_INPUT;
+  }
   if (b.sub === 'done' || b.sub === 'event' || currentPlayer(b) !== id) return NO_INPUT;
   const def = getBoard(b.boardId);
   const me = b.players[id];

@@ -1243,7 +1243,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       }
 
       // camera: overview at the top of a turn, then follow whoever is moving
-      const wantOverview = b.sub === 'turnIntro' && b.cur === 0 && b.t < 2;
+      const wantOverview = (b.sub === 'turnIntro' && b.cur === 0 && b.t < 2) || b.sub === 'orderRoll' || b.sub === 'orderShow';
       const goalPos = wantOverview ? overview : new THREE.Vector3(cp.x, cp.y + 10.5, cp.z + 10.5);
       const goalLook = wantOverview ? new THREE.Vector3(0, 0, midZ + 1) : new THREE.Vector3(cp.x, cp.y + 0.6, cp.z);
       camPos.lerp(goalPos, Math.min(1, dt * 2.2));

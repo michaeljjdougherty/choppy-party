@@ -1,6 +1,6 @@
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
-import { FINISH_T, FIRST_GAME, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
+import { FINISH_T, FIRST_GAME, countTotal, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { loadHosted } from './net';
@@ -420,10 +420,9 @@ function renderScreens(wallT: number, dt: number) {
     case 'play': {
       const g = getGame(s.gameId!);
       g.draw(ctx, s.game, inGame(s));
-      // shared 3, 2, 1, GO! (games without a countdown just get the GO!)
-      const gt = g.ready ? ((s.game as { t?: number }).t ?? s.phaseT) : s.phaseT;
-      countIn(ctx, gt, g.ready ?? 0, g.goWord);
-      countSfx(gt, g.ready ?? 0);
+      // shared 3, 2, 1, GO! before every minigame (the party holds the game still until GO)
+      countIn(ctx, s.phaseT, countTotal(g), g.goWord);
+      countSfx(s.phaseT, countTotal(g));
       break;
     }
     case 'results':

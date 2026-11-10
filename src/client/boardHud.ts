@@ -43,7 +43,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     const bp = b.players[id];
     if (!p || !bp) return;
     const x = x0 + i * (w + 8);
-    const on = id === cur;
+    const on = id === cur && b.sub !== 'orderRoll' && b.sub !== 'orderShow';
     const y = on ? 600 : 612;
     ctx.fillStyle = on ? 'rgba(255,225,77,0.95)' : 'rgba(20,12,40,0.72)';
     roundRect(ctx, x, y, w, 104, 16);
@@ -90,8 +90,11 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     text(ctx, q, 640, 170, 28, { color: '#2a1b5e', outline: false });
     text(ctx, a, 640, 120 + h - 40, 26, { color: '#ff4d5a', outline: false });
   };
-  if (b.sub === 'turnIntro') {
+  if (b.sub === 'orderRoll' || b.sub === 'orderShow') {
+    drawOrderRoll(ctx, s, t);
+  } else if (b.sub === 'turnIntro') {
     if (b.cur === 0) text(ctx, `Turn ${b.turn}`, 640, 220, 40, { color: '#ffffff' });
+    if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Won the minigame, so they go first!', 640, 336, 26, { color: '#ffd23f' });
     text(ctx, `${name}'s turn!`, 640, 280, 64, { color: me?.color ?? '#fff' });
   } else if (b.sub === 'roll') {
     const canItem = mine.items.length > 0 && mine.usedItemTurn !== b.turn;
@@ -210,4 +213,41 @@ export function coinIcon(ctx: CanvasRenderingContext2D, x: number, y: number): v
   ctx.stroke();
   ctx.fillStyle = '#fff3b0';
   ctx.fillRect(x - 1.5, y - 5, 3, 10);
+}
+
+/** Game start: everyone's die in a row, then the turn order it made. */
+function drawOrderRoll(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
+  const b = s.board!;
+  const show = b.sub === 'orderShow';
+  const ids = show ? b.order : [...b.order].sort((x, y) => s.players.findIndex((p) => p.id === x) - s.players.findIndex((p) => p.id === y));
+  const n = ids.length;
+  const size = Math.min(104, (1100 - (n - 1) * 14) / n);
+  const x0 = 640 - (n * size + (n - 1) * 14) / 2;
+  ctx.fillStyle = 'rgba(20,12,40,0.62)';
+  roundRect(ctx, x0 - 30, 150, n * size + (n - 1) * 14 + 60, size + 190, 28);
+  ctx.fill();
+  text(ctx, show ? 'Turn order' : 'Roll for turn order!', 640, 190, 40, { color: '#ffd23f' });
+  text(ctx, show ? 'Highest roll goes first' : `Everyone press ${A()} to roll`, 640, 230, 20, { color: '#ffffff', weight: 600 });
+  ids.forEach((id, i) => {
+    const p = playerById(s.players, id);
+    if (!p) return;
+    const x = x0 + i * (size + 14);
+    const y = 260;
+    const v = b.orderRolls[id];
+    const wob = v ? 0 : Math.sin(t * 14 + i) * 0.12;
+    ctx.save();
+    ctx.translate(x + size / 2, y + size / 2);
+    ctx.rotate(wob);
+    ctx.fillStyle = v ? '#fff7c2' : '#ffd23f';
+    roundRect(ctx, -size / 2, -size / 2, size, size, size * 0.2);
+    ctx.fill();
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    const face = v ? String(v) : String(1 + (Math.floor(t * 18 + i * 3) % 10));
+    text(ctx, face, 0, 2, size * 0.55, { color: v ? '#ff3b4e' : 'rgba(255,59,78,0.45)', outline: false, weight: 900 });
+    ctx.restore();
+    text(ctx, p.name, x + size / 2, y + size + 22, size < 80 ? 13 : 17, { color: p.color });
+    if (show) text(ctx, ['1st', '2nd', '3rd'][i] ?? `${i + 1}th`, x + size / 2, y + size + 48, 18, { color: '#ffffff', weight: 800 });
+  });
 }

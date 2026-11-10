@@ -4,7 +4,7 @@ import { GAMES, getGame } from './games';
 import { PLAYER_COLORS, DEFAULT_NAMES } from './players';
 import { shuffle, type Rng } from './rng';
 import { BOARDS, getBoard, recommendedBoard } from './board/boards';
-import { awardMinigame, boardRanking, createBoard, finishEvent, stepBoard } from './board/engine';
+import { awardMinigame, boardRanking, createBoard, finishEvent, stepBoard, winnerGoesFirst } from './board/engine';
 import type { BoardState } from './board/types';
 import { addBotInputs, type BotLevel, type BotMem } from './bots';
 
@@ -30,6 +30,13 @@ export const PLACE_POINTS = [5, 3, 2, 1];
 
 /** Seconds the finished minigame stays frozen under a FINISH! banner before the results show. */
 export const FINISH_T = 1.6;
+
+/** Seconds of 3, 2, 1 before every minigame. */
+export const COUNT_IN = 3;
+/** How long the party holds a game still before stepping it (games with their own countdown need less). */
+export const countLead = (g: { ready?: number }): number => Math.max(0, COUNT_IN - (g.ready ?? 0));
+/** Length of the whole 3, 2, 1 count for a game, measured from the start of the play phase. */
+export const countTotal = (g: { ready?: number }): number => Math.max(COUNT_IN, g.ready ?? 0);
 
 export type Phase = 'lobby' | 'board' | 'intro' | 'play' | 'results' | 'final';
 
@@ -350,6 +357,8 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
     }
     case 'play': {
       const g = getGame(s.gameId!);
+      // every minigame opens with 3, 2, 1, GO!: hold the game still until the count reaches GO
+      if (s.phaseT < countLead(g)) break;
       g.step(s.game, inputs, dt);
       if (g.isOver(s.game)) {
         const rows = g.results(s.game);
@@ -361,6 +370,7 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
         } else if (s.board) {
           // on a board, minigames pay out keys instead of party points
           const keys = awardMinigame(s.board, s.placements);
+          winnerGoesFirst(s.board, s.placements);
           for (const pl of s.placements) pl.points = keys[pl.id] ?? 0;
           for (const p of Object.values(s.board.players)) s.scores[p.id] = p.keys;
         } else {

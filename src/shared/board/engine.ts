@@ -27,8 +27,11 @@ export function createBoard(boardId: string, playerIds: string[], maxTurns: numb
     turn: 1,
     maxTurns,
     order: shuffle(rng, [...playerIds]),
+    baseOrder: [],
+    orderRolls: {},
+    wonFirst: [],
     cur: 0,
-    sub: 'turnIntro',
+    sub: 'orderRoll',
     t: 0,
     roll: 0,
     rolls: [],
@@ -181,6 +184,46 @@ export function awardMinigame(s: BoardState, placements: { id: string; place: nu
   return out;
 }
 
+/**
+ * The minigame winner (or winners, on a tie) goes first next turn; everyone else keeps their
+ * place from the opening roll.
+ */
+export function winnerGoesFirst(s: BoardState, placements: { id: string; place: number }[]): void {
+  const base = s.baseOrder.length ? s.baseOrder : s.order;
+  const won = new Set(placements.filter((p) => p.place === 1).map((p) => p.id));
+  if (won.size === 0 || won.size >= base.length) {
+    s.order = [...base];
+    s.wonFirst = [];
+    return;
+  }
+  s.wonFirst = base.filter((id) => won.has(id));
+  s.order = [...s.wonFirst, ...base.filter((id) => !won.has(id))];
+}
+
+const ORDER_SHOW = 3.2;
+
+/** Game start: everyone rolls together. Numbers never repeat, so there are no ties. */
+function stepOrderRoll(s: BoardState, inputs: Inputs): void {
+  if (s.sub === 'orderShow') {
+    if (s.t > ORDER_SHOW) set(s, 'turnIntro');
+    return;
+  }
+  for (const id of s.order) {
+    if (s.orderRolls[id]) continue;
+    const inp = inputs[id] ?? NO_INPUT;
+    if ((inp.aPressed && s.t > 0.6) || s.t > AUTO_ROLL) {
+      const used = new Set(Object.values(s.orderRolls));
+      const free = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter((n) => !used.has(n));
+      s.orderRolls[id] = free[Math.floor(rand(s.rng) * free.length)] ?? 1;
+    }
+  }
+  if (s.order.every((id) => s.orderRolls[id])) {
+    s.order.sort((a, b) => s.orderRolls[b] - s.orderRolls[a]);
+    s.baseOrder = [...s.order];
+    set(s, 'orderShow');
+  }
+}
+
 export function nextTurn(s: BoardState): void {
   s.turn++;
   s.cur = 0;
@@ -257,6 +300,10 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
   if (s.sub === 'done' || s.sub === 'event') return;
   if (s.sub === 'roundEnd') {
     if (s.t > 2.6) set(s, 'done');
+    return;
+  }
+  if (s.sub === 'orderRoll' || s.sub === 'orderShow') {
+    stepOrderRoll(s, inputs);
     return;
   }
   const id = currentPlayer(s);

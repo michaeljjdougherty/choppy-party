@@ -1,6 +1,6 @@
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
-import { FINISH_T, FIRST_GAME, countTotal, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
+import { FINISH_T, FIRST_GAME, PAUSE_OPTIONS, countTotal, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { loadHosted } from './net';
@@ -129,8 +129,23 @@ input.onBPress = (d) => {
   if (mine) session.leave(d.key);
   else if (session.localIds().size === 0) backToMenu();
 };
+/** The local device that pauses from the keyboard or mouse: a keyboard player if there is one. */
+function pauseDevice(): string | null {
+  const ids = [...(session?.localIds() ?? [])].filter((id) => !session?.view()?.players.find((p) => p.id === id)?.bot);
+  const kb = ids.find((id) => deviceOf(id).startsWith('kb'));
+  return kb ? deviceOf(kb) : ids[0] ? deviceOf(ids[0]) : null;
+}
 window.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || !joinBox.classList.contains('hidden') || netDialogOpen()) return;
+  if (e.repeat || (e.key !== 'Escape' && e.code !== 'KeyP') || !joinBox.classList.contains('hidden') || netDialogOpen()) return;
+  if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+  const phase = session?.view()?.phase;
+  // in a party, Esc / P is the Start button: pause menu
+  if (session && phase && phase !== 'lobby') {
+    const dev = pauseDevice();
+    if (dev) input.start(dev);
+    return;
+  }
+  if (e.key !== 'Escape') return;
   if (!session) {
     const was = menu.screen;
     menu.back();
@@ -437,7 +452,79 @@ function renderScreens(wallT: number, dt: number) {
   }
   if (s.phase !== 'play' && s.phase !== 'board' && !finishing) drawHostBubble(view, s.phase, wallT);
   drawConfetti(ctx, dt, wallT);
+  pauseLayer(s);
   drawWipe(dt);
+}
+
+/* ---------- pause menu (Start / Esc / P), shared by everyone in the room */
+let seenQuit = -1;
+function pauseLayer(s: PartyState) {
+  // someone on this screen chose "Quit to main menu"
+  const q = s.quit;
+  if (seenQuit < 0) seenQuit = q?.n ?? 0;
+  else if (q && q.n > seenQuit) {
+    seenQuit = q.n;
+    if (session?.localIds().has(q.id)) {
+      seenQuit = -1;
+      backToMenu();
+      return;
+    }
+  }
+  if (s.phase === 'lobby') return;
+  const p = s.pause;
+  if (!p) {
+    // small pause button for mouse players
+    const dev = pauseDevice();
+    if (dev && s.phase !== 'intro' && button(ctx, 'II', 1220, 668, 44, 40, { color: '#6b6f86', size: 18 })) input.start(dev);
+    return;
+  }
+  const who = s.players.find((x) => x.id === p.by);
+  const mine = !!session?.localIds().has(p.by);
+  ctx.fillStyle = 'rgba(14,8,32,0.62)';
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillStyle = 'rgba(255,255,255,0.97)';
+  roundRect(ctx, 400, 130, 480, 440, 30);
+  ctx.fill();
+  ctx.strokeStyle = '#ffd23f';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  text(ctx, 'PAUSED', 640, 180, 48, { color: '#2a1b5e', outline: false });
+  text(ctx, `${who?.name ?? 'Someone'} paused the game`, 640, 222, 18, { color: who?.color ?? '#6b5aa8', outline: false, weight: 700 });
+  if (p.help) {
+    const g = s.phase === 'board' ? null : s.gameId ? getGame(s.gameId) : null;
+    const lines = g
+      ? [g.name, ...wrap(g.blurb, 40), '', g.controls]
+      : ['Board game', 'Roll the die with A, use an item with B.', 'Pick a path at forks with the stick.', 'Buy Choppy Crowns at the Crown Chest', 'for 40 Choppy Keys. Most crowns wins!'];
+    lines.forEach((l, i) => text(ctx, l, 640, 270 + i * 30, i === 0 ? 24 : 18, { color: i === 0 ? '#ff4d5a' : '#2a1b5e', outline: false, weight: i === 0 ? 900 : 600 }));
+    text(ctx, mine ? 'A or B: back' : `Waiting for ${who?.name ?? 'them'}`, 640, 540, 18, { color: '#6b5aa8', outline: false, weight: 700 });
+    return;
+  }
+  const host = hostId(s) === p.by;
+  PAUSE_OPTIONS.forEach((label, i) => {
+    const y = 270 + i * 62;
+    const sel = i === p.sel;
+    const off = label.startsWith('End party') && !host;
+    ctx.fillStyle = sel ? '#ffd23f' : '#efeaff';
+    roundRect(ctx, 450, y - 24, 380, 48, 16);
+    ctx.fill();
+    text(ctx, off ? 'End party (host only)' : label, 640, y, 22, { color: off ? '#a99fcf' : '#2a1b5e', outline: false, weight: 800 });
+  });
+  text(ctx, mine ? 'Stick: choose   A: pick   B / Start: resume' : `Only ${who?.name ?? 'they'} can use this menu`, 640, 540, 17, { color: '#6b5aa8', outline: false, weight: 700 });
+  // mouse: Resume
+  if (mine && button(ctx, 'Resume', 1110, 668, 150, 40, { color: '#4cd97b', size: 18 })) input.start(deviceOf(p.by));
+}
+
+function wrap(t: string, n: number): string[] {
+  const out: string[] = [];
+  let line = '';
+  for (const w of t.split(' ')) {
+    if ((line + ' ' + w).trim().length > n) {
+      out.push(line.trim());
+      line = w;
+    } else line += ' ' + w;
+  }
+  if (line.trim()) out.push(line.trim());
+  return out;
 }
 
 /* ---------- Square Brian, the host */

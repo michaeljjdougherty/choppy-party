@@ -55,3 +55,57 @@ describe('minigame intro', () => {
     expect(s.phase).toBe('play');
   });
 });
+
+describe('pause menu', () => {
+  const start = { ...NO_INPUT, startPressed: true };
+  const down = { ...NO_INPUT, y: 1 };
+  const a = { ...NO_INPUT, a: true, aPressed: true, aTaps: 1 };
+  const boardParty = () => {
+    const s = createParty(5);
+    addPlayer(s, 'h');
+    addPlayer(s, 'g');
+    stepParty(s, { h: a }, DT);
+    return s;
+  };
+
+  it('Start freezes the party until the pauser resumes', () => {
+    const s = boardParty();
+    expect(s.phase).toBe('board');
+    stepParty(s, { g: start }, DT);
+    expect(s.pause?.by).toBe('g');
+    const t = s.phaseT;
+    for (let i = 0; i < 60; i++) stepParty(s, { h: a }, DT);
+    expect(s.phaseT).toBe(t);
+    stepParty(s, { g: start }, DT);
+    expect(s.pause).toBeNull();
+    stepParty(s, {}, DT);
+    expect(s.phaseT).toBeGreaterThan(t);
+  });
+
+  it('only the host can end the party; anyone can quit to the menu', () => {
+    const s = boardParty();
+    stepParty(s, { g: start }, DT);
+    for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
+    stepParty(s, { g: down }, DT);
+    for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
+    stepParty(s, { g: down }, DT);
+    for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
+    expect(s.pause?.sel).toBe(2);
+    stepParty(s, { g: a }, DT);
+    expect(s.phase).toBe('board'); // the guest can't end it
+    stepParty(s, { g: down }, DT);
+    for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
+    stepParty(s, { g: a }, DT);
+    expect(s.quit).toEqual({ id: 'g', n: 1 });
+    expect(s.pause).toBeNull();
+    stepParty(s, { h: start }, DT);
+    for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
+    for (const _ of [0, 1]) {
+      stepParty(s, { h: down }, DT);
+      for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
+    }
+    stepParty(s, { h: a }, DT);
+    expect(s.phase).toBe('lobby');
+    expect(s.players.length).toBe(2);
+  });
+});

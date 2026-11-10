@@ -16,6 +16,8 @@ export interface RawInput {
   /** X / Y presses (lobby: change character / colour). Optional so old clients still work. */
   xCount?: number;
   yCount?: number;
+  /** Start / Menu presses (pause). */
+  startCount?: number;
 }
 
 /** Input as a minigame sees it on one tick. */
@@ -30,6 +32,7 @@ export interface TickInput {
   bTaps: number;
   xPressed?: boolean;
   yPressed?: boolean;
+  startPressed?: boolean;
 }
 
 export const NO_INPUT: TickInput = { x: 0, y: 0, a: false, b: false, aPressed: false, bPressed: false, aTaps: 0, bTaps: 0 };
@@ -101,6 +104,7 @@ export function toTickInput(raw: RawInput, prev: RawInput | undefined): TickInpu
     bTaps: Math.min(bTaps, 4),
     xPressed: (raw.xCount ?? 0) > (prev?.xCount ?? raw.xCount ?? 0),
     yPressed: (raw.yCount ?? 0) > (prev?.yCount ?? raw.yCount ?? 0),
+    startPressed: (raw.startCount ?? 0) > (prev?.startCount ?? raw.startCount ?? 0),
   };
 }
 

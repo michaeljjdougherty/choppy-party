@@ -49,6 +49,7 @@ export function cleanRaw(r: any): RawInput | null {
     bCount: Math.floor(num(r.bCount, 0, 1e9)),
     xCount: Math.floor(num(r.xCount, 0, 1e9)),
     yCount: Math.floor(num(r.yCount, 0, 1e9)),
+    startCount: Math.floor(num(r.startCount, 0, 1e9)),
   };
 }
 

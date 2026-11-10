@@ -63,6 +63,7 @@ const BTN_A = 0;
 const BTN_B = 1;
 const BTN_X = 2;
 const BTN_Y = 3;
+const BTN_BACK = 8, BTN_START = 9;
 const BTN_UP = 12, BTN_DOWN = 13, BTN_LEFT = 14, BTN_RIGHT = 15;
 
 export class InputManager {
@@ -80,6 +81,7 @@ export class InputManager {
   private pointerDown = false;
   private padX = new Map<string, boolean>();
   private padY = new Map<string, boolean>();
+  private padStart = new Map<string, boolean>();
   private nudges = new Map<string, { x: number; y: number; until: number; polls: number }>();
 
   constructor(target: Window = window) {
@@ -129,6 +131,12 @@ export class InputManager {
     else if (btn === 'b') d.raw.bCount++;
     else if (btn === 'x') d.raw.xCount = (d.raw.xCount ?? 0) + 1;
     else d.raw.yCount = (d.raw.yCount ?? 0) + 1;
+  }
+
+  /** Start / pause press for a device (Esc or P on the keyboard). */
+  start(key: string): void {
+    const d = this.devices.get(key);
+    if (d) d.raw.startCount = (d.raw.startCount ?? 0) + 1;
   }
 
   /** Hold the stick in a direction briefly (one menu step), for mouse clicks on arrows. */
@@ -199,6 +207,9 @@ export class InputManager {
         d.raw.bCount++;
         this.onBPress(d);
       }
+      const bs = pressed(BTN_START) || pressed(BTN_BACK);
+      if (bs && !this.padStart.get(key)) d.raw.startCount = (d.raw.startCount ?? 0) + 1;
+      this.padStart.set(key, bs);
       const bx = pressed(BTN_X), by = pressed(BTN_Y);
       if (bx && !padX.get(key)) d.raw.xCount = (d.raw.xCount ?? 0) + 1;
       if (by && !padY.get(key)) d.raw.yCount = (d.raw.yCount ?? 0) + 1;

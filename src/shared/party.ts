@@ -80,6 +80,70 @@ export interface PartyState {
   /** Scratch memory for computer players, by player id. */
   botMem: Record<string, BotMem>;
   botRng: Rng;
+  /** Pause menu: who opened it and which option is picked. The whole party waits while it's up. */
+  pause: { by: string; sel: number; cool: number; help: boolean } | null;
+  /** Last "quit to main menu" from the pause menu; the quitter's screen leaves the room. */
+  quit: { id: string; n: number } | null;
+}
+
+export const PAUSE_OPTIONS = ['Resume', 'How to play', 'End party (back to lobby)', 'Quit to main menu'] as const;
+
+/** Back to the lobby with everyone still in it. */
+export function endParty(s: PartyState): void {
+  s.gameId = null;
+  s.game = null;
+  s.gamePlayers = null;
+  s.boardEvent = null;
+  s.playlist = [];
+  s.board = null;
+  s.pause = null;
+  setPhase(s, 'lobby');
+}
+
+/**
+ * Start (or Esc) pauses everything for everyone; only the player who paused drives the menu.
+ * Returns true while paused, so the rest of the party holds still.
+ */
+function stepPause(s: PartyState, inputs: Inputs, dt: number): boolean {
+  if (!s.pause) {
+    if (s.phase === 'lobby') return false;
+    const by = s.players.find((p) => !p.bot && inputs[p.id]?.startPressed);
+    if (!by) return false;
+    s.pause = { by: by.id, sel: 0, cool: 0.2, help: false };
+    return true;
+  }
+  const p = s.pause;
+  // the pauser left: carry on
+  if (!s.players.some((q) => q.id === p.by && !q.away)) {
+    s.pause = null;
+    return false;
+  }
+  const inp = inputs[p.by] ?? NO_INPUT;
+  p.cool = Math.max(0, p.cool - dt);
+  if (p.help) {
+    if (inp.aPressed || inp.bPressed || inp.startPressed) p.help = false;
+    return true;
+  }
+  if (inp.startPressed || inp.bPressed) {
+    s.pause = null;
+    return true;
+  }
+  if (p.cool === 0 && Math.abs(inp.y) > 0.6) {
+    p.sel = (p.sel + (inp.y > 0 ? 1 : -1) + PAUSE_OPTIONS.length) % PAUSE_OPTIONS.length;
+    p.cool = 0.2;
+  }
+  if (inp.aPressed && p.cool < 0.15) {
+    const opt = PAUSE_OPTIONS[p.sel];
+    if (opt === 'Resume') s.pause = null;
+    else if (opt === 'How to play') p.help = true;
+    else if (opt.startsWith('End party')) {
+      if (hostId(s) === p.by) endParty(s);
+    } else {
+      s.quit = { id: p.by, n: (s.quit?.n ?? 0) + 1 };
+      s.pause = null;
+    }
+  }
+  return true;
 }
 
 export function createParty(seed: number): PartyState {
@@ -108,6 +172,8 @@ export function createParty(seed: number): PartyState {
     rng: { seed },
     botMem: {},
     botRng: { seed: seed ^ 0x5bd1e995 },
+    pause: null,
+    quit: null,
   };
 }
 
@@ -280,6 +346,9 @@ export function placementsFrom(rows: ResultRow[]): Placement[] {
 }
 
 export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void {
+  s.pause ??= null;
+  s.quit ??= null;
+  if (stepPause(s, humanInputs, dt)) return;
   s.phaseT += dt;
   const inputs = addBotInputs(s, humanInputs, dt);
   const host = hostId(s);
@@ -412,11 +481,7 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
     }
     case 'final': {
       if (hostIn.aPressed && s.phaseT > 2) {
-        s.gameId = null;
-        s.game = null;
-        s.playlist = [];
-        s.board = null;
-        setPhase(s, 'lobby');
+        endParty(s);
       }
       break;
     }

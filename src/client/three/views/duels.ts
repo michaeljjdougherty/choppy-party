@@ -8,6 +8,7 @@ import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, toonWater, toy, wx, wz } from '../kit';
 import type { Tag, View } from '../stage';
 import { fitProp } from './crew';
+import { sandMaterial } from '../nature';
 
 /** Fuse Draw: two rivals face off across a powder keg in a frontier street at sunset. */
 export function fuseView(env: THREE.Texture, state: FuseState, players: PlayerInfo[]): View {
@@ -15,7 +16,7 @@ export function fuseView(env: THREE.Texture, state: FuseState, players: PlayerIn
   const camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 300);
   camera.position.set(0, 4.2, 12.5);
   camera.lookAt(0, 1.4, 0);
-  const ground = mesh(new THREE.CircleGeometry(80, 48), new THREE.MeshStandardMaterial({ map: texture('floor_ground_sand', 40, 40), color: '#ffe0b8', roughness: 0.95 }), { cast: false, receive: true });
+  const ground = mesh(new THREE.CircleGeometry(80, 48), sandMaterial('#f6d2a0', 18), { cast: false, receive: true });
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
   place(scene, 'pirate/structure', -7, 0, -6, { s: 1.6, ry: 0.4 });

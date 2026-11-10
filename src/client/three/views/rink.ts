@@ -6,6 +6,7 @@ import { place } from '../assets';
 import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, toy, wx, wz, yaw, toonWater } from '../kit';
 import type { Tag, View } from '../stage';
+import { sandMaterial } from '../nature';
 
 const SCALE = 0.82; // drawn a little larger than the collision radius, cartoon style
 
@@ -43,6 +44,13 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
   place(scene, 'pirate/rocks-a', -14, -0.6, 4, { s: 1.3 });
   place(scene, 'pirate/rocks-b', 12.5, -0.6, -4, { s: 1.2, ry: 1 });
   place(scene, 'pirate/rocks-sand-b', -11, -0.7, -8, { s: 1.1 });
+  // little sandbars poking out of the sea
+  for (const [x, z, r] of [[-12.5, -6.5, 2.2], [14, 3.5, 1.8], [-16, 7, 1.5]] as [number, number, number][]) {
+    const bar = mesh(new THREE.CylinderGeometry(r, r * 1.35, 0.5, 28), sandMaterial('#f1cf9c', r), { cast: false, receive: true });
+    bar.position.set(x, -0.42, z);
+    bar.scale.z = 0.7;
+    scene.add(bar);
+  }
   const floaters: THREE.Object3D[] = [];
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2 + 0.4;

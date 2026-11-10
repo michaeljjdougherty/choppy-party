@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { loadNature } from './nature';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { CHARACTERS } from '../../shared/players';
@@ -101,6 +102,7 @@ export async function preloadAll(onProgress: (done: number, total: number) => vo
   let done = 0;
   const total = files.length + extra;
   const side = [
+    loadNature(),
     ...SKIES.map(async (n) => {
       try {
         const t = await tl.loadAsync(`sky/${n}.jpg`);

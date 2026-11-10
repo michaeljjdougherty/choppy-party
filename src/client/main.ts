@@ -760,6 +760,7 @@ Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px '
   input,
   menu,
   stage,
+  OPTIONS,
   /** Test helper: fill local lobby seats with idle players. */
   addBots(n: number) {
     const st = (session as any)?.state;

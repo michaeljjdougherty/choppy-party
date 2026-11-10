@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import { CAR_LEN, TRACKS, TRACK_HALF, TX0, TX1, TY0, TY1, type TrainState } from '../../../shared/games/trainHop';
-import { place, prop, texture } from '../assets';
+import { place, prop } from '../assets';
 import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
 import type { View } from '../stage';
 import { crew, pool } from './crew';
+import { sandMaterial } from '../nature';
 
 const CARS = ['train/train-carriage-coal', 'train/train-carriage-box', 'train/train-carriage-lumber', 'train/train-carriage-wood'];
 
@@ -38,13 +39,13 @@ export function trainView(env: THREE.Texture, state: TrainState, players: Player
   const fd = (TY1 - TY0) * PX;
   const cx = wx((TX0 + TX1) / 2);
   const cz = wz((TY0 + TY1) / 2);
-  const outer = mesh(new THREE.CircleGeometry(90, 48), toy('#d9b27a', 0.95), { cast: false, receive: true });
+  const outer = mesh(new THREE.CircleGeometry(90, 48), sandMaterial('#d9b27a', 20), { cast: false, receive: true });
   outer.rotation.x = -Math.PI / 2;
   outer.position.y = -0.02;
   scene.add(outer);
   const yard = mesh(
     new THREE.PlaneGeometry(fw + 8, fd),
-    new THREE.MeshStandardMaterial({ map: texture('floor_ground_sand', (fw + 8) / 2, fd / 2), color: '#f2dcc0', roughness: 0.95 }),
+    sandMaterial('#f2d2a8', fw / 5),
     { cast: false, receive: true },
   );
   yard.rotation.x = -Math.PI / 2;

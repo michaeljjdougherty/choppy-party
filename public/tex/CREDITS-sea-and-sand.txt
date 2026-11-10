@@ -1,0 +1,9 @@
+sea_waves.png is baked from "Sea part" by Ayberk Tosunoglu
+  https://sketchfab.com/3d-models/sea-part-e90b3547e64a4bbd825fd126760f1770
+  Licence: CC BY 4.0 (http://creativecommons.org/licenses/by/4.0/)
+  Changed: the wave animation was resampled into a looping, tileable heightfield strip.
+
+sand_detail.jpg is made from the texture of "Desert Landscape" by Simon Ustal
+  https://sketchfab.com/3d-models/desert-landscape-220c14d161e44e83be64f30f2034cf4b
+  Licence: CC BY 4.0 (http://creativecommons.org/licenses/by/4.0/)
+  Changed: resized, made tileable and greyscale.

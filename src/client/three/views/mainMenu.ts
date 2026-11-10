@@ -5,6 +5,7 @@ import { place } from '../assets';
 import { Fx } from '../fx';
 import type { Tag, View } from '../stage';
 import { PLAYER_COLORS } from '../../../shared/players';
+import { sandMaterial } from '../nature';
 
 /**
  * Title and main menu: the party island at dusk. A light-up disco floor, searchlights sweeping
@@ -58,7 +59,7 @@ export function mainMenuView(env: THREE.Texture, screen: () => string = () => 't
   const island = mesh(new THREE.CylinderGeometry(9, 10.5, 2.4, 48), toy('#2f7a4a', 0.8), { receive: true });
   island.position.y = -0.95;
   scene.add(island);
-  const beach = mesh(new THREE.CylinderGeometry(10.6, 11.5, 0.6, 48), toy('#c99a7a', 0.9), { cast: false, receive: true });
+  const beach = mesh(new THREE.CylinderGeometry(10.6, 11.5, 0.6, 48), sandMaterial('#e3b48e', 6), { cast: false, receive: true });
   beach.position.y = -1.3;
   scene.add(beach);
 

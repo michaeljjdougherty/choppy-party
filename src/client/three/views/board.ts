@@ -21,6 +21,7 @@ export function setMapLook(f: typeof mapLook): void {
   mapLook = f;
 }
 import type { Tag, View } from '../stage';
+import { sandMap, sandMaterial } from '../nature';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
   key: '#2f7dff',
@@ -156,6 +157,12 @@ const hollowDecor: Dresser = (scene, def) => {
   pondMesh.scale.set(7.5, 2.6, 1);
   pondMesh.position.set(0, 0.04, 3.1);
   scene.add(pondMesh);
+  // a sandy shore round the pond
+  const shore = mesh(new THREE.CircleGeometry(1, 48), sandMaterial('#ead1a0', 4), { cast: false, receive: true });
+  shore.rotation.x = -Math.PI / 2;
+  shore.scale.set(8.4, 3.3, 1);
+  shore.position.set(0, 0.025, 3.1);
+  scene.add(shore);
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
     place(scene, i % 3 ? 'platformer/grass' : 'forest/stones', Math.cos(a) * 7.8, 0, 3.1 + Math.sin(a) * 2.9, { s: 1.4, ry: a, shadow: false });
@@ -582,6 +589,10 @@ const gulchDecor: Dresser = (scene, def) => {
       },
     }),
   );
+  // desert ripples over the whole canyon floor (and faintly on the rock)
+  const canyon = scene.children[scene.children.length - 1] as THREE.Mesh;
+  (canyon.material as THREE.MeshStandardMaterial).map = sandMap(200 / 7, 170 / 7);
+  (canyon.material as THREE.MeshStandardMaterial).needsUpdate = true;
   // the Bonanza Mine up top: timber frame, rails out of the shaft, and a glittering gold pile
   const summit = new THREE.Vector3(0, 0, -38);
   place(scene, 'pirate/structure', summit.x, 0, summit.z, { s: 1.6 });

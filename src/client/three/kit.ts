@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sky, type SkyName } from './assets';
+import { hasWaves, seaWater } from './nature';
 
 /** Shared look: glossy, saturated "painted toy" plastic. */
 export function toy(color: THREE.ColorRepresentation, rough = 0.42): THREE.MeshStandardMaterial {
@@ -138,6 +139,8 @@ export function disposeTree(o: THREE.Object3D): void {
  * glints, drawn once on a tileable canvas. Call `update(t)` each frame to make it drift.
  */
 export function toonWater(base: string, repeat: number): { material: THREE.MeshStandardMaterial; update: (t: number) => void } {
+  // the animated sea (from Michael's Sea part model) everywhere it loaded; painted bands otherwise
+  if (hasWaves()) return seaWater(base, 11);
   const S = 256;
   const cv = document.createElement('canvas');
   cv.width = cv.height = S;

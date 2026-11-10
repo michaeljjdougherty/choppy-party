@@ -5,6 +5,7 @@ import { ChoppyModel } from '../choppy';
 import { place } from '../assets';
 import { makeScene, mesh, toy } from '../kit';
 import type { Tag, View } from '../stage';
+import { sandMaterial } from '../nature';
 
 export function quickDrawView(env: THREE.Texture, state: QuickDrawState, players: PlayerInfo[]): View {
   const scene = makeScene(env, {
@@ -18,7 +19,7 @@ export function quickDrawView(env: THREE.Texture, state: QuickDrawState, players
   camera.position.set(0, 3.6, 15);
   camera.lookAt(0, 3.3, 0);
 
-  const sand = mesh(new THREE.CircleGeometry(120, 48), toy('#f2c27c', 0.85), { cast: false, receive: true });
+  const sand = mesh(new THREE.CircleGeometry(120, 48), sandMaterial('#f2c27c', 26), { cast: false, receive: true });
   sand.rotation.x = -Math.PI / 2;
   scene.add(sand);
   // dunes and mesas in the distance

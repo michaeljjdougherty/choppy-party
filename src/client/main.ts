@@ -153,8 +153,13 @@ function render(wallT: number, dt: number) {
     bar.classList.add('hidden');
     const view = stage.show('main-menu', () => mainMenuView(stage.env, () => menu.screen));
     view.update(null, [], wallT, dt);
-    stage.render();
+    stage.render(dt, wallT);
     menu.draw(ctx, wallT);
+    if (stage.switches !== seenSwitches) {
+      if (seenSwitches > 0) wipeT = 0;
+      seenSwitches = stage.switches;
+    }
+    drawWipe(dt);
     return;
   }
   const s = session.view();
@@ -179,8 +184,13 @@ function render(wallT: number, dt: number) {
     view = stage.show('menu', () => menuView(stage.env, () => session?.localIds() ?? new Set(), () => session?.kind === 'online'));
     view.update(s, s.players, wallT, dt);
   }
-  stage.render();
+  stage.render(dt, wallT);
   drawTags(view.tags());
+  if (stage.switches !== seenSwitches) {
+    // skip the wipe for the very first scene
+    if (seenSwitches > 0) wipeT = 0;
+    seenSwitches = stage.switches;
+  }
 
   const sc = { status: session.status(), roomCode: session.roomCode() };
   switch (s.phase) {
@@ -204,6 +214,33 @@ function render(wallT: number, dt: number) {
       break;
   }
   drawConfetti(ctx, dt, wallT);
+  drawWipe(dt);
+}
+
+/** Screen transition: candy-coloured diagonal bands sweep off the screen to reveal the new scene. */
+let wipeT = 9;
+let seenSwitches = 0;
+const WIPE = ['#ff5a5f', '#ff9f1c', '#ffd23f', '#4cd97b', '#3fa9f5', '#b06cff'];
+function drawWipe(dt: number) {
+  if (wipeT > 1.2) return;
+  wipeT += dt;
+  const bandW = 260;
+  ctx.save();
+  WIPE.forEach((c, i) => {
+    // each band leaves a little after the one before it, with an ease-in so they whoosh away
+    const p = Math.min(1, Math.max(0, (wipeT - i * 0.05) / 0.5));
+    const e = p * p * (3 - 2 * p);
+    const x0 = -200 + i * bandW * 0.5 - e * (VIEW_W + 900);
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.moveTo(x0, 0);
+    ctx.lineTo(x0 + VIEW_W + 600, 0);
+    ctx.lineTo(x0 + VIEW_W + 300, VIEW_H);
+    ctx.lineTo(x0 - 300, VIEW_H);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.restore();
 }
 
 /** Name plates that follow characters around the 3D scene. */

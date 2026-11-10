@@ -116,3 +116,46 @@ export function drawTimer(ctx: CanvasRenderingContext2D, secondsLeft: number): v
   ctx.restore();
   text(ctx, String(s), 640, 37, 28, { color: s <= 5 ? '#ffd23f' : '#fff', outline: false });
 }
+
+// ---- bouncy HUD numbers ------------------------------------------------------------------------
+const popSeen = new Map<string, { v: number; at: number }>();
+const nowSec = () => (typeof performance !== 'undefined' ? performance.now() / 1000 : 0);
+
+/**
+ * Size multiplier for a HUD number that should "boing" when it changes: a quick overshoot to
+ * about 1.5x that springs back to 1. `key` identifies the counter.
+ */
+export function pop(key: string, value: number): number {
+  const now = nowSec();
+  const seen = popSeen.get(key);
+  if (!seen) {
+    popSeen.set(key, { v: value, at: -10 });
+    return 1;
+  }
+  if (seen.v !== value) {
+    seen.v = value;
+    seen.at = now;
+  }
+  const t = now - seen.at;
+  if (t > 0.6) return 1;
+  return 1 + Math.exp(-7 * t) * Math.cos(t * 18) * 0.5;
+}
+
+/** Text drawn with a bouncy scale around its anchor (left-aligned anchors grow to the right). */
+export function popText(
+  ctx: CanvasRenderingContext2D,
+  key: string,
+  value: number,
+  x: number,
+  y: number,
+  size: number,
+  opts: { color?: string; align?: CanvasTextAlign; weight?: number; outline?: boolean } = {},
+): void {
+  const k = pop(key, value);
+  if (k === 1) return text(ctx, String(value), x, y, size, opts);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  text(ctx, String(value), 0, 0, size, opts);
+  ctx.restore();
+}

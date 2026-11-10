@@ -3,6 +3,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import { ANVIL_HIT, AX0, AX1, AY0, AY1, FALL_TIME, type CloudburstState } from '../../../shared/games/coinCloudburst';
 import { ChoppyModel } from '../choppy';
 import { place, prop } from '../assets';
+import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, stripeTexture, toy, wx, wz, yaw } from '../kit';
 import type { Tag, View } from '../stage';
 
@@ -108,6 +109,9 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
     scene.add(m.group);
   }
   const lastPos = new Map<string, [number, number]>();
+  const fx = new Fx(scene);
+  const prevRunner = new Map<string, { z: number; coins: number; stun: boolean }>();
+  const boomed = new Set<string>();
   let last = state;
 
   return {
@@ -163,6 +167,30 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
           sh.position.set(x, 0.02, z);
         }
       }
+      // explosions, once per bomb
+      const liveBombs = new Set<string>();
+      for (const d of s.drops) {
+        if (d.kind !== 'anvil' || d.fall > 0) continue;
+        const key = `${d.x.toFixed(1)},${d.y.toFixed(1)}`;
+        liveBombs.add(key);
+        if (!boomed.has(key)) {
+          boomed.add(key);
+          fx.blast(new THREE.Vector3(wx(d.x), 0.6, wz(d.y)), ANVIL_HIT * PX * 0.8);
+          shake(0.35);
+        }
+      }
+      for (const k of boomed) if (!liveBombs.has(k)) boomed.delete(k);
+      for (const r of s.runners) {
+        const pr = prevRunner.get(r.id);
+        const at = new THREE.Vector3(wx(r.x), 0.15, wz(r.y));
+        if (pr) {
+          if (pr.z > 4 && (r.z ?? 0) <= 0.01) fx.dust(at, 0.8);
+          if (r.coins > pr.coins) fx.sparkle(at.clone().setY(1.6), r.coins - pr.coins >= 5 ? '#45e3ff' : '#ffd23f', r.coins - pr.coins >= 5 ? 18 : 9);
+          if (r.stun > 0 && !pr.stun) fx.bonk(at.clone().setY(1.8));
+        }
+        prevRunner.set(r.id, { z: r.z ?? 0, coins: r.coins, stun: r.stun > 0 });
+      }
+      fx.update(dt);
       for (const r of s.runners) {
         const m = models.get(r.id)!;
         const prev = lastPos.get(r.id) ?? [r.x, r.y];

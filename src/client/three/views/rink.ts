@@ -3,6 +3,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import type { RinkState } from '../../../shared/games/shrinkingRink';
 import { ChoppyModel } from '../choppy';
 import { place } from '../assets';
+import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, toy, wx, wz, yaw } from '../kit';
 import type { Tag, View } from '../stage';
 
@@ -65,6 +66,8 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
     scene.add(m.group);
   }
   let last: RinkState = state;
+  const fx = new Fx(scene);
+  const prev = new Map<string, { z: number; vz: number; alive: boolean; dashing: boolean; vx: number; vy: number }>();
 
   return {
     scene,
@@ -85,6 +88,22 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
       ring.scale.setScalar(r);
       floes.forEach((f, i) => (f.position.y = -0.42 + Math.sin(t * 1.3 + i) * 0.06));
       for (const k of s.skaters) {
+        const pk = prev.get(k.id);
+        const at = new THREE.Vector3(wx(k.x), 0.4, wz(k.y));
+        if (pk) {
+          // knocked up into the air by a bump: impact stars and a little shake
+          if (k.alive && k.vz > 150 && pk.vz <= 150 && !(k.dashing > 0 && !pk.dashing)) {
+            fx.bonk(at.clone().setY(1.4));
+            shake(Math.min(0.4, k.vz / 1400));
+          }
+          if (pk.z > 4 && k.z <= 0.01 && k.alive) fx.dust(at, 0.9);
+          if (k.dashing > 0 && !pk.dashing) fx.dust(at, 0.6);
+          if (pk.alive && !k.alive) {
+            fx.splash(at.clone().setY(-0.2));
+            shake(0.25);
+          }
+        }
+        prev.set(k.id, { z: k.z, vz: k.vz, alive: k.alive, dashing: k.dashing > 0, vx: k.vx, vy: k.vy });
         const m = models.get(k.id);
         if (!m) continue;
         m.group.position.set(wx(k.x), 0, wz(k.y));
@@ -99,6 +118,7 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
         m.group.rotation.x = 0;
         m.update(dt, { speed: Math.hypot(k.vx, k.vy) / 360, jump: (k.z * PX) / SCALE });
       }
+      fx.update(dt);
     },
     tags(): Tag[] {
       return last.skaters

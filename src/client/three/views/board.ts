@@ -6,6 +6,7 @@ import { currentPlayer, exits } from '../../../shared/board/engine';
 import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
 import { roundedRect } from '../../../shared/board/layout';
 import { ChoppyModel } from '../choppy';
+import { Fx, shake } from '../fx';
 import { darken, makeScene, mesh, toy } from '../kit';
 import { place } from '../assets';
 import type { Tag, View } from '../stage';
@@ -495,6 +496,9 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   let last = party.board!;
   const pos = new Map<string, THREE.Vector3>();
   const lastNode = new Map<string, string>();
+  const lastCoins = new Map<string, number>();
+  const lastCrowns = new Map<string, number>();
+  const fx = new Fx(scene);
   const kick = (nodeId: string, v: number) => {
     const sp = springs.get(nodeId);
     if (sp) sp.v -= v;
@@ -559,11 +563,24 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       // tile springs
       for (const [id, pl] of Object.entries(b.players)) {
         const prevNode = lastNode.get(id);
+        const n = def.nodes[pl.node];
+        const at = new THREE.Vector3(n.x, 0.45, n.z);
         if (prevNode !== undefined && prevNode !== pl.node) {
           kick(pl.node, 3.2);
           models.get(id)?.squash(6);
+          fx.dust(at, 0.6);
         }
         lastNode.set(id, pl.node);
+        const pc = lastCoins.get(id);
+        if (pc !== undefined && pl.coins > pc) fx.sparkle(at.clone().setY(1.6), '#ffd23f', 6 + Math.min(14, pl.coins - pc));
+        if (pc !== undefined && pl.coins < pc) fx.emit(at.clone().setY(1.4), { tex: 'puff', color: '#ff7a7a', n: 6, speed: [1, 2], up: 1, life: [0.3, 0.5], size: [0.4, 0.8] });
+        lastCoins.set(id, pl.coins);
+        const pcr = lastCrowns.get(id);
+        if (pcr !== undefined && pl.crowns > pcr) {
+          fx.party(at.clone().setY(1.8));
+          shake(0.2);
+        }
+        lastCrowns.set(id, pl.crowns);
       }
       for (const sp of springs.values()) {
         if (sp.y === 0 && sp.v === 0) continue;
@@ -577,6 +594,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         sp.parts[0].scale.set(1 - sp.y * 0.6, 1 + sp.y * 1.5, 1 - sp.y * 0.6);
       }
 
+      fx.update(dt);
       for (const [id, m] of models) {
         if (!b.players[id]) continue;
         const target = spotFor(b, id);

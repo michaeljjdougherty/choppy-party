@@ -2,7 +2,7 @@ import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
 import { currentPlayer } from '../shared/board/engine';
 import { CROWN_PRICE, TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
-import { playerById, roundRect, text } from '../shared/draw';
+import { playerById, popText, roundRect, text } from '../shared/draw';
 
 export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
   const b = s.board!;
@@ -41,9 +41,9 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     const ink = on ? '#2a1b5e' : '#ffffff';
     text(ctx, p.name, x + 36, y + 22, w < 120 ? 14 : 17, { align: 'left', color: ink, outline: false });
     crownIcon(ctx, x + 18, y + 54);
-    text(ctx, String(bp.crowns), x + 34, y + 55, 20, { align: 'left', color: ink, outline: false });
+    popText(ctx, `crowns:${id}`, bp.crowns, x + 34, y + 55, 20, { align: 'left', color: ink, outline: false });
     coinIcon(ctx, x + w / 2 + 12, y + 54);
-    text(ctx, String(bp.coins), x + w / 2 + 26, y + 55, 20, { align: 'left', color: ink, outline: false });
+    popText(ctx, `coins:${id}`, bp.coins, x + w / 2 + 26, y + 55, 20, { align: 'left', color: ink, outline: false });
   });
 
   // centre callouts

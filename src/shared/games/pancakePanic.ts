@@ -1,6 +1,6 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
-import { drawTimer, text } from '../draw';
+import { drawTimer, popText, text } from '../draw';
 
 const READY = 3;
 const MASH = 10;
@@ -53,7 +53,7 @@ export const pancakePanic: Minigame<PancakeState> = {
 
   /** HUD drawn over the 3D view; stack counts are labels in the 3D view. */
   draw(ctx, s) {
-    if (s.t < READY) text(ctx, String(Math.ceil(READY - s.t)), 640, 150, 140, { color: '#ff5a5f' });
+    if (s.t < READY) popText(ctx, 'pp:count', Math.ceil(READY - s.t), 640, 150, 140, { color: '#ff5a5f' });
     else if (s.t < READY + 0.8) text(ctx, 'MASH!', 640, 150, 120, { color: '#ff5a5f' });
     else if (s.t <= READY + MASH) drawTimer(ctx, READY + MASH - s.t);
     else text(ctx, 'Stop!', 640, 150, 110, { color: '#ff5a5f' });

@@ -1,6 +1,6 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT, clamp } from '../types';
-import { drawTimer, playerById, text } from '../draw';
+import { drawTimer, playerById, popText } from '../draw';
 import { rand, randRange, type Rng } from '../rng';
 import { bump, jump, newBody, steer, stepVertical, type Body } from '../physics';
 
@@ -171,7 +171,7 @@ export const coinCloudburst: Minigame<CloudburstState> = {
       ctx.beginPath();
       ctx.arc(x, 38, 11, 0, Math.PI * 2);
       ctx.fill();
-      text(ctx, String(r.coins), x + 20, 38, 22, { align: 'left' });
+      popText(ctx, `cc:${r.id}`, r.coins, x + 20, 38, 22, { align: 'left' });
     });
     drawTimer(ctx, DURATION - s.t);
   },

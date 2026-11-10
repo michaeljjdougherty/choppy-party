@@ -4,6 +4,7 @@ import { standings, type PartyState } from '../../../shared/party';
 import { ChoppyModel } from '../choppy';
 import { checkerTexture, makeScene, mesh, toy } from '../kit';
 import { place } from '../assets';
+import { Fx, shake } from '../fx';
 import type { Tag, View } from '../stage';
 
 const BALLOON_COLORS = ['#ff5a5f', '#3fa9f5', '#ffd23f', '#4cd97b', '#b06cff', '#ff9f1c', '#ff7bd5'];
@@ -77,11 +78,22 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
     [-6.5, '#d5dbe6', 0.85],
     [-2.7, '#e09a5a', 0.5],
   ];
+  const blocks: THREE.Mesh[] = [];
   for (const [x, c, h] of podiumSpec) {
-    const block = mesh(new THREE.BoxGeometry(1.8, h, 1.6), toy(c, 0.3), { receive: true });
-    block.position.set(x, h / 2, 1);
+    // geometry sits on y = 0 so scaling y grows it up out of the floor
+    const geo = new THREE.BoxGeometry(1.8, h, 1.6);
+    geo.translate(0, h / 2, 0);
+    const block = mesh(geo, toy(c, 0.3), { receive: true });
+    block.position.set(x, 0, 1);
     podium.add(block);
+    blocks.push(block);
   }
+  // podium blocks spring up one after another: 3rd, 2nd, then 1st
+  const GROW_DELAY = [0.7, 0.4, 0.1];
+  const springOut = (p: number) => (p <= 0 ? 0 : p >= 1 ? 1 : 1 - Math.exp(-6 * p) * Math.cos(10 * p));
+  let rankT = -1;
+  const fx = new Fx(scene);
+  const hops = new Map<string, { from: THREE.Vector3; t: number; dur: number; h: number }>();
   scene.add(podium);
 
   const models = new Map<string, { m: ChoppyModel; target: THREE.Vector3; scale: number }>();
@@ -113,7 +125,7 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
       if (!e) return;
       if (i < 3) {
         const [x, , h] = podiumSpec[i];
-        e.target.set(x, h, 1);
+        e.target.set(x, h * blocks[i].scale.y, 1);
       } else {
         const k = i - 3;
         const span = 7;
@@ -143,8 +155,19 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
           models.delete(id);
         }
       }
-      layout(s);
       const ranked = s.phase === 'results' || s.phase === 'final';
+      const prevRankT = rankT;
+      rankT = ranked ? (rankT < 0 ? 0 : rankT + dt) : -1;
+      blocks.forEach((b, i) => {
+        const p = ranked ? Math.min(1, Math.max(0, (rankT - GROW_DELAY[i]) / 0.55)) : 1;
+        b.scale.y = Math.max(0.001, springOut(p));
+        // a puff of dust as each block lands at full height
+        if (ranked && prevRankT >= 0 && prevRankT < GROW_DELAY[i] + 0.25 && rankT >= GROW_DELAY[i] + 0.25) {
+          fx.dust(new THREE.Vector3(podiumSpec[i][0], 0.1, 1.6), 1);
+          shake(0.08);
+        }
+      });
+      layout(s);
       if (ranked) look.set(-1.6, 1.6, 0);
       else if (s.phase === 'intro') look.set(0, 3.1, 0);
       else look.set(0, 1.3, 0);
@@ -158,12 +181,30 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
             : new Set<string>();
       for (const [id, e] of models) {
         const g = e.m.group;
-        g.position.lerp(e.target, Math.min(1, dt * 6));
-        const moving = g.position.distanceTo(e.target) > 0.05;
+        // big moves (onto the podium, back to the lobby line) are bouncy hops, not slides
+        let hop = hops.get(id);
+        if (!hop && g.position.distanceTo(e.target) > 1.2 && g.position.y < 5) {
+          hop = { from: g.position.clone(), t: 0, dur: 0.55, h: 1.6 + Math.max(0, e.target.y - g.position.y) };
+          hops.set(id, hop);
+        }
+        if (hop) {
+          hop.t += dt;
+          const f = Math.min(1, hop.t / hop.dur);
+          g.position.lerpVectors(hop.from, e.target, f);
+          g.position.y += Math.sin(f * Math.PI) * hop.h;
+          if (f >= 1) {
+            hops.delete(id);
+            e.m.squash(7);
+            fx.dust(g.position.clone().setY(g.position.y + 0.1), 0.5);
+            if (winners.has(id)) fx.party(g.position.clone().setY(g.position.y + 2));
+          }
+        } else g.position.lerp(e.target, Math.min(1, dt * 8));
+        const moving = !!hop || g.position.distanceTo(e.target) > 0.05;
         g.rotation.y = Math.sin(t * 0.8 + id.length) * 0.25;
         const ready = s.phase === 'intro' && s.ready.includes(id);
         e.m.update(dt, { speed: moving ? 0.6 : 0, happy: ready || winners.has(id), t: t + id.length });
       }
+      fx.update(dt);
       spinners.forEach((c, i) => {
         c.rotation.y = t * 2 + i;
         c.position.y = 4.6 + (i % 2) * 0.8 + Math.sin(t * 2 + i) * 0.2;

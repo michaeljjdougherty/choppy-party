@@ -66,6 +66,7 @@ export interface Minigame<S = any> {
   step(state: S, inputs: Inputs, dt: number): void;
   isOver(state: S): boolean;
   results(state: S): ResultRow[];
+  /** 2D HUD (timer, scores, callouts) drawn on top of the 3D view. The 3D scene lives in src/client/three/views. */
   draw(ctx: CanvasRenderingContext2D, state: S, players: PlayerInfo[]): void;
 }
 

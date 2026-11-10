@@ -1,16 +1,16 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT, clamp } from '../types';
-import { drawChoppy, drawTimer, playerById, text } from '../draw';
+import { drawTimer, playerById, text } from '../draw';
 import { rand, randRange, type Rng } from '../rng';
 
 const DURATION = 35;
 const SPEED = 300;
 const R = 22;
-const FALL_TIME = 1.1;
+export const FALL_TIME = 1.1;
 const COIN_LIFE = 4;
 const STUN = 1.4;
-const ANVIL_HIT = 46;
-const AX0 = 60, AX1 = 1220, AY0 = 100, AY1 = 690;
+export const ANVIL_HIT = 46;
+export const AX0 = 60, AX1 = 1220, AY0 = 100, AY1 = 690;
 
 interface Drop {
   kind: 'coin' | 'gem' | 'anvil';
@@ -146,111 +146,25 @@ export const coinCloudburst: Minigame<CloudburstState> = {
       .sort((a, b) => b.value - a.value);
   },
 
+  /** HUD drawn over the 3D view. */
   draw(ctx, s, players) {
-    ctx.fillStyle = '#3b6e3f';
-    ctx.fillRect(0, 0, 1280, 720);
-    ctx.fillStyle = '#5c9a4f';
-    ctx.fillRect(AX0, AY0, AX1 - AX0, AY1 - AY0);
-    ctx.fillStyle = 'rgba(255,255,255,0.05)';
-    for (let x = AX0; x < AX1; x += 80) ctx.fillRect(x, AY0, 40, AY1 - AY0);
-
-    // landed items and shadows
-    for (const d of s.drops) {
-      if (d.fall > 0) {
-        const p = 1 - d.fall / FALL_TIME;
-        ctx.fillStyle = d.kind === 'anvil' ? `rgba(120,0,0,${0.15 + p * 0.35})` : `rgba(0,0,0,${0.1 + p * 0.25})`;
-        ctx.beginPath();
-        const rad = d.kind === 'anvil' ? ANVIL_HIT : 16;
-        ctx.ellipse(d.x, d.y, rad * (0.4 + p * 0.6), rad * 0.5 * (0.4 + p * 0.6), 0, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (d.kind !== 'anvil') {
-        drawCoin(ctx, d.x, d.y, d.kind, d.life < 1 ? Math.floor(d.life * 10) % 2 === 0 : true);
-      } else {
-        drawAnvil(ctx, d.x, d.y, 1);
-      }
-    }
-
-    const sorted = [...s.runners].sort((a, b) => a.y - b.y);
-    for (const r of sorted) {
-      const p = playerById(players, r.id);
-      if (!p) continue;
-      drawChoppy(ctx, r.x, r.y, R, p.color, { look: r.face, stunned: r.stun > 0, name: p.name });
-      if (r.pop > 0) text(ctx, '+', r.x + 26, r.y - 30 - (0.3 - r.pop) * 60, 22, { color: '#ffd23f' });
-    }
-
-    // things still in the air are drawn above everyone
-    for (const d of s.drops) {
-      if (d.fall <= 0) continue;
-      const lift = (d.fall / FALL_TIME) * 420;
-      if (d.y - lift < -40) continue;
-      if (d.kind === 'anvil') drawAnvil(ctx, d.x, d.y - lift, 1);
-      else drawCoin(ctx, d.x, d.y - lift, d.kind, true);
-    }
-
-    // scoreboard
     const n = s.runners.length;
+    const half = Math.ceil(n / 2);
     s.runners.forEach((r, i) => {
       const p = playerById(players, r.id);
       if (!p) return;
       // split the scoreboard either side of the timer
-      const half = Math.ceil(n / 2);
       const x = i < half ? 40 + i * (500 / half) : 740 + (i - half) * (500 / Math.max(1, n - half));
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.roundRect(x - 18, 20, 92, 36, 18);
+      ctx.fill();
       ctx.fillStyle = p.color;
       ctx.beginPath();
       ctx.arc(x, 38, 11, 0, Math.PI * 2);
       ctx.fill();
-      text(ctx, String(r.coins), x + 18, 38, 22, { align: 'left' });
+      text(ctx, String(r.coins), x + 20, 38, 22, { align: 'left' });
     });
     drawTimer(ctx, DURATION - s.t);
   },
 };
-
-function drawCoin(ctx: CanvasRenderingContext2D, x: number, y: number, kind: 'coin' | 'gem', visible: boolean): void {
-  if (!visible) return;
-  if (kind === 'gem') {
-    ctx.fillStyle = '#4ee6ff';
-    ctx.strokeStyle = '#1a7f9c';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(x, y - 16);
-    ctx.lineTo(x + 13, y - 3);
-    ctx.lineTo(x, y + 16);
-    ctx.lineTo(x - 13, y - 3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    return;
-  }
-  ctx.fillStyle = '#ffd23f';
-  ctx.strokeStyle = '#b8860b';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(x, y, 12, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = '#fff3b0';
-  ctx.fillRect(x - 2, y - 6, 4, 12);
-}
-
-function drawAnvil(ctx: CanvasRenderingContext2D, x: number, y: number, alpha: number): void {
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = '#4a4f5a';
-  ctx.strokeStyle = '#1f2228';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(x - 34, y - 22);
-  ctx.lineTo(x + 30, y - 22);
-  ctx.lineTo(x + 38, y - 12);
-  ctx.lineTo(x + 14, y - 6);
-  ctx.lineTo(x + 14, y + 6);
-  ctx.lineTo(x + 26, y + 16);
-  ctx.lineTo(x - 26, y + 16);
-  ctx.lineTo(x - 14, y + 6);
-  ctx.lineTo(x - 14, y - 6);
-  ctx.lineTo(x - 34, y - 12);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}

@@ -1,6 +1,6 @@
 # Choppy Party
 
-A browser party game for 2 to 10 players: local on one screen, online with room codes, or both at once. Gamepads (any standard pad via the Gamepad API) and keyboards are supported.
+A 3D browser party game (Three.js, glossy cartoon style) for 2 to 10 players: local on one screen, online with room codes, or both at once. Gamepads (any standard pad via the Gamepad API) and keyboards are supported.
 
 Design doc (all 30 planned minigames, stack, architecture): https://claude.ai/artifact/47BsotP3fLpMUh3W5wRCHP
 
@@ -32,9 +32,10 @@ Click **Host online** to open a room; share the 4-letter code or the `?room=CODE
 - `src/shared/types.ts` minigame interface and input types
 - `src/shared/party.ts` party flow: lobby, intro, play, results, final scores
 - `src/shared/games/` one file per minigame; register new ones in `games/index.ts`
-- `src/client/` input manager, local and online sessions, menu screens
+- `src/client/` input manager, local and online sessions, menu HUD screens
+- `src/client/three/` 3D renderer: stage, the Choppy character model, and one 3D view per minigame in `views/`
 - `src/server/server.ts` WebSocket room server and static file server
 
 ## Adding a minigame
 
-Implement `Minigame` (setup, step, isOver, results, draw), keep state plain JSON, use the seeded RNG in `src/shared/rng.ts` for randomness, and add it to `GAMES`. The tests in `tests/games.test.ts` automatically check every registered game finishes, ranks every player, is deterministic and survives a JSON round trip.
+Implement `Minigame` (setup, step, isOver, results, and a 2D HUD `draw`), add a 3D view in `src/client/three/views/` and register it in `GAME_VIEWS`, keep state plain JSON, use the seeded RNG in `src/shared/rng.ts` for randomness, and add it to `GAMES`. The tests in `tests/games.test.ts` automatically check every registered game finishes, ranks every player, is deterministic and survives a JSON round trip.

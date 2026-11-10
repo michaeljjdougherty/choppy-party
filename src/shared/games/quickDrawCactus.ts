@@ -1,6 +1,6 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
-import { drawChoppy, playerById, text } from '../draw';
+import { text } from '../draw';
 import { randRange, type Rng } from '../rng';
 
 const ROUNDS = 3;
@@ -101,88 +101,10 @@ export const quickDrawCactus: Minigame<QuickDrawState> = {
       .sort((a, b) => b.value - a.value);
   },
 
-  draw(ctx, s, players) {
-    // sky and desert
-    const sky = ctx.createLinearGradient(0, 0, 0, 480);
-    sky.addColorStop(0, '#ff9a5a');
-    sky.addColorStop(1, '#ffd59a');
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, 1280, 720);
-    ctx.fillStyle = '#ffe9b0';
-    ctx.beginPath();
-    ctx.arc(1050, 150, 70, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#e0a25c';
-    ctx.beginPath();
-    ctx.moveTo(0, 470);
-    for (let x = 0; x <= 1280; x += 80) ctx.lineTo(x, 460 + Math.sin(x / 140) * 18);
-    ctx.lineTo(1280, 720);
-    ctx.lineTo(0, 720);
-    ctx.fill();
-
-    // the cactus
-    const bloom = s.phase === 'bloom' || (s.phase === 'reveal' && s.ids.some((id) => (s.reaction[id] ?? 0) > 0));
-    const cx = 640;
-    ctx.fillStyle = '#3f9b4f';
-    ctx.strokeStyle = '#21602c';
-    ctx.lineWidth = 5;
-    const arm = (x: number, y: number, w: number, h: number) => {
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, w / 2);
-      ctx.fill();
-      ctx.stroke();
-    };
-    arm(cx - 40, 160, 80, 330);
-    arm(cx - 130, 250, 50, 120);
-    arm(cx - 130, 330, 110, 45);
-    arm(cx + 80, 210, 50, 120);
-    arm(cx + 20, 290, 110, 45);
-    if (bloom) {
-      const pulse = 1 + Math.sin(s.t * 12) * 0.06;
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 + s.t;
-        ctx.fillStyle = '#ff4fa3';
-        ctx.beginPath();
-        ctx.ellipse(cx + Math.cos(a) * 30 * pulse, 150 + Math.sin(a) * 30 * pulse, 26, 14, a, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.fillStyle = '#ffd23f';
-      ctx.beginPath();
-      ctx.arc(cx, 150, 18, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      ctx.fillStyle = '#2f7a3b';
-      ctx.beginPath();
-      ctx.arc(cx, 160, 14, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    if (s.phase === 'bloom') text(ctx, 'DRAW!', 640, 80, 72, { color: '#ff2f6d' });
-    else if (s.phase === 'wait') text(ctx, 'Wait for it...', 640, 80, 44);
-    text(ctx, `Round ${Math.min(s.round + 1, ROUNDS)} of ${ROUNDS}`, 30, 36, 26, { align: 'left' });
-
-    // players in a row
-    const n = s.ids.length;
-    const gap = Math.min(120, 1180 / Math.max(1, n));
-    const x0 = 640 - ((n - 1) * gap) / 2;
-    s.ids.forEach((id, i) => {
-      const p = playerById(players, id);
-      if (!p) return;
-      const x = x0 + i * gap;
-      const r = s.reaction[id];
-      const jump = r !== null && r > 0 && s.phase !== 'wait' ? -14 : 0;
-      drawChoppy(ctx, x, 590 + jump, 30, p.color, { look: -Math.PI / 2, stunned: r === -1, name: p.name });
-      let label = '';
-      let color = '#fff';
-      if (r === -1) {
-        label = 'Too early!';
-        color = '#ff5a5f';
-      } else if (r !== null && s.phase !== 'wait') {
-        label = r >= MAX_WAIT_MS ? 'Asleep...' : `${r} ms`;
-        color = '#ffd23f';
-      }
-      if (label) text(ctx, label, x, 650, 18, { color });
-      text(ctx, `${(s.totals[id] / 1000).toFixed(2)}s`, x, 680, 15, { color: '#fff', weight: 500 });
-    });
+  /** HUD drawn over the 3D view; per-player times are labels in the 3D view. */
+  draw(ctx, s) {
+    if (s.phase === 'bloom') text(ctx, 'DRAW!', 640, 90, 96, { color: '#ff2f6d' });
+    else if (s.phase === 'wait') text(ctx, 'Wait for it…', 640, 80, 52);
+    text(ctx, `Round ${Math.min(s.round + 1, ROUNDS)} of ${ROUNDS}`, 30, 40, 28, { align: 'left' });
   },
 };

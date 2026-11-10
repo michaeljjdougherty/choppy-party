@@ -1,6 +1,6 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
-import { drawChoppy, drawTimer, playerById, text } from '../draw';
+import { drawTimer, text } from '../draw';
 
 const CX = 640;
 const CY = 390;
@@ -164,66 +164,10 @@ export const shrinkingRink: Minigame<RinkState> = {
       .sort((a, b) => b.value - a.value);
   },
 
-  draw(ctx, s, players) {
-    // water
-    ctx.fillStyle = '#123a5c';
-    ctx.fillRect(0, 0, 1280, 720);
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 12; i++) {
-      const y = 60 + i * 60 + Math.sin(s.t * 1.5 + i) * 6;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      for (let x = 0; x <= 1280; x += 40) ctx.lineTo(x, y + Math.sin(x / 80 + s.t * 2 + i) * 5);
-      ctx.stroke();
-    }
-    // rink
-    const grad = ctx.createRadialGradient(CX, CY - 60, 20, CX, CY, s.rink);
-    grad.addColorStop(0, '#f3fbff');
-    grad.addColorStop(1, '#b9dff2');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(CX, CY, s.rink, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#ff6b6b';
-    ctx.lineWidth = 6;
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(80,140,190,0.35)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(CX, CY, s.rink * 0.35, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // fallen first (under), then living sorted by y
-    const ordered = [...s.skaters].sort((a, b) => Number(b.alive === false) - Number(a.alive === false) || a.y - b.y);
-    for (const k of ordered) {
-      const p = playerById(players, k.id);
-      if (!p) continue;
-      if (!k.alive) {
-        if (k.fall >= 1) continue;
-        ctx.save();
-        ctx.globalAlpha = 1 - k.fall;
-        drawChoppy(ctx, k.x, k.y + k.fall * 30, R * (1 - k.fall * 0.5), p.color, { stunned: true });
-        ctx.restore();
-        continue;
-      }
-      if (k.dashing > 0) {
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.beginPath();
-        ctx.arc(k.x - k.vx * 0.05, k.y - k.vy * 0.05, R * 1.1, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      drawChoppy(ctx, k.x, k.y, R, p.color, { look: k.face, name: p.name });
-      if (k.dashCd > 0) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(k.x, k.y, R + 6, -Math.PI / 2, -Math.PI / 2 + (1 - k.dashCd / DASH_COOLDOWN) * Math.PI * 2);
-        ctx.stroke();
-      }
-    }
+  /** HUD drawn over the 3D view. */
+  draw(ctx, s) {
     drawTimer(ctx, TIME_LIMIT - s.t);
     const alive = s.skaters.filter((k) => k.alive).length;
-    text(ctx, `${alive} left`, 1200, 37, 24, { align: 'right' });
+    text(ctx, `${alive} left`, 1240, 37, 26, { align: 'right' });
   },
 };

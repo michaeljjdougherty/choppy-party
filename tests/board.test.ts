@@ -21,7 +21,7 @@ describe.each(BOARDS.map((b) => [b.name, b] as const))('%s layout', (_n, def) =>
   it('spaces do not overlap', () => {
     let min = Infinity;
     for (let i = 0; i < nodes.length; i++)
-      for (let j = i + 1; j < nodes.length; j++) min = Math.min(min, Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z));
+      for (let j = i + 1; j < nodes.length; j++) min = Math.min(min, Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z, nodes[i].y - nodes[j].y));
     expect(min).toBeGreaterThan(1.7);
   });
 

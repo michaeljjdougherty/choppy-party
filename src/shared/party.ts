@@ -99,7 +99,7 @@ export function createParty(seed: number): PartyState {
 
 /** The first human player runs the menus (bots never host unless there's nobody else). */
 export function hostId(s: PartyState): string | undefined {
-  return (s.players.find((p) => !p.bot) ?? s.players[0])?.id;
+  return (s.players.find((p) => !p.bot && !p.away) ?? s.players.find((p) => !p.bot) ?? s.players[0])?.id;
 }
 
 export function addPlayer(s: PartyState, id: string, name?: string): PlayerInfo | null {

@@ -29,6 +29,8 @@ export interface BoardNode {
   id: string;
   x: number; // world units
   z: number;
+  /** Height above the ground plane (hills, decks, bridges). */
+  y: number;
   type: SpaceType;
   next: string[];
   /** Lantern Hollow: different exits by day and by night. */
@@ -119,6 +121,19 @@ export interface BoardDef {
   /** Lantern Hollow: pairs of spaces a toppling pine can fall across. */
   pines?: string[][];
   preset: BoardPreset;
+  /** Hills and mountains under the board. Spaces on terrain boards sit on this ground. */
+  hills?: Hill[];
+}
+
+/** A smooth hill: flat top out to `top` (fraction of r), easing down to nothing at radius r. */
+export interface Hill {
+  x: number;
+  z: number;
+  r: number;
+  h: number;
+  top?: number;
+  /** Stretch along x (1 = round). */
+  sx?: number;
 }
 
 export type ItemId =

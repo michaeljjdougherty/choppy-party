@@ -46,6 +46,8 @@ export interface PlayerInfo {
   team?: number;
   /** Computer player and how good it is. */
   bot?: 'easy' | 'normal' | 'hard';
+  /** Online: this player's connection dropped mid-game, so a Normal CPU plays for them until they're back. */
+  away?: boolean;
 }
 
 export type Inputs = Record<string, TickInput>;

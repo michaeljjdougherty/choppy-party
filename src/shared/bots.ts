@@ -115,14 +115,14 @@ const stick = (x: number, y: number, a = false): TickInput => ({ ...NO_INPUT, x,
 
 /** Fill in input for every bot in the party. Human input is left alone. */
 export function addBotInputs(s: BotView, inputs: Inputs, dt: number): Inputs {
-  const bots = s.players.filter((p) => p.bot);
+  const bots = s.players.filter((p) => p.bot || p.away);
   if (!bots.length) return inputs;
   const out: Inputs = { ...inputs };
   for (const p of bots) {
     const mem = (s.botMem[p.id] ??= newMem());
     mem.t += dt;
     mem.next -= dt;
-    out[p.id] = think(s, p, SKILL[p.bot!], mem, dt);
+    out[p.id] = think(s, p, SKILL[p.bot ?? 'normal'], mem, dt);
   }
   return out;
 }
@@ -140,7 +140,8 @@ function remember(mem: BotMem, key: string, wait: number): boolean {
 
 function think(s: BotView, p: PlayerInfo, sk: Skill, mem: BotMem, dt: number): TickInput {
   const r = s.botRng;
-  const host = !s.players.some((q) => !q.bot) && s.players[0]?.id === p.id;
+  // a CPU only drives the menus when no human is around (all left, or all dropped mid-game)
+  const host = !s.players.some((q) => !q.bot && !q.away) && (s.players.find((q) => !q.bot) ?? s.players[0])?.id === p.id;
   switch (s.phase) {
     case 'intro': {
       remember(mem, `intro:${s.gameId}`, randRange(r, 0.6, 1.6));

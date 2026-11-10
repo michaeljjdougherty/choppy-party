@@ -53,7 +53,7 @@ describe('wave 2 minigames', () => {
     expect(s.candles.length).toBe(3);
   });
 
-  it('Meteor Shower: a meteor costs a heart unless you are high in the air', () => {
+  it('Meteor Shower: one meteor hit knocks you out unless you are high in the air', () => {
     const s: MeteorState = meteorShower.setup(players(2), 7);
     s.spawn = 99;
     const [a, b] = s.astros;
@@ -61,7 +61,8 @@ describe('wave 2 minigames', () => {
     b.z = 80;
     b.vz = 0;
     meteorShower.step(s, { p0: NO_INPUT, p1: NO_INPUT }, DT);
-    expect(a.hearts).toBe(2);
-    expect(b.hearts).toBe(3);
+    expect(a.hearts).toBe(0);
+    expect(a.outAt).toBeGreaterThanOrEqual(0);
+    expect(b.hearts).toBe(1);
   });
 });

@@ -5,15 +5,15 @@ import { rand, randRange, type Rng } from '../rng';
 import { bump, jump, newBody, steer, stepVertical, type Body } from '../physics';
 
 /**
- * Meteor Shower (Space Kit): dodge meteors crashing onto a round moon base. Each hit costs a
- * heart and leaves a crater that slows you down for a while. Last one with hearts wins.
+ * Meteor Shower (Space Kit): dodge meteors crashing onto a round moon base. One hit and you are
+ * out, and every impact leaves a crater that slows you down for a while. Last one standing wins.
  */
 export const MCX = 640, MCY = 390, MR = 310;
 export const FALL = 1.35;
 export const BLAST = 54;
 const SPEED = 290;
 const R = 22;
-const HEARTS = 3;
+const HEARTS = 1;
 const MAX_T = 60;
 const CRATER_LIFE = 7;
 const CRATER_R = 42;
@@ -54,7 +54,7 @@ export const meteorShower: Minigame<MeteorState> = {
   id: 'meteor-shower',
   name: 'Meteor Shower',
   mode: 'Free-for-all',
-  blurb: 'Meteors are raining on the moon base! Dodge the glowing targets or jump the blast. Craters slow you down. Three hits and you are out!',
+  blurb: 'Meteors are raining on the moon base! Dodge the glowing targets or jump the blast. Craters slow you down. One hit and you are out!',
   controls: 'Stick: move   A: jump',
   minPlayers: 1,
   maxPlayers: 10,

@@ -154,7 +154,7 @@ export function meteorView(env: THREE.Texture, state: MeteorState, players: Play
       });
     },
     tags() {
-      return team.tags(last.astros, 2.35, (r) => '♥'.repeat((r as MeteorState['astros'][number]).hearts), (r) => (r as MeteorState['astros'][number]).outAt >= 0);
+      return team.tags(last.astros, 2.35, () => '', (r) => (r as MeteorState['astros'][number]).outAt >= 0);
     },
   };
 }

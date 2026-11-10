@@ -24,3 +24,34 @@ describe('lobby character and colour picking', () => {
     expect(p.name).not.toBe(before);
   });
 });
+
+import { FIRST_MIX, stepParty } from '../src/shared/party';
+import { DT, NO_INPUT } from '../src/shared/types';
+
+describe('minigame intro', () => {
+  const toIntro = () => {
+    const s = createParty(5);
+    addPlayer(s, 'a');
+    addPlayer(s, 'b');
+    s.selection = FIRST_MIX;
+    stepParty(s, { a: { ...NO_INPUT, a: true, aPressed: true, aTaps: 1 } }, DT);
+    expect(s.phase).toBe('intro');
+    return s;
+  };
+  it('a tap does not ready you; holding A for a second does', () => {
+    const s = toIntro();
+    for (let i = 0; i < 20; i++) stepParty(s, { a: { ...NO_INPUT, a: i % 2 === 0, aPressed: i % 2 === 0 } }, DT);
+    expect(s.ready).not.toContain('a');
+    for (let i = 0; i < 32; i++) stepParty(s, { a: { ...NO_INPUT, a: true } }, DT);
+    expect(s.ready).toContain('a');
+    expect(s.phase).toBe('intro'); // b still has to ready
+    for (let i = 0; i < 32; i++) stepParty(s, { b: { ...NO_INPUT, a: true } }, DT);
+    expect(s.phase).toBe('play');
+  });
+  it('the host can force the start with X', () => {
+    const s = toIntro();
+    for (let i = 0; i < 12; i++) stepParty(s, {}, DT);
+    stepParty(s, { a: { ...NO_INPUT, xPressed: true } }, DT);
+    expect(s.phase).toBe('play');
+  });
+});

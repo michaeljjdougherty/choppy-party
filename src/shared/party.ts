@@ -9,6 +9,10 @@ import type { BoardState } from './board/types';
 import { addBotInputs, type BotLevel, type BotMem } from './bots';
 
 export const MAX_PLAYERS = 10;
+/** Seconds of holding A that ready you up for a minigame. */
+export const READY_HOLD = 1;
+/** Nobody can stall a minigame intro longer than this. */
+export const INTRO_MAX = 90;
 export const ROUND_OPTIONS = [3, 5, 10];
 export const TURN_OPTIONS = [5, 10, 15, 20];
 
@@ -61,6 +65,8 @@ export interface PartyState {
   /** Result line for a duel or Stew Battle. */
   eventLine: string;
   ready: string[];
+  /** Minigame intro: how long each player has held A (1 second readies them). */
+  hold: Record<string, number>;
   placements: Placement[];
   navCooldown: number;
   rng: Rng;
@@ -89,6 +95,7 @@ export function createParty(seed: number): PartyState {
     boardEvent: null,
     eventLine: '',
     ready: [],
+    hold: {},
     placements: [],
     navCooldown: 0,
     rng: { seed },
@@ -207,6 +214,7 @@ function setPhase(s: PartyState, phase: Phase): void {
   s.phase = phase;
   s.phaseT = 0;
   s.ready = [];
+  s.hold = {};
 }
 
 export function startParty(s: PartyState): void {
@@ -327,11 +335,17 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
       break;
     }
     case 'intro': {
+      // hold A for a second to ready up (a tap doesn't count, so nobody readies by accident)
+      s.hold ??= {};
       for (const p of inGame(s)) {
-        if (inputs[p.id]?.aPressed && !s.ready.includes(p.id)) s.ready.push(p.id);
+        if (s.ready.includes(p.id)) continue;
+        s.hold[p.id] = inputs[p.id]?.a ? (s.hold[p.id] ?? 0) + dt : 0;
+        if (s.hold[p.id] >= READY_HOLD) s.ready.push(p.id);
       }
       const allReady = inGame(s).every((p) => s.ready.includes(p.id));
-      if ((allReady && s.phaseT > 0.5) || s.phaseT > 10) setPhase(s, 'play');
+      // the host can force the start with X; a long safety net covers anyone gone AFK
+      const forced = hostIn.xPressed && s.phaseT > 0.3;
+      if ((allReady && s.phaseT > 0.5) || forced || s.phaseT > INTRO_MAX) setPhase(s, 'play');
       break;
     }
     case 'play': {

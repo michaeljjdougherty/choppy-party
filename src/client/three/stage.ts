@@ -19,6 +19,8 @@ export interface Tag {
   sub?: string;
   subColor?: string;
   badge?: string;
+  /** 0..1 progress bar under the name (holding A to ready up). */
+  bar?: number;
 }
 
 /** A 3D scene for one screen: a minigame, or the menus. */

@@ -106,7 +106,7 @@ describe('party flow', () => {
     expect(s.phase).toBe('intro');
     expect(s.playlist).toHaveLength(3);
     let guard = 0;
-    while (s.phase !== 'final' && guard++ < 20000) stepParty(s, guard % 3 === 0 ? tapAll() : {}, DT);
+    while (s.phase !== 'final' && guard++ < 20000) stepParty(s, guard % 3 === 0 || s.phase === 'intro' ? tapAll() : {}, DT);
     expect(s.phase).toBe('final');
     expect(Object.values(s.scores).reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
     while (s.phase === 'final') stepParty(s, tapAll(), DT);

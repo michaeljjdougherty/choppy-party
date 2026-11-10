@@ -5,7 +5,7 @@ import { crownIcon } from './boardHud';
 import { playerById, roundRect, text } from '../shared/draw';
 import { clamp01, controlChips, easeOut, ribbon, slam, springIn, sunburst, vignette } from './showtime';
 import { burst } from './juice';
-import { A, B, promptKind } from './prompts';
+import { A, B, X, promptKind } from './prompts';
 
 /** 2D overlays for the menu screens. The 3D party stage is drawn underneath by the menu view. */
 export interface ScreenCtx {
@@ -110,12 +110,32 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
 
 const MODE_COLOR: Record<string, string> = { 'Free-for-all': '#ff8a1f', Team: '#3fa9f5', '1-vs-many': '#b06cff', Duel: '#ff4d5a' };
 
+/** Where the minigame intro's live preview is drawn (HUD coordinates). */
+export const INTRO_PREVIEW = { x: 700, y: 196, w: 552, h: 288 };
+
+/** White toy frame around a 3D window, with a dark strip of `strip` px under it. */
+function windowFrame(ctx: CanvasRenderingContext2D, r: { x: number; y: number; w: number; h: number }, strip: number): void {
+  const { x, y, w, h } = r;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  roundRect(ctx, x - 8, y - 2, w + 16, h + strip + 16, 22);
+  ctx.fill();
+  ctx.beginPath();
+  roundRect(ctx, x - 8, y - 8, w + 16, h + strip + 16, 22);
+  ctx.rect(x + w, y, -w, h);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill('evenodd');
+  ctx.fillStyle = '#2a1b5e';
+  ctx.fillRect(x, y + h, w, strip);
+  ctx.restore();
+}
+
 export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
   const g = getGame(s.gameId!);
   const age = s.phaseT;
   const color = s.boardEvent === 'duel' ? '#ff4d5a' : s.boardEvent === 'stew' ? '#3fa9f5' : MODE_COLOR[g.mode] ?? '#ff8a1f';
-  vignette(ctx, 0.5);
-  sunburst(ctx, 640, 150, 620, t, color, 0.32);
+  vignette(ctx, 0.45);
+  sunburst(ctx, 640, 100, 560, t, color, 0.28);
   const head =
     s.boardEvent === 'duel'
       ? `DUEL!  ${s.gamePlayers?.map((p) => p.name).join('  vs  ')}`
@@ -127,32 +147,44 @@ export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
   const rib = easeOut(age / 0.4);
   ctx.save();
   ctx.translate(0, (1 - rib) * -90);
-  ribbon(ctx, 640, 52, Math.min(700, 120 + head.length * 13), 50, color, head, 22);
+  ribbon(ctx, 640, 40, Math.min(700, 120 + head.length * 13), 46, color, head, 21);
   ctx.restore();
-  slam(ctx, g.name, 640, 150, 92, age, '#ffd23f', 0.15);
-  // controls as button chips
+  slam(ctx, g.name, 640, 118, 80, age, '#ffd23f', 0.15);
+
+  // the live preview, with the controls underneath
+  const r = INTRO_PREVIEW;
+  const k = springIn(clamp01((age - 0.2) / 0.5));
   ctx.save();
-  ctx.globalAlpha = clamp01((age - 0.6) * 3);
-  controlChips(ctx, g.controls, 640, 236);
+  ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
+  ctx.scale(k, k);
+  ctx.translate(-(r.x + r.w / 2), -(r.y + r.h / 2));
+  windowFrame(ctx, r, 64);
+  ribbon(ctx, r.x + 96, r.y + 6, 160, 34, color, 'PREVIEW', 16);
+  controlChips(ctx, g.controls, r.x + r.w / 2, r.y + r.h + 32);
   ctx.restore();
+
   if (s.boardEvent === 'stew' && s.gamePlayers) {
     for (const team of [0, 1]) {
       const names = s.gamePlayers.filter((p) => p.team === team).map((p) => p.name).join(', ');
-      ribbon(ctx, 640, 470 + team * 58, 640, 44, team ? '#3fa9f5' : '#ff5a5f', `${team ? 'Blue' : 'Red'}: ${names}`, 20);
+      ribbon(ctx, 340, 190 + team * 50, 600, 40, team ? '#3fa9f5' : '#ff5a5f', `${team ? 'Blue' : 'Red'}: ${names}`, 18);
     }
   }
-  // who's ready
+
+  // ready count and how to ready up
   const who = s.gamePlayers ?? s.players;
   const ready = who.filter((p) => s.ready.includes(p.id)).length;
-  const pulse = 1 + Math.sin(t * 5) * 0.04;
+  const all = ready === who.length;
+  const pulse = all ? 1 : 1 + Math.sin(t * 5) * 0.03;
+  const how = promptKind() === 'mouse' ? 'Hold the mouse button to ready up' : `Hold ${A()} for 1 second to ready up`;
   ctx.save();
-  ctx.translate(960, 640);
+  ctx.translate(r.x + r.w / 2, 622);
   ctx.scale(pulse, pulse);
-  ctx.fillStyle = 'rgba(20,10,50,0.6)';
-  roundRect(ctx, -210, -24, 420, 48, 24);
+  ctx.fillStyle = all ? 'rgba(33,196,90,0.85)' : 'rgba(20,10,50,0.7)';
+  roundRect(ctx, -260, -26, 520, 52, 26);
   ctx.fill();
-  text(ctx, `${promptKind() === 'mouse' ? 'Click' : `Press ${A()}`} when ready  ·  ${ready}/${who.length}`, 0, 0, 22, { color: '#fff', weight: 800 });
+  text(ctx, all ? "Everyone's ready!" : `${how}  ·  ${ready}/${who.length}`, 0, 1, 21, { color: '#fff', weight: 800 });
   ctx.restore();
+  text(ctx, `Host: ${X()} to start right away`, r.x + r.w / 2, 668, 17, { color: '#ffd23f', weight: 700 });
 }
 
 const MEDAL = ['#ffcf3a', '#d5dbe6', '#e09a5a'];

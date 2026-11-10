@@ -3,7 +3,7 @@ import { getGame } from '../shared/games';
 import { FINISH_T, FIRST_GAME, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
-import { PREVIEW, drawFinal, drawIntro, drawLobby, drawResults } from './screens';
+import { INTRO_PREVIEW, PREVIEW, drawFinal, drawIntro, drawLobby, drawResults } from './screens';
 import { loadSamples, sfx, unlockAudio } from './sfx';
 import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
@@ -19,6 +19,7 @@ import { getBoard } from '../shared/board/boards';
 import type { View } from './three/stage';
 import { setCharacters } from './three/choppy';
 import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
+import { clearGamePreview, gamePreview } from './three/views/gamePreview';
 import { attachUi, beginUi, button, endUi, pointerAt, takeStrayClick } from './ui';
 import { setPromptKind } from './prompts';
 
@@ -239,6 +240,7 @@ function mouseFallback() {
 /** Clickable lobby controls: back, CPUs, mode arrows, turns, start. */
 let lastTags: Tag[] = [];
 let previewsLive = false;
+let introLive = false;
 
 /** "Character" and "Colour" buttons under each local player on the lobby stage. */
 function lookButtons(s: PartyState, mine: Set<string>) {
@@ -366,6 +368,19 @@ function renderScreens(wallT: number, dt: number) {
     clearBoardPreviews();
     previewsLive = false;
   }
+  // minigame intro: the game itself, played by CPU stand-ins, in a window
+  if (s.phase === 'intro' && s.gameId) {
+    const gv = gamePreview(stage.env, `${s.gameId}:${s.round}:${s.board?.turn ?? 0}:${s.boardEvent ?? ''}`, s.gameId, s.gamePlayers ?? s.players);
+    if (gv) {
+      gv.update(null, [], wallT, dt);
+      stage.renderInset(gv, INTRO_PREVIEW.x, INTRO_PREVIEW.y, INTRO_PREVIEW.w, INTRO_PREVIEW.h);
+    }
+    introLive = true;
+  } else if (introLive) {
+    clearGamePreview();
+    introLive = false;
+  }
+  input.mouseHoldsA = s.phase === 'intro';
   lastTags = view.tags();
   drawTags(lastTags);
   if (stage.switches !== seenSwitches) {
@@ -384,9 +399,13 @@ function renderScreens(wallT: number, dt: number) {
       drawBoardHud(ctx, s, wallT);
       hostCorner(ctx, hostLine, wallT, 'tr', 470);
       break;
-    case 'intro':
+    case 'intro': {
       drawIntro(ctx, s, wallT);
+      // mouse: the host gets a Start now button (same as X)
+      const h = hostId(s);
+      if (h && session.localIds().has(h) && button(ctx, 'Start now', 1120, 650, 132, 38, { color: '#ff8a1f', size: 16 })) input.tap(deviceOf(h), 'x');
       break;
+    }
     case 'play': {
       const g = getGame(s.gameId!);
       g.draw(ctx, s.game, inGame(s));
@@ -529,6 +548,18 @@ function drawTags(tags: Tag[]) {
     ctx.restore();
     text(ctx, tg.text, p.x + 3, p.y + 1, 16, { outline: false, weight: 700 });
     if (tg.badge) text(ctx, tg.badge, p.x, p.y - 24, 13, { color: '#ffd23f', weight: 800 });
+    if (tg.bar !== undefined) {
+      // hold-to-ready meter
+      const bw = 74;
+      ctx.fillStyle = 'rgba(20,12,40,0.7)';
+      roundRect(ctx, p.x - bw / 2, p.y + 18, bw, 12, 6);
+      ctx.fill();
+      if (tg.bar > 0) {
+        ctx.fillStyle = tg.bar >= 1 ? '#4cd97b' : '#ffd23f';
+        roundRect(ctx, p.x - bw / 2 + 2, p.y + 20, Math.max(8, (bw - 4) * tg.bar), 8, 4);
+        ctx.fill();
+      }
+    }
     if (tg.sub) text(ctx, tg.sub, p.x, p.y - (tg.sub.length <= 2 ? 40 : -28), tg.sub.length <= 2 ? 44 : 20, { color: tg.subColor ?? '#fff', weight: 900 });
   }
 }

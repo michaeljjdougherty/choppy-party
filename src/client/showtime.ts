@@ -343,7 +343,7 @@ export const LINES = {
   ],
   lobby: ['Gather, friends. The party waits for no one.', 'More players, more chaos. That is the way.'],
   lobbyBots: ['Ah. Machines have joined us. They do not blink. I do, sometimes.'],
-  intro: (blurb: string) => blurb,
+  intro: (blurb: string) => `${blurb} Watch the preview, then hold A to ready up.`,
   winner: (name: string) => [`${name}. The crown fits you well.`, `${name} has learned something today.`, `Well played, ${name}. I am not surprised.`],
   tie: ['A tie. Balance, as all things should be.'],
   last: (name: string) => [`${name}, there is always next round.`, `${name}. Even mountains start as pebbles.`],

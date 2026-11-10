@@ -26,6 +26,11 @@ export function B(): string {
   return kind === 'pad' ? 'B' : solo ? 'Shift' : 'Shift';
 }
 
+/** The force-start / change-character button: X on a pad, C on the keyboard. */
+export function X(): string {
+  return kind === 'pad' ? 'X' : 'C';
+}
+
 /** "Stick" or "WASD". */
 export function STICK(): string {
   return kind === 'pad' ? 'Stick' : solo ? 'WASD / Arrows' : 'WASD / Arrows';

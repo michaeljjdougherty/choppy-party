@@ -76,7 +76,7 @@ describe('board party', () => {
     let guard = 0;
     while (s.phase !== 'final' && guard++ < 30 * 60 * 30) {
       phasesSeen.add(s.phase);
-      stepParty(s, guard % 4 === 0 ? press() : {}, DT);
+      stepParty(s, guard % 4 === 0 || s.phase === 'intro' ? press() : {}, DT);
     }
     expect(s.phase).toBe('final');
     expect([...phasesSeen].sort()).toEqual(['board', 'intro', 'play', 'results']);

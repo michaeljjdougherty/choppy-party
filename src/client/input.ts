@@ -75,6 +75,9 @@ export class InputManager {
   soloKeys = true;
   /** What the player last touched, so on-screen prompts can name the right buttons. */
   kind: InputKind = 'keys';
+  /** While true, holding the mouse button down holds A for the keyboard player (hold to ready). */
+  mouseHoldsA = false;
+  private pointerDown = false;
   private padX = new Map<string, boolean>();
   private padY = new Map<string, boolean>();
   private nudges = new Map<string, { x: number; y: number; until: number; polls: number }>();
@@ -105,7 +108,11 @@ export class InputManager {
       }
     });
     target.addEventListener('pointermove', () => (this.kind = 'mouse'));
-    target.addEventListener('pointerdown', () => (this.kind = 'mouse'));
+    target.addEventListener('pointerdown', () => {
+      this.kind = 'mouse';
+      this.pointerDown = true;
+    });
+    target.addEventListener('pointerup', () => (this.pointerDown = false));
     target.addEventListener('keyup', (e) => this.keys.delete(e.code));
     target.addEventListener('blur', () => this.keys.clear());
   }
@@ -147,7 +154,7 @@ export class InputManager {
       }
       d.raw.x = x;
       d.raw.y = y;
-      d.raw.a = any(p.a);
+      d.raw.a = any(p.a) || (p.key === 'kb1' && this.mouseHoldsA && this.pointerDown);
       d.raw.b = any(p.b);
     }
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import { BOT_LABEL } from '../../../shared/bots';
-import { hostId, OPTIONS, standings, type PartyState } from '../../../shared/party';
+import { hostId, OPTIONS, READY_HOLD, standings, type PartyState } from '../../../shared/party';
 import { ChoppyModel } from '../choppy';
 import { checkerTexture, makeScene, mesh, toy } from '../kit';
 import { place } from '../assets';
@@ -130,7 +130,8 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
     podium.visible = !!sorted;
     if (!sorted) {
       // with a board picked, the right side of the stage shows its flyover, so everyone shuffles left
-      const board = s.phase === 'lobby' && OPTIONS[s.selection]?.kind === 'board';
+      // with a board picked (or a minigame preview showing), the right side has a window, so everyone shuffles left
+      const board = (s.phase === 'lobby' && OPTIONS[s.selection]?.kind === 'board') || s.phase === 'intro';
       const gap = board ? Math.min(1.5, 6.2 / Math.max(1, n - 1)) : Math.min(1.9, 16 / Math.max(1, n));
       const cx = board ? -3.0 : 0;
       [...s.players]
@@ -203,7 +204,6 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
       });
       layout(s);
       if (ranked) look.set(-1.6, 1.6, 0);
-      else if (s.phase === 'intro') look.set(0, 3.1, 0);
       else look.set(0, 1.3, 0);
       camera.lookAt(look);
 
@@ -258,10 +258,13 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
         const pos = e.m.group.position;
         let sub: string | undefined;
         let subColor = '#ffffff';
+        let bar: number | undefined;
         if (state!.phase === 'intro') {
+          const playing = (state!.gamePlayers ?? state!.players).some((q) => q.id === p.id);
           const r = state!.ready.includes(p.id);
-          sub = r ? 'Ready!' : '';
-          subColor = '#4cd97b';
+          sub = r ? 'READY!' : playing ? '' : 'Watching';
+          subColor = r ? '#4cd97b' : '#c9c2e8';
+          if (playing && !r) bar = Math.min(1, (state!.hold?.[p.id] ?? 0) / READY_HOLD);
         }
         return {
           id: p.id,
@@ -270,6 +273,7 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
           color: p.color,
           sub,
           subColor,
+          bar,
           badge: p.id === host ? 'HOST' : p.bot ? `${BOT_LABEL[p.bot].toUpperCase()} CPU` : isOnline() && mine.has(p.id) ? 'YOU' : undefined,
         };
       });

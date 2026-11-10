@@ -131,7 +131,8 @@ describe('board layer', () => {
     expect(p.gameId && ['fuse-draw', 'paddle-clash'].includes(p.gameId)).toBe(true);
     expect(p.gamePlayers!.length).toBe(2);
     guard = 0;
-    while (p.phase !== 'board' && guard++ < 30 * 120) stepParty(p, {}, DT);
+    const holdAll = () => Object.fromEntries(p.players.map((q) => [q.id, { ...A, aPressed: false, aTaps: 0 }]));
+    while (p.phase !== 'board' && guard++ < 30 * 120) stepParty(p, p.phase === 'intro' ? holdAll() : {}, DT);
     expect(p.phase).toBe('board');
     expect(p.board!.cur).toBeGreaterThanOrEqual(0);
   });

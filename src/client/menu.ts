@@ -1,5 +1,6 @@
 import type { InputManager } from './input';
 import { roundRect, text } from '../shared/draw';
+import { sunburst } from './showtime';
 
 export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | null;
 
@@ -126,6 +127,8 @@ export class MainMenu {
 
   draw(ctx: CanvasRenderingContext2D, t: number): void {
     if (this.screen === 'title') {
+      sunburst(ctx, 640, 255, 560, t, '#ffd23f', 0.32, 20);
+      sparkles(ctx, 640, 255, 300, t);
       logo(ctx, 640, 255, 1.45, t);
       const pulse = 1 + Math.sin(t * 5) * 0.04;
       ctx.save();
@@ -139,6 +142,7 @@ export class MainMenu {
       text(ctx, 'Pads: bottom face button  ·  Keys: Space or Enter', 640, 690, 18, { weight: 600 });
       return;
     }
+    sunburst(ctx, 330, 160, 300, t, '#ffd23f', 0.28, 16);
     logo(ctx, 330, 160, 0.95, t);
     const items = this.items();
     if (this.screen === 'online') text(ctx, 'Play Online', 960, 70, 36, { color: '#fff' });
@@ -166,7 +170,30 @@ export class MainMenu {
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       roundRect(ctx, r.x + 14, r.y + 8, r.w - 28, r.h * 0.36, 20);
       ctx.fill();
+      if (on) {
+        // a glint sweeps across the selected button
+        ctx.save();
+        roundRect(ctx, r.x, r.y, r.w, r.h, 30);
+        ctx.clip();
+        const sx = r.x - 200 + ((t * 420) % (r.w + 500));
+        const sg = ctx.createLinearGradient(sx, 0, sx + 120, 0);
+        sg.addColorStop(0, 'rgba(255,255,255,0)');
+        sg.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+        sg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = sg;
+        ctx.transform(1, 0, -0.4, 1, 0, 0);
+        ctx.fillRect(sx + r.y * 0.4, r.y, 120, r.h);
+        ctx.restore();
+      }
+      ctx.save();
+      if (on) {
+        ctx.translate(r.x + 66, r.y + r.h / 2);
+        const b = 1 + Math.abs(Math.sin(t * 6)) * 0.12;
+        ctx.scale(b, 2 - b);
+        ctx.translate(-(r.x + 66), -(r.y + r.h / 2));
+      }
       icon(ctx, it.icon, r.x + 66, r.y + r.h / 2, t);
+      ctx.restore();
       text(ctx, it.title, r.x + 128, r.y + (it.sub ? r.h / 2 - 14 : r.h / 2), 38, { align: 'left' });
       if (it.sub) text(ctx, it.sub, r.x + 130, r.y + r.h / 2 + 26, 19, { align: 'left', weight: 600 });
       ctx.restore();
@@ -186,6 +213,28 @@ export class MainMenu {
     });
     text(ctx, 'Stick / Arrows: move   ·   A: choose   ·   B: back', 960, 694, 18, { weight: 600 });
   }
+}
+
+/** Twinkling four-point stars around a spot. */
+function sparkles(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, t: number): void {
+  ctx.save();
+  for (let i = 0; i < 14; i++) {
+    const a = i * 2.4 + t * 0.15;
+    const d = r * (0.55 + ((i * 37) % 10) / 22);
+    const tw = Math.max(0, Math.sin(t * 2.4 + i * 1.7));
+    const sz = 6 + tw * 12;
+    const x = cx + Math.cos(a) * d * 1.4;
+    const y = cy + Math.sin(a) * d * 0.7;
+    ctx.fillStyle = `rgba(255,248,200,${0.25 + tw * 0.75})`;
+    ctx.beginPath();
+    ctx.moveTo(x, y - sz);
+    ctx.quadraticCurveTo(x, y, x + sz, y);
+    ctx.quadraticCurveTo(x, y, x, y + sz);
+    ctx.quadraticCurveTo(x, y, x - sz, y);
+    ctx.quadraticCurveTo(x, y, x, y - sz);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function shade(hex: string, amt: number): string {

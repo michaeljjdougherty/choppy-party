@@ -1,4 +1,4 @@
-import type { PartyState } from '../shared/party';
+import { FINISH_T, type PartyState } from '../shared/party';
 import { sfx } from './sfx';
 
 /**
@@ -18,6 +18,7 @@ interface Bit {
 }
 const COLORS = ['#ff5a5f', '#ffd23f', '#2ee6d6', '#b06cff', '#4cd97b', '#3fa9f5', '#ff9f1c', '#ff7bd5'];
 let bits: Bit[] = [];
+
 
 export function burst(n = 140): void {
   for (let i = 0; i < n; i++) {
@@ -55,6 +56,7 @@ export function drawConfetti(ctx: CanvasRenderingContext2D, dt: number, t: numbe
 
 interface Seen {
   phase: string;
+  phaseT: number;
   players: number;
   nodes: Record<string, string>;
   coins: Record<string, number>;
@@ -104,6 +106,7 @@ export function watch(s: PartyState): void {
     bombs: drops.filter((d) => d.kind === 'anvil' && d.fall <= 0).length,
     alive: skaters.filter((k) => k.alive).length,
     sel: `${s.selection}:${s.roundsIdx}:${s.turnsIdx}`,
+    phaseT: s.phaseT,
     marks: s.phase === 'play' && g ? marks(g) : {},
   };
   if (b) for (const [id, p] of Object.entries(b.players)) {
@@ -120,15 +123,18 @@ export function watch(s: PartyState): void {
   if (!was) return;
 
   if (now.phase !== was.phase) {
-    if (now.phase === 'play') sfx.whistle();
-    if (now.phase === 'results') {
-      sfx.fanfare();
-      burst(90);
-    }
+    if (now.phase === 'results') sfx.finish();
     if (now.phase === 'final') {
-      sfx.fanfare();
-      burst(220);
+      sfx.victory();
+      sfx.cheer();
+      burst(260);
     }
+  }
+  // the results are revealed after the FINISH! freeze
+  if (now.phase === 'results' && was.phase === 'results' && was.phaseT < FINISH_T && now.phaseT >= FINISH_T) {
+    sfx.fanfare();
+    sfx.cheer();
+    burst(140);
   }
   if (now.phase === 'lobby' && now.players > was.players) sfx.join();
   if (now.phase === 'lobby' && now.players < was.players) sfx.leave();

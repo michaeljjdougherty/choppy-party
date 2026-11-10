@@ -47,6 +47,7 @@ export const crateGrab: Minigame<CrateGrabState> = {
   id: 'crate-grab',
   name: 'Crate Grab',
   mode: 'Team',
+  ready: READY,
   blurb: 'Grab crates from the middle and carry them home to your team base. Bump a carrier to knock their crate loose!',
   controls: 'Stick: move   A: jump',
   minPlayers: 2,
@@ -143,8 +144,7 @@ export const crateGrab: Minigame<CrateGrabState> = {
   },
 
   draw(ctx, s) {
-    if (s.t < READY) text(ctx, 'Ready...', 640, 130, 44, { color: '#ffd23f' });
-    else drawTimer(ctx, Math.max(0, READY + TIME - s.t));
+    if (s.t >= READY) drawTimer(ctx, Math.max(0, READY + TIME - s.t));
     text(ctx, 'Red base', 165, 60, 26, { color: '#ff5a5f' });
     popText(ctx, 'cg0', s.score[0], 165, 104, 48, { color: '#ffffff' });
     text(ctx, 'Blue base', 1115, 60, 26, { color: '#3fa9f5' });

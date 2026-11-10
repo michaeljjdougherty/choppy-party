@@ -1,6 +1,6 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
-import { drawTimer, playerById, popText, text } from '../draw';
+import { drawTimer, playerById, popText } from '../draw';
 
 /**
  * Present Pile-Up (Holiday Kit): a gift swings over your pile; press A to drop it. Land it
@@ -42,6 +42,8 @@ export const presentPileUp: Minigame<PileState> = {
   id: 'present-pile-up',
   name: 'Present Pile-Up',
   mode: 'Free-for-all',
+  ready: READY,
+  goWord: 'DROP!',
   blurb: 'Drop the swinging gift onto your pile. Land it close to the top or the pile wobbles and gifts tumble off! Tallest pile wins.',
   controls: 'A: drop',
   minPlayers: 1,
@@ -94,8 +96,7 @@ export const presentPileUp: Minigame<PileState> = {
   },
 
   draw(ctx, s, players) {
-    if (s.t < READY) text(ctx, 'Get ready…', 640, 130, 44, { color: '#ffd23f' });
-    else drawTimer(ctx, DURATION - s.t);
+    if (s.t >= READY) drawTimer(ctx, DURATION - s.t);
     const n = s.piles.length;
     s.piles.forEach((p, i) => {
       const pl = playerById(players, p.id);

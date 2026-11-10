@@ -24,6 +24,9 @@ export const FIRST_GAME = BOARDS.length + 1;
 /** Party points by finishing place. Ties share the better place. */
 export const PLACE_POINTS = [5, 3, 2, 1];
 
+/** Seconds the finished minigame stays frozen under a FINISH! banner before the results show. */
+export const FINISH_T = 1.6;
+
 export type Phase = 'lobby' | 'board' | 'intro' | 'play' | 'results' | 'final';
 
 export interface Placement {
@@ -317,7 +320,7 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
       break;
     }
     case 'results': {
-      if ((hostIn.aPressed && s.phaseT > 1.5) || s.phaseT > 8) {
+      if ((hostIn.aPressed && s.phaseT > FINISH_T + 1.4) || s.phaseT > FINISH_T + 8) {
         if (s.board && s.boardEvent) {
           // back to the board: the player who landed on the space finishes their turn
           s.boardEvent = null;

@@ -118,12 +118,22 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
 /** Countdown/timer pill at the top centre. */
 export function drawTimer(ctx: CanvasRenderingContext2D, secondsLeft: number): void {
   const s = Math.max(0, Math.ceil(secondsLeft));
+  // the last five seconds throb and turn red, with a boing on every tick
+  const hurry = s <= 5 && s > 0;
+  const k = hurry ? pop('timer', s) * (1 + (1 - (secondsLeft % 1)) * 0.08) : 1;
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  roundRect(ctx, 590, 14, 100, 44, 22);
+  ctx.translate(640, 36);
+  ctx.scale(k * (hurry ? 1.25 : 1), k * (hurry ? 1.25 : 1));
+  ctx.fillStyle = hurry ? 'rgba(200,30,50,0.85)' : 'rgba(0,0,0,0.45)';
+  roundRect(ctx, -50, -22, 100, 44, 22);
   ctx.fill();
+  if (hurry) {
+    ctx.strokeStyle = '#ffd23f';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+  text(ctx, String(s), 0, 1, 28, { color: hurry ? '#ffffff' : '#fff', outline: false });
   ctx.restore();
-  text(ctx, String(s), 640, 37, 28, { color: s <= 5 ? '#ffd23f' : '#fff', outline: false });
 }
 
 // ---- bouncy HUD numbers ------------------------------------------------------------------------

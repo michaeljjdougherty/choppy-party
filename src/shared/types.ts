@@ -66,6 +66,10 @@ export interface Minigame<S = any> {
   controls: string;
   minPlayers: number;
   maxPlayers: number;
+  /** Seconds of countdown at the start (state.t runs through it). The HUD shows 3, 2, 1, GO! over it. */
+  ready?: number;
+  /** Word shown when the countdown ends (default GO!). */
+  goWord?: string;
   setup(players: PlayerInfo[], seed: number): S;
   step(state: S, inputs: Inputs, dt: number): void;
   isOver(state: S): boolean;

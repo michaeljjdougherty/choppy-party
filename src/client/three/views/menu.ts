@@ -3,6 +3,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import { BOT_LABEL } from '../../../shared/bots';
 import { hostId, standings, type PartyState } from '../../../shared/party';
 import { ChoppyModel } from '../choppy';
+import { SquareBrian } from '../brian';
 import { checkerTexture, makeScene, mesh, toy } from '../kit';
 import { place } from '../assets';
 import { Fx, shake } from '../fx';
@@ -114,6 +115,13 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
   const hops = new Map<string, { from: THREE.Vector3; t: number; dur: number; h: number }>();
   scene.add(podium);
 
+  // Square Brian presents from the side of the stage
+  const brian = new SquareBrian(1.05);
+  brian.group.position.set(7.2, 0, 1.6);
+  scene.add(brian.group);
+  const brianGoal = new THREE.Vector3(7.2, 0, 1.6);
+  const headPos = new THREE.Vector3();
+
   const models = new Map<string, { m: ChoppyModel; target: THREE.Vector3; scale: number }>();
   let state: PartyState | null = null;
   let players: PlayerInfo[] = [];
@@ -222,6 +230,15 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
         const ready = s.phase === 'intro' && s.ready.includes(id);
         e.m.update(dt, { speed: moving ? 0.6 : 0, happy: ready || winners.has(id), t: t + id.length });
       }
+      // Brian: beside the lobby line, then next to the podium for results
+      if (ranked) brianGoal.set(-8.4, 0, -0.6);
+      else if (s.phase === 'intro') brianGoal.set(-5.1, 0, 2.4);
+      else brianGoal.set(6.1, 0, 2);
+      // on the results he talks from the corner of the screen instead
+      brian.group.visible = !ranked;
+      brian.group.position.lerp(brianGoal, Math.min(1, dt * 3));
+      brian.group.rotation.y = ranked ? 0.5 : s.phase === 'intro' ? 0.35 : -0.35;
+      brian.update(dt, t);
       fx.update(dt);
       spinners.forEach((c, i) => {
         c.rotation.y = t * 2 + i;
@@ -257,5 +274,6 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
         };
       });
     },
+    host: { brian, head: () => brian.group.localToWorld(headPos.set(0, 3.3, 0)) },
   };
 }

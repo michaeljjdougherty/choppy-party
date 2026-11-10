@@ -140,7 +140,7 @@ function think(s: BotView, p: PlayerInfo, sk: Skill, mem: BotMem, dt: number): T
     case 'results':
     case 'final':
       // only matters when a bot ended up as host (everyone else left)
-      return host && s.phaseT > (s.phase === 'final' ? 5 : 3) ? press() : NO_INPUT;
+      return host && s.phaseT > (s.phase === 'final' ? 6 : 4.5) ? press() : NO_INPUT;
     case 'board':
       return s.board ? boardBot(s.board, p.id, sk, mem, r) : NO_INPUT;
     case 'play':

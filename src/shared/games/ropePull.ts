@@ -37,6 +37,8 @@ export const ropePull: Minigame<RopeState> = {
   id: 'rope-pull',
   name: 'Rope Pull',
   mode: 'Team',
+  ready: READY,
+  goWord: 'PULL!',
   blurb: 'Mash A to haul the rope! Drag the flag over your side of the mud pit before time runs out.',
   controls: 'A: pull (mash it!)',
   minPlayers: 2,
@@ -75,10 +77,8 @@ export const ropePull: Minigame<RopeState> = {
   },
 
   draw(ctx, s) {
-    if (s.t < READY) text(ctx, 'Get a grip...', 640, 130, 44, { color: '#ffd23f' });
-    else drawTimer(ctx, Math.max(0, READY + TIME - s.t));
+    if (s.t >= READY) drawTimer(ctx, Math.max(0, READY + TIME - s.t));
     text(ctx, 'Red team', 200, 60, 30, { color: '#ff5a5f' });
     text(ctx, 'Blue team', 1080, 60, 30, { color: '#3fa9f5' });
-    if (s.t >= READY && s.t < READY + 1) text(ctx, 'PULL!', 640, 200, 80, { color: '#ffffff' });
   },
 };

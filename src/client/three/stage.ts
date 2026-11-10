@@ -8,6 +8,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { disposeTree } from './kit';
 import { shakeOffset } from './fx';
+import type { SquareBrian } from './brian';
 
 export interface Tag {
   pos: THREE.Vector3;
@@ -25,6 +26,8 @@ export interface View {
   update(state: any, players: PlayerInfo[], t: number, dt: number): void;
   /** Labels to draw over the 3D view (names, scores), anchored to world positions. */
   tags(): Tag[];
+  /** Square Brian, when he is in this scene, and where his head is (for the speech bubble). */
+  host?: { brian: SquareBrian; head(): THREE.Vector3 };
 }
 
 export class Stage {

@@ -4,6 +4,7 @@ import { makeScene, mesh, toy, toonWater } from '../kit';
 import { place } from '../assets';
 import type { Tag, View } from '../stage';
 import { PLAYER_COLORS } from '../../../shared/players';
+import { SquareBrian } from '../brian';
 
 /** Title and main menu: a little party island where the Choppies dance around a giant dice block. */
 export function mainMenuView(env: THREE.Texture, screen: () => string = () => 'title'): View {
@@ -79,6 +80,12 @@ export function mainMenuView(env: THREE.Texture, screen: () => string = () => 't
     dancers.push(m);
   }
 
+  // Square Brian hosts from the front of the dance floor
+  const brian = new SquareBrian(0.85);
+  brian.group.position.set(2.6, 0.36, 3.4);
+  scene.add(brian.group);
+  const headPos = new THREE.Vector3();
+
   const camGoal = new THREE.Vector3(0, 7.5, 17);
   const lookGoal = new THREE.Vector3(0, 3.2, 0);
   const look = lookGoal.clone();
@@ -105,6 +112,10 @@ export function mainMenuView(env: THREE.Texture, screen: () => string = () => 't
         m.update(dt, { speed: 0.45, happy: Math.sin(t * 0.9 + i * 1.7) > 0.75, t: t + i });
       });
       balloons.forEach((b, i) => (b.position.y = (b.userData.y as number) + Math.sin(t + i) * 0.4));
+      // he turns to face the camera, a little toward the menu buttons when they're up
+      brian.group.rotation.y = Math.atan2(camera.position.x - brian.group.position.x, camera.position.z - brian.group.position.z) * 0.8 + (onMenu ? 0.35 : 0);
+      brian.pose = onMenu ? (Math.sin(t * 0.4) > 0.6 ? 'think' : 'present') : Math.sin(t * 0.5) > 0 ? 'wave' : 'idle';
+      brian.update(dt, t);
       ship.position.y = -1.6 + Math.sin(t * 0.8) * 0.15;
       ship.rotation.z = Math.sin(t * 0.6) * 0.03;
       ship2.position.y = -1.4 + Math.sin(t * 0.9 + 1) * 0.12;
@@ -112,6 +123,7 @@ export function mainMenuView(env: THREE.Texture, screen: () => string = () => 't
     tags(): Tag[] {
       return [];
     },
+    host: { brian, head: () => brian.group.localToWorld(headPos.set(0, 3.3, 0)) },
   };
 }
 

@@ -149,6 +149,30 @@ export const sfx = {
     tone(1900, 2100, 0.12, 'sine', 0.18);
     tone(2100, 1900, 0.35, 'sine', 0.18, 0.14);
   },
+  /** Count-in beep: 3, 2, 1. */
+  count: (n: number) => tone(n === 1 ? 880 : 660, n === 1 ? 880 : 660, 0.16, 'square', 0.12),
+  /** GO! A bright chord with a whoosh. */
+  go: () => {
+    [523, 784, 1047, 1319].forEach((f) => tone(f, f * 1.01, 0.42, 'square', 0.07));
+    noise(0.35, 0.18, 2400);
+  },
+  /** End of a minigame: whistle and a thump. */
+  finish: () => {
+    tone(1900, 2100, 0.12, 'sine', 0.2);
+    tone(2100, 1500, 0.5, 'sine', 0.2, 0.14);
+    tone(110, 40, 0.35, 'sine', 0.45);
+    noise(0.3, 0.3, 500);
+  },
+  /** A crowd-ish cheer made of filtered noise swells. */
+  cheer: () => {
+    for (let i = 0; i < 5; i++) setTimeout(() => noise(0.5, 0.12, 1400 + i * 300), i * 120);
+  },
+  /** Big win: a longer fanfare that climbs and holds. */
+  victory: () => {
+    const notes = [523, 659, 784, 1047, 784, 1047, 1319];
+    notes.forEach((f, i) => tone(f, f, i === notes.length - 1 ? 0.8 : 0.14, 'square', 0.12, i * 0.13));
+    notes.forEach((f, i) => tone(f / 2, f / 2, i === notes.length - 1 ? 0.8 : 0.14, 'triangle', 0.1, i * 0.13));
+  },
   fanfare: () => {
     [523, 659, 784, 1047].forEach((f, i) => tone(f, f, i === 3 ? 0.45 : 0.13, 'square', 0.13, i * 0.12));
   },

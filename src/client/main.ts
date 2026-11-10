@@ -1,6 +1,6 @@
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
-import { FIRST_GAME, FIRST_MIX, addPlayer, inGame, startParty } from '../shared/party';
+import { FINISH_T, FIRST_GAME, FIRST_MIX, addPlayer, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { drawFinal, drawIntro, drawLobby, drawResults } from './screens';
@@ -14,6 +14,9 @@ import { GAME_VIEWS, boardView, mainMenuView, menuView } from './three/views';
 import { preloadAll } from './three/assets';
 import { logo } from './menu';
 import type { BotLevel } from '../shared/bots';
+import { HostLine, LINES, bubble, countIn, finishBanner, hostCorner, pick } from './showtime';
+import { getBoard } from '../shared/board/boards';
+import type { View } from './three/stage';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -172,8 +175,15 @@ function render(wallT: number, dt: number) {
     bar.classList.add('hidden');
     const view = stage.show('main-menu', () => mainMenuView(stage.env, () => menu.screen));
     view.update(null, [], wallT, dt);
+    hostLine.say(menu.screen === 'title' ? pick(LINES.title, wallT / 9) : pick(LINES.menu, wallT / 9));
+    hostLine.update(dt);
+    if (view.host) {
+      view.host.brian.talking = hostLine.talking;
+      view.host.brian.mood = hostLine.mood;
+    }
     stage.render(dt, wallT);
     menu.draw(ctx, wallT);
+    drawHostBubble(view, menu.screen === 'title' ? 'title' : 'menu');
     if (stage.switches !== seenSwitches) {
       if (seenSwitches > 0) wipeT = 0;
       seenSwitches = stage.switches;
@@ -193,7 +203,8 @@ function render(wallT: number, dt: number) {
 
   // 3D: one view per minigame round, one per board game, and a shared party stage for the menus
   let view;
-  if (s.phase === 'play' && s.gameId && GAME_VIEWS[s.gameId]) {
+  const finishing = s.phase === 'results' && s.phaseT < FINISH_T && !!s.gameId && !!s.game;
+  if ((s.phase === 'play' || finishing) && s.gameId && GAME_VIEWS[s.gameId]) {
     const who = inGame(s);
     const key = `game:${s.gameId}:${s.round}:${s.playlist.length}:${s.board ? `${s.board.turn}.${s.board.cur}.${s.boardEvent}` : ''}`;
     view = stage.show(key, () => GAME_VIEWS[s.gameId!](stage.env, s.game, who));
@@ -205,6 +216,7 @@ function render(wallT: number, dt: number) {
     view = stage.show('menu', () => menuView(stage.env, () => session?.localIds() ?? new Set(), () => session?.kind === 'online'));
     view.update(s, s.players, wallT, dt);
   }
+  hostFor(s, view, wallT, dt);
   stage.render(dt, wallT);
   drawTags(view.tags());
   if (stage.switches !== seenSwitches) {
@@ -220,22 +232,139 @@ function render(wallT: number, dt: number) {
       break;
     case 'board':
       drawBoardHud(ctx, s, wallT);
+      hostCorner(ctx, hostLine, wallT, 'tr', 470);
       break;
     case 'intro':
-      drawIntro(ctx, s);
+      drawIntro(ctx, s, wallT);
       break;
-    case 'play':
-      getGame(s.gameId!).draw(ctx, s.game, inGame(s));
+    case 'play': {
+      const g = getGame(s.gameId!);
+      g.draw(ctx, s.game, inGame(s));
+      // shared 3, 2, 1, GO! (games without a countdown just get the GO!)
+      const gt = g.ready ? ((s.game as { t?: number }).t ?? s.phaseT) : s.phaseT;
+      countIn(ctx, gt, g.ready ?? 0, g.goWord);
+      countSfx(gt, g.ready ?? 0);
       break;
+    }
     case 'results':
-      drawResults(ctx, s);
+      if (finishing) {
+        getGame(s.gameId!).draw(ctx, s.game, inGame(s));
+        finishBanner(ctx, s.phaseT);
+      } else drawResults(ctx, s, s.phaseT - FINISH_T, wallT);
       break;
     case 'final':
-      drawFinal(ctx, s);
+      drawFinal(ctx, s, wallT);
       break;
   }
+  if (s.phase !== 'play' && s.phase !== 'board' && !finishing) drawHostBubble(view, s.phase, wallT);
   drawConfetti(ctx, dt, wallT);
   drawWipe(dt);
+}
+
+/* ---------- Square Brian, the host */
+const hostLine = new HostLine();
+
+/** Pick what Brian says and how he stands for the current screen. */
+function hostFor(s: PartyState, view: View, t: number, dt: number) {
+  const b = view.host?.brian;
+  let mood: 'pout' | 'proud' | 'smug' | 'wow' = 'pout';
+  switch (s.phase) {
+    case 'lobby': {
+      const bots = s.players.some((p) => p.bot);
+      hostLine.say(bots && Math.floor(t / 10) % 2 ? LINES.lobbyBots[0] : pick(LINES.lobby, t / 20));
+      if (b) b.pose = Math.sin(t * 0.5) > 0.4 ? 'wave' : 'idle';
+      break;
+    }
+    case 'intro':
+      hostLine.say(LINES.intro(getGame(s.gameId!).blurb));
+      if (b) b.pose = hostLine.talking ? 'present' : 'point';
+      break;
+    case 'results': {
+      if (s.phaseT < FINISH_T) {
+        hostLine.say('');
+        break;
+      }
+      const top = s.placements.filter((p) => p.place === 1);
+      const name = s.players.find((p) => p.id === top[0]?.id)?.name ?? '';
+      hostLine.say(top.length > 1 ? LINES.tie[0] : pick(LINES.winner(name), s.round + name.length), 'smug');
+      mood = 'smug';
+      if (b) b.pose = s.phaseT < FINISH_T + 2.5 ? 'cheer' : 'idle';
+      break;
+    }
+    case 'final': {
+      const st = standings(s).filter((r) => r.place === 1);
+      const name = s.players.find((p) => p.id === st[0]?.id)?.name ?? '';
+      hostLine.say(st.length > 1 ? LINES.tie[0] : pick(LINES.champion(name), name.length), 'proud');
+      mood = 'proud';
+      if (b) b.pose = 'cheer';
+      break;
+    }
+    case 'board': {
+      // on the board he only pipes up at big moments, from the corner
+      const bd = s.board;
+      if (!bd) break;
+      const def = getBoard(bd.boardId);
+      if (bd.turn === 1 && bd.cur === 0 && bd.sub !== 'move') hostLine.say(`Welcome to ${def.name}. ${def.gimmick}`);
+      else if (bd.turn === bd.maxTurns - bd.preset.doubleTurns + 1 && bd.cur === 0 && bd.sub !== 'move' && bd.turn > 1)
+        hostLine.say('The final turns are upon us. Key and Heart Spaces now pay double.', 'wow');
+      else if (bd.turn === bd.maxTurns && bd.cur === 0 && bd.sub !== 'move') hostLine.say('The last turn. Make it a good one.', 'smug');
+      else hostLine.say('');
+      break;
+    }
+    default:
+      hostLine.say('');
+  }
+  hostLine.update(dt);
+  if (b) {
+    b.talking = hostLine.talking;
+    b.mood = hostLine.talking ? 'pout' : mood;
+  }
+}
+
+/** Speech bubble above Brian's head, kept on screen and clear of each screen's main panel. */
+function drawHostBubble(view: View, screen: string, t = 0) {
+  if (screen === 'results' || screen === 'final') {
+    hostCorner(ctx, hostLine, t, 'bl', 500);
+    return;
+  }
+  if (!view.host || !hostLine.text) return;
+  const head = stage.project(view.host.head());
+  if (!head.visible) return;
+  const w = screen === 'intro' ? 560 : 420;
+  let x = head.x - w / 2;
+  let y = head.y - 150;
+  if (screen === 'intro') {
+    // explaining: bubble to his right, under the title card
+    x = head.x + 40;
+    y = 300;
+  } else if (screen === 'results' || screen === 'final') {
+    // above him, below the headline and left of the standings
+    x = Math.min(head.x - w / 2, 670 - w);
+    y = screen === 'final' ? 236 : 196;
+  } else if (screen === 'menu') {
+    x = 40;
+    y = 540;
+  } else if (screen === 'title') {
+    x = head.x + 30;
+    y = head.y - 190;
+  } else if (screen === 'lobby') {
+    x = head.x - w + 40;
+    y = 220;
+  }
+  x = Math.max(16, Math.min(1264 - w, x));
+  y = Math.max(16, Math.min(600, y));
+  bubble(ctx, hostLine, x, y, w, { x: head.x, y: head.y - 10 }, screen === 'intro' ? 24 : 21);
+}
+
+let lastCount = 99;
+function countSfx(t: number, readyFor: number) {
+  const n = t < readyFor ? Math.ceil(readyFor - t) : 0;
+  if (n !== lastCount) {
+    if (n > 0 && n <= 3) sfx.count(n);
+    else if (n === 0 && t < readyFor + 0.3) sfx.go();
+    lastCount = n;
+  }
+  if (t > readyFor + 1) lastCount = 99;
 }
 
 /** Screen transition: candy-coloured diagonal bands sweep off the screen to reveal the new scene. */

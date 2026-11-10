@@ -37,6 +37,8 @@ export interface PlayerInfo {
   slot: number; // 0..9, picks colour and face
   /** Team games: 0 or 1. Set by the board for Stew Battles. */
   team?: number;
+  /** Computer player and how good it is. */
+  bot?: 'easy' | 'normal' | 'hard';
 }
 
 export type Inputs = Record<string, TickInput>;

@@ -6,6 +6,7 @@ import { shuffle, type Rng } from './rng';
 import { BOARDS, getBoard, recommendedBoard } from './board/boards';
 import { awardMinigame, boardRanking, createBoard, finishEvent, stepBoard } from './board/engine';
 import type { BoardState } from './board/types';
+import { addBotInputs, type BotLevel, type BotMem } from './bots';
 
 export const MAX_PLAYERS = 10;
 export const ROUND_OPTIONS = [3, 5, 10];
@@ -60,6 +61,9 @@ export interface PartyState {
   placements: Placement[];
   navCooldown: number;
   rng: Rng;
+  /** Scratch memory for computer players, by player id. */
+  botMem: Record<string, BotMem>;
+  botRng: Rng;
 }
 
 export function createParty(seed: number): PartyState {
@@ -85,11 +89,14 @@ export function createParty(seed: number): PartyState {
     placements: [],
     navCooldown: 0,
     rng: { seed },
+    botMem: {},
+    botRng: { seed: seed ^ 0x5bd1e995 },
   };
 }
 
+/** The first human player runs the menus (bots never host unless there's nobody else). */
 export function hostId(s: PartyState): string | undefined {
-  return s.players[0]?.id;
+  return (s.players.find((p) => !p.bot) ?? s.players[0])?.id;
 }
 
 export function addPlayer(s: PartyState, id: string, name?: string): PlayerInfo | null {
@@ -108,6 +115,28 @@ export function addPlayer(s: PartyState, id: string, name?: string): PlayerInfo 
   s.players.push(p);
   s.scores[id] = 0;
   return p;
+}
+
+let botCount = 0;
+
+/** Add a computer player to the lobby. */
+export function addBot(s: PartyState, level: BotLevel): PlayerInfo | null {
+  if (s.phase !== 'lobby' || s.players.length >= MAX_PLAYERS) return null;
+  let id: string;
+  do id = `bot${++botCount}`;
+  while (s.players.some((p) => p.id === id));
+  const p = addPlayer(s, id);
+  if (p) p.bot = level;
+  return p;
+}
+
+/** Remove the most recently added bot. */
+export function removeBot(s: PartyState): boolean {
+  const bots = s.players.filter((p) => p.bot);
+  const last = bots[bots.length - 1];
+  if (!last) return false;
+  delete s.botMem[last.id];
+  return removePlayer(s, last.id);
 }
 
 /** Players can only leave from the lobby; mid-game they stay in with no input. */
@@ -200,8 +229,9 @@ export function placementsFrom(rows: ResultRow[]): Placement[] {
   return out;
 }
 
-export function stepParty(s: PartyState, inputs: Inputs, dt: number): void {
+export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void {
   s.phaseT += dt;
+  const inputs = addBotInputs(s, humanInputs, dt);
   const host = hostId(s);
   const hostIn: TickInput = (host && inputs[host]) || NO_INPUT;
 

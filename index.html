@@ -19,6 +19,10 @@
         font: inherit; border-radius: 8px; border: 1px solid #556; padding: 6px 10px; background: #1d2440; color: #fff;
       }
       #bar button { cursor: pointer; }
+      #bar .sep { width: 1px; align-self: stretch; background: #556; }
+      #bar .botBtn[data-level="easy"] { border-color: #4cd97b; }
+      #bar .botBtn[data-level="normal"] { border-color: #ffd23f; }
+      #bar .botBtn[data-level="hard"] { border-color: #ff5a5f; }
       #bar button:hover { background: #2c3766; }
       #bar input { width: 70px; text-transform: uppercase; letter-spacing: 2px; }
       #bar.hidden { display: none; }
@@ -43,6 +47,13 @@
     <canvas id="game" width="1280" height="720"></canvas>
     <div id="bar" class="hidden">
       <span id="status">Local play</span>
+      <span class="sep"></span>
+      <span>Add bot:</span>
+      <button class="botBtn" data-level="easy" title="Key 1">Easy</button>
+      <button class="botBtn" data-level="normal" title="Key 2">Normal</button>
+      <button class="botBtn" data-level="hard" title="Key 3">Hard</button>
+      <button id="unbotBtn" title="Key 0">Remove bot</button>
+      <span class="sep"></span>
       <button id="menuBtn">Main menu</button>
     </div>
     <div id="joinBox" class="hidden">

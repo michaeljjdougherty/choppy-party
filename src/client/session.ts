@@ -1,6 +1,7 @@
 import type { RawInput, Inputs } from '../shared/types';
 import { DT, TICK_HZ, toTickInput } from '../shared/types';
-import { addPlayer, createParty, removePlayer, stepParty, type PartyState } from '../shared/party';
+import { addBot, addPlayer, createParty, removeBot, removePlayer, stepParty, type PartyState } from '../shared/party';
+import type { BotLevel } from '../shared/bots';
 import type { ClientMsg, ServerMsg } from '../shared/protocol';
 import { onlinePlayerId } from '../shared/protocol';
 import type { InputManager } from './input';
@@ -17,6 +18,8 @@ export interface Session {
   leave(deviceKey: string): void;
   /** Player ids controlled from this browser. */
   localIds(): Set<string>;
+  addBot(level: BotLevel): void;
+  removeBot(): void;
   close(): void;
 }
 
@@ -72,7 +75,15 @@ export class LocalSession implements Session {
   }
 
   localIds() {
-    return new Set(this.state.players.map((p) => p.id));
+    return new Set(this.state.players.filter((p) => !p.bot).map((p) => p.id));
+  }
+
+  addBot(level: BotLevel): void {
+    addBot(this.state, level);
+  }
+
+  removeBot(): void {
+    removeBot(this.state);
   }
 
   close() {}
@@ -167,6 +178,14 @@ export class OnlineSession implements Session {
   }
   leave(deviceKey: string): void {
     this.send({ t: 'remove', deviceKey });
+  }
+
+  addBot(level: BotLevel): void {
+    this.send({ t: 'bot', level });
+  }
+
+  removeBot(): void {
+    this.send({ t: 'unbot' });
   }
 
   localIds(): Set<string> {

@@ -4,7 +4,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DT, TICK_HZ, clamp, toTickInput, type Inputs, type RawInput } from '../shared/types';
-import { addPlayer, createParty, removePlayer, stepParty, type PartyState } from '../shared/party';
+import { addBot, addPlayer, createParty, hostId, removeBot, removePlayer, stepParty, type PartyState } from '../shared/party';
 import { MAX_DEVICES_PER_CLIENT, onlinePlayerId, type ClientMsg, type ServerMsg } from '../shared/protocol';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -132,6 +132,11 @@ function handle(ws: WebSocket): void {
       }
     } else if (msg.t === 'remove' && DEVICE_KEY.test(msg.deviceKey)) {
       removePlayer(room.party, onlinePlayerId(client.id, msg.deviceKey));
+    } else if (msg.t === 'bot' || msg.t === 'unbot') {
+      // only the host's browser manages bots
+      if (!hostId(room.party)?.startsWith(client.id + '.')) return send({ t: 'error', message: 'Only the host can add bots.' });
+      if (msg.t === 'unbot') removeBot(room.party);
+      else if (['easy', 'normal', 'hard'].includes(msg.level)) addBot(room.party, msg.level);
     } else if (msg.t === 'input' && msg.raws && typeof msg.raws === 'object') {
       for (const [k, v] of Object.entries(msg.raws).slice(0, MAX_DEVICES_PER_CLIENT)) {
         const raw = cleanRaw(v);

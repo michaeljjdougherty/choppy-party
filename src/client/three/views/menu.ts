@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
-import { standings, type PartyState } from '../../../shared/party';
+import { BOT_LABEL } from '../../../shared/bots';
+import { hostId, standings, type PartyState } from '../../../shared/party';
 import { ChoppyModel } from '../choppy';
 import { checkerTexture, makeScene, mesh, toy } from '../kit';
 import { place } from '../assets';
@@ -235,7 +236,7 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
     tags(): Tag[] {
       if (!state) return [];
       const mine = localIds();
-      const host = state.players[0]?.id;
+      const host = hostId(state);
       return players.map((p) => {
         const e = models.get(p.id)!;
         const pos = e.m.group.position;
@@ -252,7 +253,7 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
           color: p.color,
           sub,
           subColor,
-          badge: p.id === host ? 'HOST' : isOnline() && mine.has(p.id) ? 'YOU' : undefined,
+          badge: p.id === host ? 'HOST' : p.bot ? `${BOT_LABEL[p.bot].toUpperCase()} BOT` : isOnline() && mine.has(p.id) ? 'YOU' : undefined,
         };
       });
     },

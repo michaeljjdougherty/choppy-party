@@ -13,6 +13,7 @@ import { Stage, type Tag } from './three/stage';
 import { GAME_VIEWS, boardView, mainMenuView, menuView } from './three/views';
 import { preloadAll } from './three/assets';
 import { logo } from './menu';
+import type { BotLevel } from '../shared/bots';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -110,6 +111,24 @@ input.onBPress = (d) => {
 };
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && session?.view()?.phase === 'lobby') backToMenu();
+});
+
+// bots: buttons in the lobby bar, or keys 1/2/3 to add and 0 to remove
+const BOT_KEYS: Record<string, BotLevel> = { Digit1: 'easy', Digit2: 'normal', Digit3: 'hard', Numpad1: 'easy', Numpad2: 'normal', Numpad3: 'hard' };
+function lobbyBot(level: BotLevel | null) {
+  if (session?.view()?.phase !== 'lobby') return;
+  if (level) session.addBot(level);
+  else session.removeBot();
+  (level ? sfx.join : sfx.leave)();
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>('.botBtn')) {
+  b.addEventListener('click', () => lobbyBot(b.dataset.level as BotLevel));
+}
+document.getElementById('unbotBtn')!.addEventListener('click', () => lobbyBot(null));
+window.addEventListener('keydown', (e) => {
+  if (e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+  if (BOT_KEYS[e.code]) lobbyBot(BOT_KEYS[e.code]);
+  else if (e.code === 'Digit0' || e.code === 'Numpad0' || e.code === 'Backspace') lobbyBot(null);
 });
 
 function resize() {

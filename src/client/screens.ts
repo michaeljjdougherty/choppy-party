@@ -21,9 +21,11 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
   text(ctx, sc.roomCode ? `Room code: ${sc.roomCode}` : sc.status, 640, 136, 28, { color: '#ffffff', weight: 700 });
   if (s.players.length === 0) {
     text(ctx, 'Press A to join!', 640, 330, 46, { color: '#fff' });
+    text(ctx, 'Add bots with keys 1 / 2 / 3 (Easy / Normal / Hard) or the buttons up top', 640, 420, 20, { weight: 600, color: '#ffd23f' });
     text(ctx, 'Pads: bottom face button   ·   Keys: Space (WASD) or Enter (Arrows)', 640, 384, 20, { weight: 600 });
   } else {
-    text(ctx, `${s.players.length}/${MAX_PLAYERS} players  ·  press A to join, B to leave`, 640, 176, 20, {
+    const bots = s.players.filter((p) => p.bot).length;
+    text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? ` (${bots} ${bots === 1 ? 'bot' : 'bots'})` : ''}  ·  A to join, B to leave  ·  Keys 1/2/3 add an Easy/Normal/Hard bot, 0 removes one`, 640, 176, 20, {
       color: '#ffe9f6',
       weight: 600,
     });

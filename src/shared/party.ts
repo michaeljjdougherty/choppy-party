@@ -4,7 +4,7 @@ import { GAMES, getGame } from './games';
 import { PLAYER_COLORS, DEFAULT_NAMES } from './players';
 import { shuffle, type Rng } from './rng';
 import { BOARDS, getBoard, recommendedBoard } from './board/boards';
-import { awardMinigame, boardRanking, createBoard, stepBoard } from './board/engine';
+import { awardMinigame, boardRanking, createBoard, finishEvent, stepBoard } from './board/engine';
 import type { BoardState } from './board/types';
 
 export const MAX_PLAYERS = 10;
@@ -50,6 +50,12 @@ export interface PartyState {
   playlist: string[];
   gameId: string | null;
   game: unknown;
+  /** Who is in the current minigame (a duel or Stew Battle is only some of the party). Null = everyone. */
+  gamePlayers: PlayerInfo[] | null;
+  /** The current minigame was started by a board space, not the end of a turn. */
+  boardEvent: 'duel' | 'stew' | null;
+  /** Result line for a duel or Stew Battle. */
+  eventLine: string;
   ready: string[];
   placements: Placement[];
   navCooldown: number;
@@ -72,6 +78,9 @@ export function createParty(seed: number): PartyState {
     playlist: [],
     gameId: null,
     game: null,
+    gamePlayers: null,
+    boardEvent: null,
+    eventLine: '',
     ready: [],
     placements: [],
     navCooldown: 0,
@@ -125,6 +134,11 @@ export function totalRounds(s: PartyState): number {
   return s.playlist.length;
 }
 
+/** The players in the current minigame. */
+export function inGame(s: PartyState): PlayerInfo[] {
+  return s.gamePlayers ?? s.players;
+}
+
 function setPhase(s: PartyState, phase: Phase): void {
   s.phase = phase;
   s.phaseT = 0;
@@ -169,6 +183,8 @@ function beginRound(s: PartyState): void {
   const id = s.playlist[s.round];
   const g = getGame(id);
   s.gameId = id;
+  s.gamePlayers = null;
+  s.boardEvent = null;
   s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
   s.game = g.setup(s.players, s.rng.seed);
   setPhase(s, 'intro');
@@ -214,6 +230,19 @@ export function stepParty(s: PartyState, inputs: Inputs, dt: number): void {
     case 'board': {
       const b = s.board!;
       stepBoard(b, inputs, dt);
+      if (b.sub === 'event' && b.event) {
+        // a Duel or Stew Battle space: play that minigame with just those players, then come back
+        const ev = b.event;
+        const g = getGame(ev.gameId);
+        const who = ev.players.map((id) => ({ ...s.players.find((p) => p.id === id)!, team: ev.teams?.[id] }));
+        s.gameId = ev.gameId;
+        s.gamePlayers = who;
+        s.boardEvent = ev.kind;
+        s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
+        s.game = g.setup(who, s.rng.seed);
+        setPhase(s, 'intro');
+        break;
+      }
       if (b.sub === 'done') {
         // everyone has moved: time for this turn's minigame
         const pool = eligibleGames(s.players.length);
@@ -228,10 +257,10 @@ export function stepParty(s: PartyState, inputs: Inputs, dt: number): void {
       break;
     }
     case 'intro': {
-      for (const p of s.players) {
+      for (const p of inGame(s)) {
         if (inputs[p.id]?.aPressed && !s.ready.includes(p.id)) s.ready.push(p.id);
       }
-      const allReady = s.players.every((p) => s.ready.includes(p.id));
+      const allReady = inGame(s).every((p) => s.ready.includes(p.id));
       if ((allReady && s.phaseT > 0.5) || s.phaseT > 10) setPhase(s, 'play');
       break;
     }
@@ -239,12 +268,17 @@ export function stepParty(s: PartyState, inputs: Inputs, dt: number): void {
       const g = getGame(s.gameId!);
       g.step(s.game, inputs, dt);
       if (g.isOver(s.game)) {
-        s.placements = placementsFrom(g.results(s.game));
-        if (s.board) {
-          // on a board, minigames pay out coins instead of party points
-          const coins = awardMinigame(s.board, s.placements);
-          for (const pl of s.placements) pl.points = coins[pl.id] ?? 0;
-          for (const p of Object.values(s.board.players)) s.scores[p.id] = p.coins;
+        const rows = g.results(s.game);
+        s.placements = placementsFrom(rows);
+        if (s.board && s.boardEvent) {
+          s.eventLine = finishEvent(s.board, rows);
+          for (const pl of s.placements) pl.points = 0;
+          for (const p of Object.values(s.board.players)) s.scores[p.id] = p.keys;
+        } else if (s.board) {
+          // on a board, minigames pay out keys instead of party points
+          const keys = awardMinigame(s.board, s.placements);
+          for (const pl of s.placements) pl.points = keys[pl.id] ?? 0;
+          for (const p of Object.values(s.board.players)) s.scores[p.id] = p.keys;
         } else {
           for (const pl of s.placements) s.scores[pl.id] = (s.scores[pl.id] ?? 0) + pl.points;
         }
@@ -254,6 +288,15 @@ export function stepParty(s: PartyState, inputs: Inputs, dt: number): void {
     }
     case 'results': {
       if ((hostIn.aPressed && s.phaseT > 1.5) || s.phaseT > 8) {
+        if (s.board && s.boardEvent) {
+          // back to the board: the player who landed on the space finishes their turn
+          s.boardEvent = null;
+          s.gamePlayers = null;
+          s.gameId = null;
+          s.game = null;
+          setPhase(s, 'board');
+          break;
+        }
         if (s.board) {
           if (s.board.turn >= s.board.maxTurns) {
             for (const r of boardRanking(s.board)) s.scores[r.id] = r.value;

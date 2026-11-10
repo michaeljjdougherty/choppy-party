@@ -1,6 +1,29 @@
 import type { Rng } from '../rng';
 
-export type SpaceType = 'blue' | 'red' | 'event' | 'lucky' | 'wisp' | 'station' | 'counter';
+/**
+ * Board spaces. Key, Heart and Thorn are the everyday spaces (about 70% of every board).
+ * The rest are special spaces from the board spec.
+ */
+export type SpaceType =
+  | 'key' // +3 Choppy Keys
+  | 'heart' // +6 HP
+  | 'thorn' // -3 Choppy Keys
+  | 'crate' // a random item
+  | 'lucky' // +5 to 10 keys, or a rare warp to a Crown Chest
+  | 'event' // the map's own gimmick
+  | 'post' // Claim Post
+  | 'duel' // 1v1 duel
+  | 'stew' // Stew Battle (2 teams)
+  | 'fountain' // Heart Fountain: heal 10 passing, full on landing
+  | 'spring' // bounce 1 to 5 spaces ahead
+  | 'cannon' // aim at a player within 6 spaces
+  | 'vent' // Cosmo airlock vent: blasted 3 spaces back
+  | 'dynamite' // Gulch: 15 damage to you and anyone within 1 space
+  | 'snare' // Hollow root snare (only at night): next roll capped at 3
+  | 'wisp' // Hollow: pay to rob the leader
+  | 'station' // Gulch train station
+  | 'counter' // Cosmo laser gate
+  | 'camp'; // Respawn Camp
 
 export interface BoardNode {
   id: string;
@@ -12,7 +35,70 @@ export interface BoardNode {
   gate?: { day: string[]; night: string[] };
   /** Laser Lane spaces on Cosmo Junction. */
   lane?: boolean;
+  /** Gold Rush Gulch: which canyon lane a space is on (boulders roll down one lane each round). */
+  canyon?: number;
 }
+
+/** Every number the board uses. Kept per map so a pre-game settings screen can change them later. */
+export interface BoardPreset {
+  startKeys: number;
+  maxHp: number;
+  crownPrice: number;
+  chests: number;
+  /** A new chest is never placed within this many spaces of a player. */
+  chestMinDist: number;
+  keySpace: number;
+  heartSpace: number;
+  thornSpace: number;
+  /** Key and Heart Spaces pay double in this many final turns. */
+  doubleTurns: number;
+  postToll: number;
+  postSting: number;
+  postStingHeal: number;
+  passToll: number;
+  passSting: number;
+  postStealCost: number;
+  stewWin: number;
+  stewLanderBonus: number;
+  sitOutKeys: number;
+  fountainPass: number;
+  cannonDamage: number;
+  cannonRange: number;
+  hazardDamage: number;
+  laserDamage: number;
+  dynamiteDamage: number;
+  maxItems: number;
+  startItems: number;
+}
+
+export const DEFAULT_PRESET: BoardPreset = {
+  startKeys: 10,
+  maxHp: 30,
+  crownPrice: 40,
+  chests: 1,
+  chestMinDist: 6,
+  keySpace: 3,
+  heartSpace: 6,
+  thornSpace: 3,
+  doubleTurns: 5,
+  postToll: 5,
+  postSting: 8,
+  postStingHeal: 4,
+  passToll: 1,
+  passSting: 2,
+  postStealCost: 10,
+  stewWin: 10,
+  stewLanderBonus: 5,
+  sitOutKeys: 5,
+  fountainPass: 10,
+  cannonDamage: 15,
+  cannonRange: 6,
+  hazardDamage: 10,
+  laserDamage: 15,
+  dynamiteDamage: 15,
+  maxItems: 3,
+  startItems: 1,
+};
 
 export interface BoardDef {
   id: string;
@@ -24,29 +110,105 @@ export interface BoardDef {
   theme: 'hollow' | 'cosmo' | 'gulch';
   nodes: Record<string, BoardNode>;
   start: string;
+  /** Where knocked-out players come back. */
+  camp: string;
+  /** Spots a Crown Chest can appear on (15 to 25 per map). */
   crownSpots: string[];
-  /** How many crowns are on the board at once. */
-  crownsActive: number;
   /** Stations in train order (Gold Rush Gulch). */
   stations?: string[];
+  /** Lantern Hollow: pairs of spaces a toppling pine can fall across. */
+  pines?: string[][];
+  preset: BoardPreset;
 }
+
+export type ItemId =
+  | 'spring-boots'
+  | 'double-barrel'
+  | 'heart-snack'
+  | 'hunting-bow'
+  | 'pirate-cannon'
+  | 'treasure-shovel'
+  | 'spike-trap'
+  | 'knight-shield'
+  | 'swap-pipe'
+  | 'sticky-cube';
 
 export interface BoardPlayer {
   id: string;
   node: string;
-  coins: number;
+  keys: number;
   crowns: number;
+  hp: number;
+  items: ItemId[];
+  /** Knocked out: skips their next move, then plays on from the Respawn Camp. */
+  ko: boolean;
+  /** Next roll is capped (Sticky Cube, Root Snare). 0 = no cap. */
+  rollCap: number;
+  /** Extra steps or dice for the next roll (Spring Boots, Double Barrel). */
+  rollBonus: number;
+  dice: number;
+  shield: boolean;
+  /** Turn number when this player last used an item. */
+  usedItemTurn: number;
+  stats: { damageTaken: number; damageDealt: number; kos: number; spaces: number; sevens: number; wins: number };
 }
 
+export interface ClaimPost {
+  owner: string;
+  mode: 'toll' | 'sting';
+}
+
+/** Something the current player is choosing. */
 export type Prompt =
   | { kind: 'crown'; node: string }
   | { kind: 'wisp' }
-  | { kind: 'train'; to: string };
+  | { kind: 'train'; to: string }
+  | { kind: 'claim'; node: string }
+  | { kind: 'steal'; node: string }
+  | { kind: 'items'; sel: number }
+  | { kind: 'target'; purpose: 'item' | 'duel' | 'cannon'; item?: ItemId; options: string[]; sel: number };
 
-export type BoardSub = 'turnIntro' | 'roll' | 'rolled' | 'move' | 'branch' | 'prompt' | 'land' | 'done';
+/** A minigame the board starts in the middle of a turn. */
+export interface BoardEvent {
+  kind: 'duel' | 'stew';
+  gameId: string;
+  lander: string;
+  /** Duel: the two players. Stew: everyone playing. */
+  players: string[];
+  /** Stew: team index (0 or 1) per player. */
+  teams?: Record<string, number>;
+  sitOut?: string | null;
+  /** Stew: the two players the sit-out wheel picks between. */
+  wheel?: string[];
+}
+
+export type BoardSub =
+  | 'turnIntro'
+  | 'roll'
+  | 'rolled'
+  | 'move'
+  | 'branch'
+  | 'prompt'
+  | 'land'
+  | 'wheel'
+  | 'event' // waiting for the party to run a duel or Stew Battle
+  | 'roundEnd' // hazards go off after everyone has moved
+  | 'done';
+
+export interface Hazards {
+  /** Cosmo: spaces meteors will hit at the end of this round. */
+  meteors: string[];
+  /** Hollow: the pine (pair of spaces) that falls at the end of this night round. */
+  pine: string[];
+  /** Gulch: canyon lane the next boulder rolls down. */
+  boulderLane: number;
+  /** Spike traps hidden on spaces, by owner. */
+  spikes: Record<string, string>;
+}
 
 export interface BoardState {
   boardId: string;
+  preset: BoardPreset;
   turn: number; // 1-based
   maxTurns: number;
   order: string[];
@@ -54,20 +216,34 @@ export interface BoardState {
   sub: BoardSub;
   t: number;
   roll: number;
+  rolls: number[];
   stepsLeft: number;
-  hop: { from: string; to: string; t: number } | null;
+  hop: { from: string; to: string; t: number; back?: boolean } | null;
+  /** Steps still to slide backward (airlock vents). */
+  pushBack: number;
+  /** A Spring Space already bounced this move (so springs don't chain forever). */
+  bounced: boolean;
   branch: { options: string[]; sel: number } | null;
   prompt: Prompt | null;
   players: Record<string, BoardPlayer>;
-  crowns: string[]; // nodes with an active crown
+  /** Spaces with a Crown Chest on them. */
+  crowns: string[];
+  lastChest: string[];
+  posts: Record<string, ClaimPost>;
+  hazards: Hazards;
+  event: BoardEvent | null;
+  /** After an event or hazards, where the board picks up again. */
+  resume: BoardSub | null;
   night: boolean;
   counter: number;
   banner: { text: string; color: string; t: number } | null;
+  /** Short-lived effects for the 3D view: hits, heals, knockouts, item use. */
+  fx: { n: number; kind: string; node: string; id?: string; amount?: number; t: number }[];
+  fxSeq: number;
   log: string[];
   rng: Rng;
 }
 
-export const CROWN_PRICE = 20;
 export const WISP_PRICE = 10;
 export const TRAIN_PRICE = 5;
 export const COUNTER_START = 8;

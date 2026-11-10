@@ -9,6 +9,8 @@ import { meteorView } from './meteor';
 import { presentView } from './presents';
 import { graveyardView } from './graveyard';
 import { trainView } from './train';
+import { fuseView, paddleView } from './duels';
+import { crateView, ropeView } from './teams';
 
 type Factory = (env: THREE.Texture, state: any, players: PlayerInfo[]) => View;
 
@@ -22,6 +24,10 @@ export const GAME_VIEWS: Record<string, Factory> = {
   'present-pile-up': presentView,
   'graveyard-shift': graveyardView,
   'train-hop': trainView,
+  'fuse-draw': fuseView,
+  'paddle-clash': paddleView,
+  'rope-pull': ropeView,
+  'crate-grab': crateView,
 };
 
 export { menuView } from './menu';

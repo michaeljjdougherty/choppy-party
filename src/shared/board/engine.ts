@@ -2,20 +2,28 @@ import type { Inputs, TickInput } from '../types';
 import { NO_INPUT } from '../types';
 import { rand, randInt, shuffle } from '../rng';
 import { getBoard } from './boards';
-import type { BoardDef, BoardState, Prompt } from './types';
-import { COUNTER_START, CROWN_PRICE, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
+import { ITEMS, ITEM_IDS } from './items';
+import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt } from './types';
+import { COUNTER_START, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
 
-/** Coins for minigame placings on a board night. */
-export const MINIGAME_COINS = [10, 6, 4, 2];
+/** Keys for minigame placings on a board night (the spec says minigames pay 3 to 10 keys). */
+export const MINIGAME_KEYS = [10, 7, 5, 3];
+/** Duel and Stew Battle games the board can start mid-turn. */
+export const DUEL_GAMES = ['fuse-draw', 'paddle-clash'];
+export const STEW_GAMES = ['rope-pull', 'crate-grab'];
+
 const AUTO_ROLL = 8; // seconds before the game rolls for an idle player
 const AUTO_CHOICE = 7;
 const BANNER = 1.6;
+const WHEEL_TIME = 3;
 
 export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number): BoardState {
   const def = getBoard(boardId);
+  const pr = def.preset;
   const rng = { seed };
   const s: BoardState = {
     boardId,
+    preset: { ...pr },
     turn: 1,
     maxTurns,
     order: shuffle(rng, [...playerIds]),
@@ -23,20 +31,49 @@ export function createBoard(boardId: string, playerIds: string[], maxTurns: numb
     sub: 'turnIntro',
     t: 0,
     roll: 0,
+    rolls: [],
     stepsLeft: 0,
     hop: null,
+    pushBack: 0,
+    bounced: false,
     branch: null,
     prompt: null,
     players: {},
     crowns: [],
+    lastChest: [],
+    posts: {},
+    hazards: { meteors: [], pine: [], boulderLane: 0, spikes: {} },
+    event: null,
+    resume: null,
     night: false,
     counter: COUNTER_START,
     banner: null,
+    fx: [],
+    fxSeq: 0,
     log: [],
     rng,
   };
-  for (const id of playerIds) s.players[id] = { id, node: def.start, coins: 10, crowns: 0 };
-  while (s.crowns.length < def.crownsActive) placeCrown(s, def);
+  for (const id of playerIds) {
+    s.players[id] = {
+      id,
+      node: def.start,
+      keys: pr.startKeys,
+      crowns: 0,
+      hp: pr.maxHp,
+      items: [],
+      ko: false,
+      rollCap: 0,
+      rollBonus: 0,
+      dice: 1,
+      shield: false,
+      usedItemTurn: 0,
+      stats: { damageTaken: 0, damageDealt: 0, kos: 0, spaces: 0, sevens: 0, wins: 0 },
+    };
+    // everyone starts with an item so they can try the item menu on turn 1
+    for (let i = 0; i < pr.startItems; i++) s.players[id].items.push(ITEM_IDS[Math.floor(rand(rng) * ITEM_IDS.length)]);
+  }
+  while (s.crowns.length < pr.chests) placeChest(s, def);
+  planHazards(s, def);
   return s;
 }
 
@@ -51,13 +88,60 @@ export function exits(def: BoardDef, s: BoardState, nodeId: string): string[] {
   return n.next;
 }
 
-function placeCrown(s: BoardState, def: BoardDef): void {
-  const free = def.crownSpots.filter((c) => !s.crowns.includes(c));
-  // keep new crowns away from where everyone is standing, when possible
-  const occupied = new Set(Object.values(s.players).map((p) => p.node));
-  const pool = free.filter((c) => !occupied.has(c));
-  const pick = (pool.length ? pool : free)[Math.floor(rand(s.rng) * (pool.length ? pool.length : free.length))];
-  if (pick) s.crowns.push(pick);
+const prevCache = new Map<string, Record<string, string[]>>();
+/** Spaces that lead into each space. */
+export function prevs(def: BoardDef): Record<string, string[]> {
+  let m = prevCache.get(def.id);
+  if (!m) {
+    m = {};
+    for (const n of Object.values(def.nodes)) for (const x of n.next) (m[x] ??= []).push(n.id);
+    prevCache.set(def.id, m);
+  }
+  return m;
+}
+
+/** Steps along the path (forward only) from a space to every space it can reach. */
+export function forwardDist(def: BoardDef, s: BoardState, from: string, max = 999): Map<string, number> {
+  const d = new Map([[from, 0]]);
+  const q = [from];
+  while (q.length) {
+    const a = q.shift()!;
+    const da = d.get(a)!;
+    if (da >= max) continue;
+    for (const b of exits(def, s, a)) if (!d.has(b)) (d.set(b, da + 1), q.push(b));
+  }
+  return d;
+}
+
+/** Spaces within `max` steps either way along the path (for item ranges and blasts). */
+export function nearDist(def: BoardDef, from: string, max: number): Map<string, number> {
+  const p = prevs(def);
+  const d = new Map([[from, 0]]);
+  const q = [from];
+  while (q.length) {
+    const a = q.shift()!;
+    const da = d.get(a)!;
+    if (da >= max) continue;
+    for (const b of [...def.nodes[a].next, ...(p[a] ?? [])]) if (!d.has(b)) (d.set(b, da + 1), q.push(b));
+  }
+  return d;
+}
+
+/**
+ * Smart Crown Chest placement: score every free spot by how far the closest player would have
+ * to walk to it, skip spots within chestMinDist of anyone, and pick at random from the 3 farthest.
+ */
+export function placeChest(s: BoardState, def: BoardDef): string | null {
+  const free = def.crownSpots.filter((c) => !s.crowns.includes(c) && !s.lastChest.includes(c));
+  if (!free.length) return null;
+  const dists = Object.values(s.players).map((p) => forwardDist(def, s, p.node));
+  const score = (c: string) => Math.min(...dists.map((d) => d.get(c) ?? 999));
+  const scored = free.map((c) => ({ c, d: score(c) }));
+  const far = scored.filter((x) => x.d >= s.preset.chestMinDist);
+  const pool = (far.length ? far : scored).sort((a, b) => b.d - a.d).slice(0, 3);
+  const pick = pool[Math.floor(rand(s.rng) * pool.length)].c;
+  s.crowns.push(pick);
+  return pick;
 }
 
 function say(s: BoardState, text: string, color = '#ffffff'): void {
@@ -66,25 +150,33 @@ function say(s: BoardState, text: string, color = '#ffffff'): void {
   if (s.log.length > 6) s.log.pop();
 }
 
+function fx(s: BoardState, kind: string, node: string, id?: string, amount?: number): void {
+  s.fx.push({ n: ++s.fxSeq, kind, node, id, amount, t: 0 });
+}
+
 function set(s: BoardState, sub: BoardState['sub']): void {
   s.sub = sub;
   s.t = 0;
 }
 
-/** Rank for the end of the game: crowns first, then coins. */
+/** Rank for the end of the game: crowns first, then keys. */
 export function boardRanking(s: BoardState): { id: string; value: number; label: string }[] {
   return Object.values(s.players)
-    .map((p) => ({ id: p.id, value: p.crowns * 10000 + p.coins, label: `${p.crowns} crown${p.crowns === 1 ? '' : 's'} · ${p.coins} coins` }))
+    .map((p) => ({ id: p.id, value: p.crowns * 10000 + p.keys, label: `${p.crowns} crown${p.crowns === 1 ? '' : 's'} · ${p.keys} keys` }))
     .sort((a, b) => b.value - a.value);
 }
 
-/** Award coins after the turn's minigame; returns coins given per player. */
+/** Award keys after the turn's minigame; returns keys given per player. */
 export function awardMinigame(s: BoardState, placements: { id: string; place: number }[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const pl of placements) {
-    const c = MINIGAME_COINS[pl.place - 1] ?? 2;
+    const c = MINIGAME_KEYS[pl.place - 1] ?? 3;
     out[pl.id] = c;
-    if (s.players[pl.id]) s.players[pl.id].coins += c;
+    const p = s.players[pl.id];
+    if (p) {
+      p.keys += c;
+      if (pl.place === 1) p.stats.wins++;
+    }
   }
   return out;
 }
@@ -99,6 +191,56 @@ export function boardOver(s: BoardState): boolean {
   return s.sub === 'done' && s.turn >= s.maxTurns;
 }
 
+const lateGame = (s: BoardState) => s.maxTurns - s.turn < s.preset.doubleTurns;
+
+// ---- damage, healing and knockouts ---------------------------------------------------------------
+
+/** Damage a player. Returns true if it knocked them out. */
+export function hurt(s: BoardState, def: BoardDef, id: string, amount: number, by?: string): boolean {
+  const p = s.players[id];
+  if (!p || p.ko) return false;
+  if (p.shield) {
+    p.shield = false;
+    fx(s, 'block', p.node, id);
+    say(s, 'Blocked by the Knight Shield!', '#3fa9f5');
+    return false;
+  }
+  p.hp -= amount;
+  p.stats.damageTaken += amount;
+  if (by && s.players[by]) s.players[by].stats.damageDealt += amount;
+  fx(s, 'hit', p.node, id, amount);
+  if (p.hp > 0) return false;
+  // knocked out: drop half the keys (to whoever did it), lose a post, respawn at camp next turn
+  const drop = Math.floor(p.keys / 2);
+  p.keys -= drop;
+  if (by && s.players[by] && by !== id) s.players[by].keys += drop;
+  p.hp = s.preset.maxHp;
+  p.ko = true;
+  p.stats.kos++;
+  fx(s, 'ko', p.node, id, drop);
+  p.node = def.camp;
+  const mine = Object.entries(s.posts).filter(([, c]) => c.owner === id);
+  if (mine.length) delete s.posts[mine[Math.floor(rand(s.rng) * mine.length)][0]];
+  say(s, `Knocked out! Dropped ${drop} keys`, '#ff5a5f');
+  return true;
+}
+
+function heal(s: BoardState, p: BoardPlayer, amount: number): number {
+  const before = p.hp;
+  p.hp = Math.min(s.preset.maxHp, p.hp + amount);
+  if (p.hp > before) fx(s, 'heal', p.node, p.id, p.hp - before);
+  return p.hp - before;
+}
+
+function giveItem(s: BoardState, p: BoardPlayer): ItemId | null {
+  if (p.items.length >= s.preset.maxItems) return null;
+  const it = ITEM_IDS[Math.floor(rand(s.rng) * ITEM_IDS.length)];
+  p.items.push(it);
+  return it;
+}
+
+// ---- the turn ------------------------------------------------------------------------------------
+
 /**
  * Advance the board by one tick. Only the current player's input matters; idle players are
  * played for automatically after a few seconds so a party never stalls.
@@ -110,23 +252,54 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
     s.banner.t -= dt;
     if (s.banner.t <= 0) s.banner = null;
   }
-  if (s.sub === 'done') return;
+  for (const f of s.fx) f.t += dt;
+  s.fx = s.fx.filter((f) => f.t < 2);
+  if (s.sub === 'done' || s.sub === 'event') return;
+  if (s.sub === 'roundEnd') {
+    if (s.t > 2.6) set(s, 'done');
+    return;
+  }
   const id = currentPlayer(s);
   const me = s.players[id];
   const inp: TickInput = inputs[id] ?? NO_INPUT;
 
   switch (s.sub) {
     case 'turnIntro':
+      if (me.ko) {
+        // knocked out last time: rest at camp this turn
+        if (s.t < dt * 1.5) say(s, 'Resting at the Respawn Camp', '#ffb347');
+        if (s.t > BANNER + 0.4) {
+          me.ko = false;
+          endTurn(s, def);
+        }
+        break;
+      }
       if (s.t > (s.cur === 0 ? 2.2 : 0.9)) set(s, 'roll');
       break;
 
-    case 'roll':
+    case 'roll': {
+      const canItem = me.items.length > 0 && me.usedItemTurn !== s.turn;
+      if (inp.bPressed && canItem && s.t > 0.2) {
+        ask(s, { kind: 'items', sel: 0 });
+        break;
+      }
       if ((inp.aPressed && s.t > 0.3) || s.t > AUTO_ROLL) {
-        s.roll = randInt(s.rng, 1, 10);
-        s.stepsLeft = s.roll;
+        s.rolls = [];
+        for (let i = 0; i < me.dice; i++) s.rolls.push(randInt(s.rng, 1, 10));
+        let roll = s.rolls.reduce((a, b) => a + b, 0) + me.rollBonus;
+        if (s.rolls.includes(7)) me.stats.sevens++;
+        // Sticky Cube and Root Snare: the roll is 1 to 3 no matter what
+        if (me.rollCap) roll = randInt(s.rng, 1, me.rollCap);
+        s.roll = roll;
+        s.stepsLeft = roll;
+        s.bounced = false;
+        me.rollCap = 0;
+        me.rollBonus = 0;
+        me.dice = 1;
         set(s, 'rolled');
       }
       break;
+    }
 
     case 'rolled':
       if (s.t > 0.9) set(s, 'move');
@@ -136,16 +309,31 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       if (s.hop) {
         s.hop.t += dt / HOP_TIME;
         if (s.hop.t >= 1) {
+          const back = s.hop.back;
           me.node = s.hop.to;
           s.hop = null;
+          me.stats.spaces++;
+          if (back) {
+            s.pushBack--;
+            if (s.pushBack <= 0) set(s, 'land');
+            break;
+          }
           s.stepsLeft--;
           onPass(s, def, id);
         }
         break;
       }
-      if (s.stepsLeft <= 0) {
+      if (s.pushBack > 0) {
+        const from = prevs(def)[me.node]?.[0];
+        if (!from) {
+          s.pushBack = 0;
+          set(s, 'land');
+        } else s.hop = { from: me.node, to: from, t: 0, back: true };
+        break;
+      }
+      if (s.stepsLeft <= 0 || me.ko) {
         set(s, 'land');
-        onLand(s, def, id);
+        if (!me.ko) onLand(s, def, id);
         break;
       }
       const ex = exits(def, s, me.node);
@@ -186,29 +374,29 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       break;
     }
 
-    case 'prompt': {
-      const p = s.prompt!;
-      const yes = inp.aPressed && s.t > 0.3;
-      const no = inp.bPressed && s.t > 0.3;
-      // idle players accept anything they can afford: it is almost always the right call
-      const auto = s.t > AUTO_CHOICE;
-      if (yes || no || auto) {
-        if (yes || (auto && !no)) resolvePrompt(s, def, id, p);
-        s.prompt = null;
-        set(s, 'move');
+    case 'prompt':
+      stepPrompt(s, def, id, inp);
+      break;
+
+    case 'wheel':
+      if (s.t > WHEEL_TIME) {
+        const ev = s.event!;
+        const sit = ev.wheel![Math.floor(rand(s.rng) * ev.wheel!.length)];
+        startStew(s, def, ev, sit);
       }
       break;
-    }
 
     case 'land':
-      if (s.t > BANNER + 0.2) {
-        if (s.cur < s.order.length - 1) {
-          s.cur++;
-          set(s, 'turnIntro');
-        } else set(s, 'done');
-      }
+      if (s.t > BANNER + 0.2) endTurn(s, def);
       break;
   }
+}
+
+function endTurn(s: BoardState, def: BoardDef): void {
+  if (s.cur < s.order.length - 1) {
+    s.cur++;
+    set(s, 'turnIntro');
+  } else roundEnd(s, def);
 }
 
 function ask(s: BoardState, p: Prompt): void {
@@ -216,19 +404,293 @@ function ask(s: BoardState, p: Prompt): void {
   set(s, 'prompt');
 }
 
+/** After a prompt or item: go back to rolling, keep moving, or finish the landing. */
+function afterPrompt(s: BoardState): void {
+  s.prompt = null;
+  const back = s.resume ?? 'move';
+  s.resume = null;
+  set(s, back);
+}
+
+function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): void {
+  const p = s.prompt!;
+  const me = s.players[id];
+  const yes = inp.aPressed && s.t > 0.3;
+  const no = inp.bPressed && s.t > 0.3;
+  const auto = s.t > AUTO_CHOICE;
+  const stick = s.t > 0.2 && Math.abs(inp.x) > 0.6 ? Math.sign(inp.x) : 0;
+  const stickY = s.t > 0.2 && Math.abs(inp.y) > 0.6 ? Math.sign(inp.y) : 0;
+
+  if (p.kind === 'items') {
+    if ((stick || stickY) && s.t > 0.2) {
+      p.sel = (p.sel + (stick || stickY) + me.items.length) % me.items.length;
+      s.t = 0.05; // tiny repeat delay
+    }
+    if (no || auto) {
+      s.prompt = null;
+      set(s, 'roll');
+      return;
+    }
+    if (yes) useItem(s, def, id, p.sel);
+    return;
+  }
+  if (p.kind === 'target') {
+    if (stick || stickY) {
+      p.sel = (p.sel + (stick || stickY) + p.options.length) % p.options.length;
+      s.t = 0.05;
+    }
+    if (no && p.purpose === 'item') {
+      s.prompt = null;
+      set(s, 'roll');
+      return;
+    }
+    if (yes || auto) {
+      if (auto) p.sel = Math.floor(rand(s.rng) * p.options.length);
+      resolveTarget(s, def, id, p, p.options[p.sel]);
+    }
+    return;
+  }
+  if (p.kind === 'claim') {
+    if (yes || no || auto) {
+      s.posts[p.node] = { owner: id, mode: no ? 'sting' : 'toll' };
+      say(s, no ? 'Claimed a Sting Post!' : 'Claimed a Toll Post!', '#ffd23f');
+      fx(s, 'claim', p.node, id);
+      s.prompt = null;
+      set(s, 'land');
+    }
+    return;
+  }
+  if (p.kind === 'steal') {
+    // idle players don't spend keys stealing posts
+    if (yes && me.keys >= s.preset.postStealCost) {
+      me.keys -= s.preset.postStealCost;
+      s.posts[p.node] = { owner: id, mode: 'toll' };
+      s.prompt = null;
+      ask(s, { kind: 'claim', node: p.node });
+      say(s, 'Post stolen! Pick its mode', '#ffd23f');
+      return;
+    }
+    if (no || auto || yes) {
+      s.prompt = null;
+      set(s, 'land');
+    }
+    return;
+  }
+  // crown, wisp and train: idle players accept anything they can afford
+  if (yes || no || auto) {
+    if (yes || (auto && !no)) resolvePrompt(s, def, id, p);
+    if (s.sub === 'prompt') {
+      if (me.ko) s.resume = 'land';
+      afterPrompt(s);
+    }
+  }
+}
+
+function targetsFor(s: BoardState, id: string): string[] {
+  return s.order.filter((o) => o !== id);
+}
+
+function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
+  const me = s.players[id];
+  const item = me.items[slot];
+  if (!item) return;
+  const info = ITEMS[item];
+  if (info.target) {
+    const options = targetsFor(s, id);
+    if (!options.length) return;
+    s.prompt = { kind: 'target', purpose: 'item', item, options, sel: 0 };
+    s.t = 0;
+    return;
+  }
+  consume(s, me, slot);
+  const at = me.node;
+  switch (item) {
+    case 'spring-boots':
+      me.rollBonus += 5;
+      say(s, 'Spring Boots! +5 to your roll', info.color);
+      break;
+    case 'double-barrel':
+      me.dice = 2;
+      say(s, 'Double Barrel! Roll 2 dice', info.color);
+      break;
+    case 'heart-snack':
+      heal(s, me, 20);
+      say(s, 'Heart Snack! +20 HP', info.color);
+      break;
+    case 'knight-shield':
+      me.shield = true;
+      say(s, 'Knight Shield up!', info.color);
+      break;
+    case 'spike-trap':
+      s.hazards.spikes[at] = id;
+      say(s, 'Spikes hidden here...', info.color);
+      break;
+    case 'pirate-cannon': {
+      const d = forwardDist(def, s, at, 10);
+      let hit: string | null = null;
+      let best = 99;
+      for (const o of s.order) {
+        if (o === id) continue;
+        const k = d.get(s.players[o].node);
+        if (k !== undefined && k > 0 && k < best) {
+          best = k;
+          hit = o;
+        }
+      }
+      fx(s, 'cannon', at, id);
+      if (hit) {
+        hurt(s, def, hit, 15, id);
+        if (!s.players[hit].ko) say(s, 'BOOM! Cannonball hit for 15!', info.color);
+      } else say(s, 'The cannonball missed everyone', info.color);
+      break;
+    }
+    case 'treasure-shovel': {
+      const near = nearDist(def, at, 2);
+      let got = 0;
+      for (const o of s.order) {
+        const p = s.players[o];
+        if (o === id || !near.has(p.node)) continue;
+        if (p.shield) {
+          p.shield = false;
+          fx(s, 'block', p.node, o);
+          continue;
+        }
+        const k = Math.min(5, p.keys);
+        p.keys -= k;
+        got += k;
+      }
+      me.keys += got;
+      fx(s, 'dig', at, id, got);
+      say(s, got ? `Dug up ${got} keys!` : 'Nothing to dig up nearby', info.color);
+      break;
+    }
+  }
+  s.prompt = null;
+  set(s, 'roll');
+}
+
+function consume(s: BoardState, me: BoardPlayer, slot: number): void {
+  const item = me.items.splice(slot, 1)[0];
+  me.usedItemTurn = s.turn;
+  // using any other item drops your shield
+  if (item !== 'knight-shield') me.shield = false;
+  fx(s, 'item', me.node, me.id);
+  s.log.unshift(`item:${item}`);
+}
+
+function resolveTarget(s: BoardState, def: BoardDef, id: string, p: Extract<Prompt, { kind: 'target' }>, target: string): void {
+  const me = s.players[id];
+  const tp = s.players[target];
+  s.prompt = null;
+  if (p.purpose === 'duel') {
+    startDuel(s, id, target);
+    return;
+  }
+  if (p.purpose === 'cannon') {
+    fx(s, 'cannon', me.node, id);
+    hurt(s, def, target, s.preset.cannonDamage, id);
+    if (!tp.ko) say(s, `Cannon hit for ${s.preset.cannonDamage}!`, '#ff9f1c');
+    set(s, 'land');
+    return;
+  }
+  const item = p.item!;
+  const slot = me.items.indexOf(item);
+  if (slot >= 0) consume(s, me, slot);
+  const color = ITEMS[item].color;
+  if (item === 'hunting-bow') {
+    fx(s, 'arrow', tp.node, target);
+    hurt(s, def, target, 10, id);
+    if (!tp.ko) say(s, 'Bullseye! 10 damage', color);
+    set(s, 'roll');
+  } else if (item === 'sticky-cube') {
+    if (tp.shield) {
+      tp.shield = false;
+      say(s, 'Blocked by the Knight Shield!', '#3fa9f5');
+    } else {
+      tp.rollCap = 3;
+      say(s, 'Sticky! Their next roll is 1 to 3', color);
+    }
+    fx(s, 'sticky', tp.node, target);
+    set(s, 'roll');
+  } else if (item === 'swap-pipe') {
+    if (tp.shield) {
+      tp.shield = false;
+      say(s, 'Blocked by the Knight Shield!', '#3fa9f5');
+      set(s, 'roll');
+    } else {
+      const a = me.node;
+      me.node = tp.node;
+      tp.node = a;
+      fx(s, 'swap', me.node, id);
+      fx(s, 'swap', tp.node, target);
+      say(s, 'Swapped places!', color);
+      set(s, 'land'); // your turn ends
+    }
+  }
+}
+
+function resolvePrompt(s: BoardState, def: BoardDef, id: string, p: Prompt): void {
+  const me = s.players[id];
+  if (p.kind === 'crown' && me.keys >= s.preset.crownPrice) {
+    me.keys -= s.preset.crownPrice;
+    me.crowns++;
+    s.crowns = s.crowns.filter((c) => c !== p.node);
+    s.lastChest = [p.node];
+    placeChest(s, def);
+    fx(s, 'crown', p.node, id);
+    say(s, 'Got a Choppy Crown!', '#ffd23f');
+  } else if (p.kind === 'wisp' && me.keys >= WISP_PRICE) {
+    const target = leaderOtherThan(s, id);
+    if (!target) return;
+    me.keys -= WISP_PRICE;
+    const take = Math.min(s.players[target].keys, randInt(s.rng, 6, 15));
+    s.players[target].keys -= take;
+    me.keys += take;
+    say(s, `The Wisp stole ${take} keys from the leader!`, '#c79bff');
+  } else if (p.kind === 'train' && me.keys >= TRAIN_PRICE) {
+    me.keys -= TRAIN_PRICE;
+    s.hop = { from: me.node, to: p.to, t: -1.5 }; // a longer hop: the train ride
+    say(s, 'All aboard!', '#ffb347');
+  }
+}
+
+function leaderOtherThan(s: BoardState, id: string): string | null {
+  const others = Object.values(s.players).filter((p) => p.id !== id && p.keys > 0);
+  others.sort((a, b) => b.crowns - a.crowns || b.keys - a.keys);
+  return others[0]?.id ?? null;
+}
+
 function onPass(s: BoardState, def: BoardDef, id: string): void {
   const me = s.players[id];
   const node = def.nodes[me.node];
+  const passing = s.stepsLeft > 0;
   if (s.crowns.includes(me.node)) {
-    if (me.coins >= CROWN_PRICE) ask(s, { kind: 'crown', node: me.node });
-    else say(s, `Need ${CROWN_PRICE} coins for the crown`, '#ffd23f');
+    if (me.keys >= s.preset.crownPrice) ask(s, { kind: 'crown', node: me.node });
+    else say(s, `Need ${s.preset.crownPrice} keys for the crown`, '#ffd23f');
     return;
   }
-  if (node.type === 'wisp' && me.coins >= WISP_PRICE && leaderOtherThan(s, id)) {
+  if (passing) {
+    const post = s.posts[me.node];
+    if (post && post.owner !== id) {
+      const owner = s.players[post.owner];
+      if (post.mode === 'toll') {
+        const k = Math.min(me.keys, s.preset.passToll);
+        me.keys -= k;
+        owner.keys += k;
+        if (k) fx(s, 'toll', me.node, id, k);
+      } else hurt(s, def, id, s.preset.passSting, post.owner);
+      if (me.ko) return;
+    }
+    if (node.type === 'fountain') {
+      const h = heal(s, me, s.preset.fountainPass);
+      if (h) say(s, `Heart Fountain: +${h} HP`, '#ff7bd5');
+    }
+  }
+  if (node.type === 'wisp' && me.keys >= WISP_PRICE && leaderOtherThan(s, id)) {
     ask(s, { kind: 'wisp' });
     return;
   }
-  if (node.type === 'station' && def.stations && me.coins >= TRAIN_PRICE) {
+  if (node.type === 'station' && def.stations && me.keys >= TRAIN_PRICE && passing) {
     const i = def.stations.indexOf(me.node);
     ask(s, { kind: 'train', to: def.stations[(i + 1) % def.stations.length] });
     return;
@@ -240,76 +702,162 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
       let hit = 0;
       for (const p of Object.values(s.players)) {
         if (def.nodes[p.node].lane && p.id !== id) {
-          p.coins = Math.floor(p.coins / 2);
+          hurt(s, def, p.id, s.preset.laserDamage);
           hit++;
         }
       }
-      say(s, hit ? `LASER! ${hit} player${hit > 1 ? 's' : ''} lost half their coins` : 'LASER! The lane was empty', '#ff4fd8');
+      fx(s, 'laser', me.node);
+      say(s, hit ? `LASER! ${hit} player${hit > 1 ? 's' : ''} took ${s.preset.laserDamage} damage` : 'LASER! The lane was empty', '#ff4fd8');
     } else say(s, `Laser charging: ${s.counter}`, '#ff9cf0');
-  }
-}
-
-function leaderOtherThan(s: BoardState, id: string): string | null {
-  const others = Object.values(s.players).filter((p) => p.id !== id && p.coins > 0);
-  others.sort((a, b) => b.crowns - a.crowns || b.coins - a.coins);
-  return others[0]?.id ?? null;
-}
-
-function resolvePrompt(s: BoardState, def: BoardDef, id: string, p: Prompt): void {
-  const me = s.players[id];
-  if (p.kind === 'crown' && me.coins >= CROWN_PRICE) {
-    me.coins -= CROWN_PRICE;
-    me.crowns++;
-    s.crowns = s.crowns.filter((c) => c !== p.node);
-    placeCrown(s, def);
-    say(s, 'Got a crown!', '#ffd23f');
-  } else if (p.kind === 'wisp' && me.coins >= WISP_PRICE) {
-    const target = leaderOtherThan(s, id);
-    if (!target) return;
-    me.coins -= WISP_PRICE;
-    const take = Math.min(s.players[target].coins, randInt(s.rng, 6, 15));
-    s.players[target].coins -= take;
-    me.coins += take;
-    say(s, `The Wisp stole ${take} coins from the leader!`, '#c79bff');
-  } else if (p.kind === 'train' && me.coins >= TRAIN_PRICE) {
-    me.coins -= TRAIN_PRICE;
-    s.hop = { from: me.node, to: p.to, t: -1.5 }; // a longer hop: the train ride
-    say(s, 'All aboard!', '#ffb347');
   }
 }
 
 function onLand(s: BoardState, def: BoardDef, id: string): void {
   const me = s.players[id];
   const node = def.nodes[me.node];
+  const pr = s.preset;
+  const dbl = lateGame(s) ? 2 : 1;
+  // a hidden spike trap goes off first
+  const trap = s.hazards.spikes[me.node];
+  if (trap && trap !== id) {
+    delete s.hazards.spikes[me.node];
+    fx(s, 'spikes', me.node, id);
+    say(s, 'Spike trap! 10 damage', '#9aa3b5');
+    if (hurt(s, def, id, 10, trap)) return;
+  }
   switch (node.type) {
-    case 'blue':
+    case 'key':
     case 'counter':
     case 'station':
     case 'wisp':
-      me.coins += 3;
-      say(s, '+3 coins', '#5fb8ff');
-      break;
-    case 'red':
-      me.coins = Math.max(0, me.coins - 3);
-      say(s, '-3 coins', '#ff5a5f');
-      break;
-    case 'lucky': {
-      const roll = rand(s.rng);
-      if (roll < 0.15 && me.coins >= 0) {
-        // jackpot: a free trip to the nearest crown
-        const target = s.crowns[0];
-        if (target) {
-          me.node = target;
-          say(s, 'Lucky! Warped to a crown space!', '#4cd97b');
-          if (me.coins >= CROWN_PRICE) ask(s, { kind: 'crown', node: target });
-          break;
-        }
-      }
-      const c = randInt(s.rng, 4, 10);
-      me.coins += c;
-      say(s, `Lucky! +${c} coins`, '#4cd97b');
+    case 'camp': {
+      const k = pr.keySpace * dbl;
+      me.keys += k;
+      fx(s, 'keys', me.node, id, k);
+      say(s, `+${k} keys`, '#5fb8ff');
       break;
     }
+    case 'heart': {
+      const h = heal(s, me, pr.heartSpace * dbl);
+      say(s, h ? `+${h} HP` : 'Already at full HP', '#4cd97b');
+      break;
+    }
+    case 'thorn': {
+      const k = Math.min(me.keys, pr.thornSpace);
+      me.keys -= k;
+      fx(s, 'keys', me.node, id, -k);
+      say(s, `-${pr.thornSpace} keys`, '#ff5a5f');
+      break;
+    }
+    case 'fountain':
+      heal(s, me, pr.maxHp);
+      say(s, 'Heart Fountain: full HP!', '#ff7bd5');
+      break;
+    case 'crate': {
+      const it = giveItem(s, me);
+      fx(s, 'crate', me.node, id);
+      say(s, it ? `Got ${ITEMS[it].name}!` : 'Your bag is full!', '#ffb347');
+      break;
+    }
+    case 'lucky': {
+      if (rand(s.rng) < 0.12 && s.crowns.length) {
+        // jackpot: a free trip to a Crown Chest
+        const target = s.crowns[0];
+        me.node = target;
+        fx(s, 'warp', target, id);
+        say(s, 'Lucky! Warped to a Crown Chest!', '#4cd97b');
+        if (me.keys >= pr.crownPrice) {
+          s.resume = 'land';
+          ask(s, { kind: 'crown', node: target });
+        }
+        break;
+      }
+      const c = randInt(s.rng, 5, 10);
+      me.keys += c;
+      fx(s, 'keys', me.node, id, c);
+      say(s, `Lucky! +${c} keys`, '#4cd97b');
+      break;
+    }
+    case 'post': {
+      const post = s.posts[me.node];
+      if (!post) {
+        ask(s, { kind: 'claim', node: me.node });
+        break;
+      }
+      if (post.owner === id) {
+        say(s, 'Your post is working for you', '#ffd23f');
+        break;
+      }
+      const owner = s.players[post.owner];
+      if (post.mode === 'toll') {
+        const k = Math.min(me.keys, pr.postToll);
+        me.keys -= k;
+        owner.keys += k;
+        fx(s, 'toll', me.node, id, k);
+        say(s, `Toll Post: paid ${k} keys`, '#ffd23f');
+      } else {
+        heal(s, owner, pr.postStingHeal);
+        say(s, `Sting Post: ${pr.postSting} damage`, '#ff5a5f');
+        if (hurt(s, def, id, pr.postSting, post.owner)) break;
+      }
+      if (me.keys >= pr.postStealCost) ask(s, { kind: 'steal', node: me.node });
+      break;
+    }
+    case 'duel': {
+      const options = targetsFor(s, id);
+      if (!options.length) {
+        say(s, 'Nobody to duel!', '#ff9f1c');
+        break;
+      }
+      say(s, 'Duel Spot! Pick your rival', '#ff9f1c');
+      ask(s, { kind: 'target', purpose: 'duel', options, sel: 0 });
+      break;
+    }
+    case 'stew':
+      beginStew(s, def, id);
+      break;
+    case 'cannon': {
+      const near = nearDist(def, me.node, pr.cannonRange);
+      const options = targetsFor(s, id).filter((o) => near.has(s.players[o].node));
+      if (!options.length) {
+        say(s, 'Cannon Space: nobody in range', '#ff9f1c');
+        break;
+      }
+      say(s, 'Cannon Space! Take aim', '#ff9f1c');
+      ask(s, { kind: 'target', purpose: 'cannon', options, sel: 0 });
+      break;
+    }
+    case 'spring':
+      if (s.bounced) break;
+      s.bounced = true;
+      s.stepsLeft = randInt(s.rng, 1, 5);
+      fx(s, 'spring', me.node, id, s.stepsLeft);
+      say(s, `Boing! ${s.stepsLeft} more spaces`, '#4cd97b');
+      set(s, 'move');
+      break;
+    case 'vent':
+      s.pushBack = 3;
+      fx(s, 'vent', me.node, id);
+      say(s, 'Airlock vent! Blasted back 3 spaces', '#45e3ff');
+      set(s, 'move');
+      break;
+    case 'dynamite': {
+      const near = nearDist(def, me.node, 1);
+      fx(s, 'boom', me.node, id);
+      say(s, `Dynamite! ${pr.dynamiteDamage} damage nearby`, '#ff5a5f');
+      for (const o of s.order) if (near.has(s.players[o].node)) hurt(s, def, o, pr.dynamiteDamage);
+      break;
+    }
+    case 'snare':
+      if (s.night) {
+        me.rollCap = 3;
+        fx(s, 'snare', me.node, id);
+        say(s, 'Root Snare! Your next roll is capped at 3', '#8bc34a');
+      } else {
+        me.keys += pr.keySpace * dbl;
+        say(s, `+${pr.keySpace * dbl} keys`, '#5fb8ff');
+      }
+      break;
     case 'event':
       boardEvent(s, def, id);
       break;
@@ -320,20 +868,191 @@ function boardEvent(s: BoardState, def: BoardDef, id: string): void {
   const me = s.players[id];
   if (def.theme === 'hollow') {
     s.night = !s.night;
-    say(s, s.night ? 'The bell tolls... night falls! The Root Cellar opens.' : 'Dawn breaks! The Moon Bridge is open.', s.night ? '#c79bff' : '#ffd23f');
+    if (s.night && !s.hazards.pine.length) pickPine(s, def);
+    say(s, s.night ? 'The bell tolls... night falls! Watch the pines.' : 'Dawn breaks! The Moon Bridge is open.', s.night ? '#c79bff' : '#ffd23f');
   } else if (def.theme === 'cosmo') {
     const pads = Object.values(def.nodes).filter((n) => n.type === 'event' && n.id !== me.node);
     const to = pads[Math.floor(rand(s.rng) * pads.length)];
     if (to) me.node = to.id;
+    fx(s, 'warp', me.node, id);
     say(s, 'Warp pad! Zoom!', '#45e3ff');
   } else {
     if (rand(s.rng) < 0.7) {
       const c = randInt(s.rng, 5, 12);
-      me.coins += c;
-      say(s, `Struck gold! +${c} coins`, '#ffd23f');
+      me.keys += c;
+      say(s, `Struck gold! +${c} keys`, '#ffd23f');
     } else {
-      me.coins = Math.max(0, me.coins - 6);
-      say(s, 'Dynamite! -6 coins', '#ff5a5f');
+      const c = Math.min(me.keys, 6);
+      me.keys -= c;
+      say(s, `Cave-in! -${c} keys`, '#ff5a5f');
     }
   }
 }
+
+// ---- duels and Stew Battles ------------------------------------------------------------------------
+
+function startDuel(s: BoardState, id: string, rival: string): void {
+  const gameId = DUEL_GAMES[Math.floor(rand(s.rng) * DUEL_GAMES.length)];
+  s.event = { kind: 'duel', gameId, lander: id, players: [id, rival] };
+  say(s, 'DUEL!', '#ff9f1c');
+  set(s, 'event');
+}
+
+function standingOrder(s: BoardState): string[] {
+  return [...s.order].sort((a, b) => {
+    const pa = s.players[a];
+    const pb = s.players[b];
+    return pb.crowns - pa.crowns || pb.keys - pa.keys;
+  });
+}
+
+function beginStew(s: BoardState, def: BoardDef, lander: string): void {
+  const gameId = STEW_GAMES[Math.floor(rand(s.rng) * STEW_GAMES.length)];
+  const ev: BoardEvent = { kind: 'stew', gameId, lander, players: [], teams: {}, sitOut: null };
+  s.event = ev;
+  if (s.order.length < 2) {
+    s.event = null;
+    say(s, 'Not enough players for a Stew Battle', '#ff9f1c');
+    return;
+  }
+  if (s.order.length % 2 === 1 && s.order.length > 2) {
+    // odd count: the wheel picks first or last place to sit out
+    const st = standingOrder(s);
+    ev.wheel = [st[0], st[st.length - 1]];
+    say(s, 'Stew Battle! Spinning the sit-out wheel...', '#ffb347');
+    set(s, 'wheel');
+    return;
+  }
+  startStew(s, def, ev, s.order.length % 2 === 1 ? standingOrder(s)[s.order.length - 1] : null);
+}
+
+function startStew(s: BoardState, _def: BoardDef, ev: BoardEvent, sitOut: string | null): void {
+  ev.sitOut = sitOut;
+  if (sitOut) {
+    s.players[sitOut].keys += s.preset.sitOutKeys;
+    fx(s, 'keys', s.players[sitOut].node, sitOut, s.preset.sitOutKeys);
+  }
+  // balanced by crowns: shuffle, sort by standing, then deal A B B A A B ...
+  const playing = shuffle(s.rng, s.order.filter((o) => o !== sitOut));
+  const ranked = playing.sort((a, b) => s.players[b].crowns - s.players[a].crowns || s.players[b].keys - s.players[a].keys);
+  ev.players = ranked;
+  ev.teams = {};
+  ranked.forEach((id, i) => (ev.teams![id] = [0, 1, 1, 0][i % 4]));
+  say(s, sitOut ? 'Stew Battle! Teams are set' : 'Stew Battle!', '#ffb347');
+  set(s, 'event');
+}
+
+/** The space just before a Crown Chest that is closest to a player. */
+function behindChest(s: BoardState, def: BoardDef, id: string): string | null {
+  const from = s.players[id].node;
+  const near = nearDist(def, from, 999);
+  let best: string | null = null;
+  let bd = Infinity;
+  for (const c of s.crowns) {
+    for (const p of prevs(def)[c] ?? []) {
+      const d = near.get(p) ?? 999;
+      if (d < bd) {
+        bd = d;
+        best = p;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Called by the party when a duel or Stew Battle minigame ends. `ranking` is the game's
+ * results, best first. Returns a line for the results screen.
+ */
+export function finishEvent(s: BoardState, ranking: { id: string; value: number }[]): string {
+  const def = getBoard(s.boardId);
+  const ev = s.event;
+  s.event = null;
+  let line = '';
+  if (ev?.kind === 'duel') {
+    const top = ranking[0];
+    const tie = ranking.length > 1 && ranking[1].value === top.value;
+    if (top && !tie) {
+      const spot = behindChest(s, def, top.id);
+      if (spot) s.players[top.id].node = spot;
+      s.players[top.id].stats.wins++;
+      fx(s, 'warp', s.players[top.id].node, top.id);
+      line = 'Duel winner jumps right behind the Crown Chest!';
+    } else line = 'The duel was a draw';
+  } else if (ev?.kind === 'stew' && ev.teams) {
+    const teamOf = (id: string) => ev.teams![id];
+    const best = ranking[0];
+    const tie = ranking.some((r) => r.value === best.value && teamOf(r.id) !== teamOf(best.id));
+    if (best && !tie) {
+      const win = teamOf(best.id);
+      for (const id of ev.players) {
+        if (teamOf(id) !== win) continue;
+        s.players[id].keys += s.preset.stewWin;
+        s.players[id].stats.wins++;
+      }
+      if (teamOf(ev.lander) === win) s.players[ev.lander].keys += s.preset.stewLanderBonus;
+      line = `Winning team gets +${s.preset.stewWin} keys each!`;
+    } else line = 'The Stew Battle was a draw';
+  }
+  s.banner = null;
+  say(s, line, '#ffd23f');
+  set(s, 'land');
+  return line;
+}
+
+// ---- end of round hazards -------------------------------------------------------------------------
+
+function pickPine(s: BoardState, def: BoardDef): void {
+  const pines = def.pines ?? [];
+  s.hazards.pine = pines.length ? pines[Math.floor(rand(s.rng) * pines.length)] : [];
+}
+
+/** Choose where the next round's hazards will hit, so the board can show warnings. */
+function planHazards(s: BoardState, def: BoardDef): void {
+  if (def.theme === 'cosmo') {
+    const all = Object.keys(def.nodes).filter((n) => n !== def.camp && n !== def.start);
+    s.hazards.meteors = shuffle(s.rng, all).slice(0, 3);
+  }
+  if (def.theme === 'hollow') s.hazards.pine = s.night ? s.hazards.pine : [];
+  if (def.theme === 'hollow' && s.night && !s.hazards.pine.length) pickPine(s, def);
+  if (def.theme === 'gulch') s.hazards.boulderLane = Math.floor(rand(s.rng) * 2);
+}
+
+function roundEnd(s: BoardState, def: BoardDef): void {
+  set(s, 'roundEnd');
+  const lines: string[] = [];
+  const dmg = s.preset.hazardDamage;
+  const on = (nodes: string[]) => s.order.filter((o) => nodes.includes(s.players[o].node));
+  if (def.theme === 'hollow' && s.night && s.hazards.pine.length) {
+    const hit = on(s.hazards.pine);
+    for (const o of hit) hurt(s, def, o, dmg);
+    fx(s, 'pine', s.hazards.pine[0]);
+    lines.push(hit.length ? `TIMBER! A pine fell on ${hit.length}` : 'TIMBER! A pine crashed down');
+    s.hazards.pine = [];
+    pickPine(s, def);
+  }
+  if (def.theme === 'cosmo' && s.hazards.meteors.length) {
+    const hit = on(s.hazards.meteors);
+    for (const o of hit) hurt(s, def, o, dmg);
+    for (const m of s.hazards.meteors) fx(s, 'meteor', m);
+    lines.push(hit.length ? `Meteors hit ${hit.length} player${hit.length > 1 ? 's' : ''}!` : 'Meteors crash down!');
+  }
+  if (def.theme === 'gulch') {
+    const lane = Object.values(def.nodes).filter((n) => n.canyon === s.hazards.boulderLane).map((n) => n.id);
+    const hit = on(lane);
+    for (const o of hit) hurt(s, def, o, dmg);
+    if (lane.length) fx(s, 'boulder', lane[0]);
+    lines.push(hit.length ? `Rolling boulder hit ${hit.length}!` : 'A boulder rolls down the canyon');
+    // the train sweeps anyone standing at a station along to the next one
+    if (def.stations) {
+      for (const o of s.order) {
+        const i = def.stations.indexOf(s.players[o].node);
+        if (i >= 0) s.players[o].node = def.stations[(i + 1) % def.stations.length];
+      }
+    }
+  }
+  planHazards(s, def);
+  if (lines.length) say(s, lines.join('  ·  '), '#ff9f1c');
+  else s.t = 2.2; // nothing happened: move on quickly
+}
+

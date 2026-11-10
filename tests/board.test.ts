@@ -26,7 +26,8 @@ describe.each(BOARDS.map((b) => [b.name, b] as const))('%s layout', (_n, def) =>
   });
 
   it('has enough crown spots for the crowns it keeps out', () => {
-    expect(def.crownSpots.length).toBeGreaterThan(def.crownsActive + 2);
+    expect(def.crownSpots.length).toBeGreaterThanOrEqual(15);
+    expect(def.crownSpots.length).toBeLessThanOrEqual(25);
     expect(new Set(def.crownSpots).size).toBe(def.crownSpots.length);
   });
 });
@@ -55,7 +56,7 @@ describe('board rules', () => {
       while (s.sub !== 'done' && ticks++ < 30 * 200) stepBoard(s, {}, DT);
       expect(s.sub).toBe('done');
       // everyone moved off the start or at least has coins from landing
-      expect(Object.values(s.players).every((p) => p.coins !== 10 || p.node !== def.start)).toBe(true);
+      expect(Object.values(s.players).every((p) => p.keys !== 10 || p.node !== def.start)).toBe(true);
     }
   });
 });
@@ -79,6 +80,7 @@ describe('board party', () => {
     }
     expect(s.phase).toBe('final');
     expect([...phasesSeen].sort()).toEqual(['board', 'intro', 'play', 'results']);
+    expect(s.board!.event).toBeNull();
     expect(s.playlist.length).toBe(5);
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
   });

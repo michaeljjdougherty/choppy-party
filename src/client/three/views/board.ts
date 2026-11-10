@@ -9,25 +9,64 @@ import { ChoppyModel } from '../choppy';
 import { Fx, shake } from '../fx';
 import { darken, makeScene, mesh, toy } from '../kit';
 import { place, sky, texture } from '../assets';
+import { fitProp } from './crew';
 import type { Tag, View } from '../stage';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
-  blue: '#2f7dff',
-  red: '#ff3b4e',
-  event: '#21c45a',
+  key: '#2f7dff',
+  heart: '#21c45a',
+  thorn: '#ff3b4e',
+  crate: '#ff9f1c',
   lucky: '#ffc21a',
+  event: '#14b8a6',
+  post: '#8b5cf6',
+  duel: '#ff6a00',
+  stew: '#b4532a',
+  fountain: '#ff7bd5',
+  spring: '#7ddc3c',
+  cannon: '#4b5563',
+  vent: '#45e3ff',
+  dynamite: '#e11d48',
+  snare: '#4d7c0f',
   wisp: '#9a5bff',
   station: '#ff8a1f',
   counter: '#ff3fd2',
+  camp: '#a16207',
 };
 const SPACE_ICON: Record<SpaceType, string> = {
-  blue: '+',
-  red: '−',
+  key: '+',
+  heart: '♥',
+  thorn: '−',
+  crate: '▣',
+  lucky: '★',
   event: '!',
-  lucky: '?',
+  post: '⚑',
+  duel: '⚔',
+  stew: '♨',
+  fountain: '♥',
+  spring: '⇡',
+  cannon: '◎',
+  vent: '≋',
+  dynamite: '✸',
+  snare: '❦',
   wisp: '☾',
   station: '$',
   counter: '⚡',
+  camp: '⌂',
+};
+/** Kenney models that float or stand on each kind of space. [model, size, floats] */
+const SPACE_PROP: Partial<Record<SpaceType, [string, number, boolean]>> = {
+  key: ['platformer/key', 0.55, true],
+  heart: ['platformer/heart', 0.6, true],
+  thorn: ['platformer/spike-block', 0.55, false],
+  crate: ['platformer/crate-item', 0.7, false],
+  lucky: ['platformer/star', 0.6, true],
+  fountain: ['platformer/heart', 0.9, true],
+  spring: ['platformer/spring', 0.8, false],
+  cannon: ['pirate/cannon', 0.9, false],
+  dynamite: ['platformer/bomb', 0.7, false],
+  snare: ['forest/plant', 0.8, false],
+  camp: ['forest/tent', 1.6, false],
 };
 
 function iconTexture(icon: string, color: string): THREE.Texture {
@@ -485,6 +524,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const capGeo = new THREE.CircleGeometry(0.78, 36);
   const capMats = new Map<SpaceType, THREE.Material>();
   const tileMats = new Map<SpaceType, THREE.Material>();
+  const steamSpots: THREE.Vector3[] = [];
+  const postFlags = new Map<string, THREE.Mesh>();
   // every space is a little spring: it dips when someone lands on it and wobbles back
   const springs = new Map<string, { parts: THREE.Object3D[]; base: number[]; y: number; v: number }>();
   for (const [nodeId, n] of Object.entries(def.nodes)) {
@@ -506,6 +547,63 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       scene.add(pillar);
     }
   }
+  // a Kenney model on each special space; Key and Heart pickups spin and bob
+  const floaters: { o: THREE.Object3D; y: number; k: number }[] = [];
+  for (const n of Object.values(def.nodes)) {
+    const pp = SPACE_PROP[n.type];
+    if (pp) {
+      const [model, size, floats] = pp;
+      const o = fitProp(model, size);
+      if (n.type === 'camp') o.position.set(n.x + 1.3, 0, n.z - 1.1);
+      else o.position.set(n.x, floats ? 1.0 : 0.33, n.z);
+      scene.add(o);
+      if (floats) floaters.push({ o, y: o.position.y, k: n.x + n.z });
+    }
+    if (n.type === 'fountain') {
+      const col = fitProp('proto/column', 0.5, 'xz');
+      col.position.set(n.x, 0.33, n.z);
+      scene.add(col);
+    }
+    if (n.type === 'duel') {
+      for (const side of [-1, 1]) {
+        const sw = fitProp('proto/weapon-sword', 1.1, 'y');
+        sw.position.set(n.x, 0.6, n.z);
+        sw.rotation.z = side * 0.6;
+        scene.add(sw);
+      }
+    }
+    if (n.type === 'stew') {
+      const pot = fitProp('pirate/barrel', 0.9);
+      pot.scale.y *= 0.55;
+      pot.position.set(n.x, 0.33, n.z);
+      scene.add(pot);
+      const soup = mesh(new THREE.CircleGeometry(0.36, 20), new THREE.MeshStandardMaterial({ color: '#8bc34a', emissive: '#3b6b12', roughness: 0.3 }), { cast: false });
+      soup.rotation.x = -Math.PI / 2;
+      soup.position.set(n.x, 0.33 + 0.5, n.z);
+      soup.name = 'soup';
+      scene.add(soup);
+      steamSpots.push(new THREE.Vector3(n.x, 1.0, n.z));
+    }
+    if (n.type === 'vent') {
+      const grate = mesh(new THREE.TorusGeometry(0.55, 0.08, 8, 24), toy('#a5f3fc', 0.3), { cast: false });
+      grate.rotation.x = -Math.PI / 2;
+      grate.position.set(n.x, 0.4, n.z);
+      scene.add(grate);
+    }
+    if (n.type === 'post') {
+      const pole = mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.1, 8), toy('#e5e7eb', 0.4));
+      pole.position.set(n.x + 0.55, 1.35, n.z - 0.3);
+      scene.add(pole);
+      const flag = mesh(new THREE.BoxGeometry(0.7, 0.45, 0.04), new THREE.MeshStandardMaterial({ color: '#d1d5db', roughness: 0.6 }));
+      flag.position.set(n.x + 0.92, 2.15, n.z - 0.3);
+      scene.add(flag);
+      const base = fitProp('platformer/platform', 0.6);
+      base.position.set(n.x + 0.55, 0.3, n.z - 0.3);
+      scene.add(base);
+      postFlags.set(n.id, flag);
+    }
+  }
+
   // paths between spaces
   const pathMat = toy(PATH_COLOR[def.theme], 0.7);
   const gatedPaths: { mesh: THREE.Mesh; to: string; from: string }[] = [];
@@ -524,8 +622,24 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     }
   }
 
-  // crowns
+  // Crown Chests: a pirate chest with a golden crown spinning over it
   const crownPool: THREE.Group[] = [];
+  // hazard warnings: red target rings (meteors, falling pines, the boulder's lane)
+  const warnGeo = new THREE.RingGeometry(0.75, 1.05, 32);
+  const warnMat = new THREE.MeshBasicMaterial({ color: '#ff3030', transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+  const warns: THREE.Mesh[] = [];
+  const takeWarn = (i: number) => {
+    while (warns.length <= i) {
+      const w = new THREE.Mesh(warnGeo, warnMat);
+      w.rotation.x = -Math.PI / 2;
+      scene.add(w);
+      warns.push(w);
+    }
+    warns[i].visible = true;
+    return warns[i];
+  };
+  const seenFx = new Set<number>();
+  const lastHp = new Map<string, number>();
   const ringMat = new THREE.MeshBasicMaterial({ color: '#ffe36e', transparent: true, opacity: 0.55, depthWrite: false });
   // branch arrows
   const arrowMat = toy('#ffffff', 0.3);
@@ -611,20 +725,114 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       crownPool.forEach((c) => (c.visible = false));
       b.crowns.forEach((nodeId, i) => {
         while (crownPool.length <= i) {
+          const g = new THREE.Group();
           const c = makeCrown();
+          c.name = 'crown';
+          const chest = fitProp('pirate/chest', 1.2);
+          chest.position.set(0.9, 0.33, -0.7);
+          chest.rotation.y = -0.6;
           const glow = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.3, 36), ringMat);
           glow.rotation.x = -Math.PI / 2;
-          glow.position.y = -1.85;
-          c.add(glow);
-          scene.add(c);
-          crownPool.push(c);
+          glow.position.y = 0.36;
+          g.add(c, chest, glow);
+          scene.add(g);
+          crownPool.push(g);
         }
-        const c = crownPool[i];
+        const g = crownPool[i];
         const n = def.nodes[nodeId];
-        c.visible = true;
-        c.position.set(n.x, 2.2 + Math.sin(t * 2 + i) * 0.15, n.z);
+        g.visible = true;
+        g.position.set(n.x, 0, n.z);
+        const c = g.getObjectByName('crown')!;
+        c.position.set(0.9, 2.0 + Math.sin(t * 2 + i) * 0.15, -0.7);
         c.rotation.y = t * 1.2;
       });
+
+      for (const f of floaters) {
+        f.o.position.y = f.y + Math.sin(t * 2.4 + f.k) * 0.12;
+        f.o.rotation.y = t * 1.5 + f.k;
+      }
+      // Claim Post flags take the owner's colour
+      for (const [nodeId, flag] of postFlags) {
+        const post = b.posts[nodeId];
+        const col = post ? (players.find((p) => p.id === post.owner)?.color ?? '#d1d5db') : '#d1d5db';
+        const m = flag.material as THREE.MeshStandardMaterial;
+        m.color.set(col);
+        m.emissive.set(post?.mode === 'sting' ? '#550000' : '#000000');
+        flag.rotation.y = Math.sin(t * 3 + flag.position.x) * 0.25;
+      }
+      if (Math.floor(t * 4) !== Math.floor((t - dt) * 4))
+        for (const at of steamSpots) fx.emit(at, { tex: 'puff', n: 1, color: '#e8f5e9', speed: [0.1, 0.3], up: 1.2, life: [0.8, 1.2], size: [0.3, 0.9] });
+      // hazard warnings
+      warns.forEach((w) => (w.visible = false));
+      const warnNodes =
+        def.theme === 'cosmo'
+          ? b.hazards.meteors
+          : def.theme === 'hollow'
+            ? b.night
+              ? b.hazards.pine
+              : []
+            : Object.values(def.nodes).filter((n) => n.canyon === b.hazards.boulderLane).map((n) => n.id);
+      warnNodes.forEach((nodeId, i) => {
+        const n = def.nodes[nodeId];
+        const w = takeWarn(i);
+        const p = 1 + Math.sin(t * 6 + i) * 0.08;
+        w.position.set(n.x, 0.42, n.z);
+        w.scale.setScalar(p);
+      });
+      warnMat.opacity = def.theme === 'gulch' ? 0.35 : 0.75;
+      // board effects: hits, heals, knockouts, items
+      for (const e of b.fx) {
+        if (seenFx.has(e.n)) continue;
+        seenFx.add(e.n);
+        const n = def.nodes[e.node];
+        if (!n) continue;
+        const at = new THREE.Vector3(n.x, 1.4, n.z);
+        switch (e.kind) {
+          case 'hit':
+          case 'spikes':
+          case 'arrow':
+            fx.bonk(at.clone().setY(1.8));
+            shake(0.15);
+            break;
+          case 'ko':
+            fx.blast(at, 1.6);
+            shake(0.45);
+            break;
+          case 'heal':
+            fx.sparkle(at, '#4cd97b', 12);
+            break;
+          case 'meteor':
+          case 'boom':
+          case 'cannon':
+            fx.blast(at.clone().setY(0.6), 1.4);
+            shake(0.35);
+            break;
+          case 'pine':
+          case 'boulder':
+          case 'vent':
+            fx.dust(at.clone().setY(0.4), 1.6);
+            shake(0.3);
+            break;
+          case 'crown':
+            fx.party(at.clone().setY(2));
+            break;
+          case 'claim':
+          case 'crate':
+          case 'item':
+          case 'dig':
+          case 'warp':
+          case 'swap':
+          case 'spring':
+          case 'sticky':
+          case 'block':
+            fx.sparkle(at, e.kind === 'block' ? '#3fa9f5' : '#ffd23f', 12);
+            break;
+          case 'laser':
+            shake(0.3);
+            break;
+        }
+      }
+      if (seenFx.size > 400) for (const k of [...seenFx].slice(0, 200)) seenFx.delete(k);
 
       // tile springs
       for (const [id, pl] of Object.entries(b.players)) {
@@ -638,9 +846,10 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         }
         lastNode.set(id, pl.node);
         const pc = lastCoins.get(id);
-        if (pc !== undefined && pl.coins > pc) fx.sparkle(at.clone().setY(1.6), '#ffd23f', 6 + Math.min(14, pl.coins - pc));
-        if (pc !== undefined && pl.coins < pc) fx.emit(at.clone().setY(1.4), { tex: 'puff', color: '#ff7a7a', n: 6, speed: [1, 2], up: 1, life: [0.3, 0.5], size: [0.4, 0.8] });
-        lastCoins.set(id, pl.coins);
+        if (pc !== undefined && pl.keys > pc) fx.sparkle(at.clone().setY(1.6), '#ffd23f', 6 + Math.min(14, pl.keys - pc));
+        if (pc !== undefined && pl.keys < pc) fx.emit(at.clone().setY(1.4), { tex: 'puff', color: '#ff7a7a', n: 6, speed: [1, 2], up: 1, life: [0.3, 0.5], size: [0.4, 0.8] });
+        lastCoins.set(id, pl.keys);
+        lastHp.set(id, pl.hp);
         const pcr = lastCrowns.get(id);
         if (pcr !== undefined && pl.crowns > pcr) {
           fx.party(at.clone().setY(1.8));

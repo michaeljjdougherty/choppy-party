@@ -108,7 +108,7 @@ export function watch(s: PartyState): void {
   };
   if (b) for (const [id, p] of Object.entries(b.players)) {
     now.nodes[id] = p.node;
-    now.coins[id] = p.coins;
+    now.coins[id] = p.keys;
     now.crowns[id] = p.crowns;
   }
   for (const list of ['astros', 'keepers', 'hoppers'] as const) {

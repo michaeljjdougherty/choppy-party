@@ -1,6 +1,6 @@
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
-import { FIRST_GAME, FIRST_MIX, addPlayer, startParty } from '../shared/party';
+import { FIRST_GAME, FIRST_MIX, addPlayer, inGame, startParty } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { drawFinal, drawIntro, drawLobby, drawResults } from './screens';
@@ -175,8 +175,10 @@ function render(wallT: number, dt: number) {
   // 3D: one view per minigame round, one per board game, and a shared party stage for the menus
   let view;
   if (s.phase === 'play' && s.gameId && GAME_VIEWS[s.gameId]) {
-    view = stage.show(`game:${s.gameId}:${s.round}:${s.playlist.length}`, () => GAME_VIEWS[s.gameId!](stage.env, s.game, s.players));
-    view.update(s.game, s.players, wallT, dt);
+    const who = inGame(s);
+    const key = `game:${s.gameId}:${s.round}:${s.playlist.length}:${s.board ? `${s.board.turn}.${s.board.cur}.${s.boardEvent}` : ''}`;
+    view = stage.show(key, () => GAME_VIEWS[s.gameId!](stage.env, s.game, who));
+    view.update(s.game, who, wallT, dt);
   } else if (s.phase === 'board' && s.board) {
     view = stage.show(`board:${s.board.boardId}:${s.players.length}`, () => boardView(stage.env, s, s.players));
     view.update(s, s.players, wallT, dt);
@@ -204,7 +206,7 @@ function render(wallT: number, dt: number) {
       drawIntro(ctx, s);
       break;
     case 'play':
-      getGame(s.gameId!).draw(ctx, s.game, s.players);
+      getGame(s.gameId!).draw(ctx, s.game, inGame(s));
       break;
     case 'results':
       drawResults(ctx, s);

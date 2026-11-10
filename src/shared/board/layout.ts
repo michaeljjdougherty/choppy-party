@@ -69,7 +69,8 @@ export function between(a: Pt, b: Pt, n: number, bend = 0): Pt[] {
   });
 }
 
-const CODES: Record<string, SpaceType> = { B: 'blue', R: 'red', E: 'event', L: 'lucky' };
+/** Pattern letters: Key, Thorn (red), Heart, Crate, Event, Lucky. */
+const CODES: Record<string, SpaceType> = { B: 'key', R: 'thorn', H: 'heart', C: 'crate', E: 'event', L: 'lucky' };
 
 export class Builder {
   nodes: Record<string, BoardNode> = {};
@@ -78,7 +79,7 @@ export class Builder {
   chain(prefix: string, pts: Pt[], pattern: string, loop = false): string[] {
     const ids = pts.map((_, i) => `${prefix}${i}`);
     pts.forEach(([x, z], i) => {
-      this.nodes[ids[i]] = { id: ids[i], x, z, type: CODES[pattern[i % pattern.length]] ?? 'blue', next: [] };
+      this.nodes[ids[i]] = { id: ids[i], x, z, type: CODES[pattern[i % pattern.length]] ?? 'key', next: [] };
     });
     for (let i = 0; i < ids.length - 1; i++) this.nodes[ids[i]].next.push(ids[i + 1]);
     if (loop) this.nodes[ids[ids.length - 1]].next.push(ids[0]);

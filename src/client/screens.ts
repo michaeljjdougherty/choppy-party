@@ -52,20 +52,36 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
 export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState): void {
   const g = getGame(s.gameId!);
   panel(ctx, 170, 24, 940, 380, 0.5);
-  text(ctx, `Round ${s.round + 1} of ${s.playlist.length}  ·  ${g.mode}`, 640, 66, 24, { color: '#e8ddff', weight: 600 });
+  const head =
+    s.boardEvent === 'duel'
+      ? `DUEL!  ${s.gamePlayers?.map((p) => p.name).join('  vs  ')}`
+      : s.boardEvent === 'stew'
+        ? 'STEW BATTLE!  Red team vs Blue team'
+        : s.board
+          ? `Turn ${s.board.turn} minigame  ·  ${g.mode}`
+          : `Round ${s.round + 1} of ${s.playlist.length}  ·  ${g.mode}`;
+  text(ctx, head, 640, 66, 24, { color: s.boardEvent ? '#ff9f1c' : '#e8ddff', weight: 700 });
   text(ctx, g.name, 640, 132, 76, { color: '#ffd23f' });
   wrapText(ctx, g.blurb, 640, 214, 820, 32, 28);
   ctx.fillStyle = 'rgba(255,210,63,0.18)';
   roundRect(ctx, 360, 330, 560, 50, 25);
   ctx.fill();
   text(ctx, g.controls, 640, 355, 26, { color: '#ffd23f', weight: 700, outline: false });
+  if (s.boardEvent === 'stew' && s.gamePlayers) {
+    // show the teams
+    for (const team of [0, 1]) {
+      const names = s.gamePlayers.filter((p) => p.team === team).map((p) => p.name).join(', ');
+      text(ctx, `${team ? 'Blue' : 'Red'}: ${names}`, 640, 440 + team * 36, 24, { color: team ? '#3fa9f5' : '#ff5a5f' });
+    }
+  }
   text(ctx, 'Press A when ready', 640, 690, 24, { color: '#fff', weight: 700 });
 }
 
 export function drawResults(ctx: CanvasRenderingContext2D, s: PartyState): void {
   const g = getGame(s.gameId!);
   const onBoard = !!s.board;
-  text(ctx, onBoard ? `${g.name}: coins won` : g.name, 940, 54, 40, { color: '#ffd23f' });
+  text(ctx, s.boardEvent ? g.name : onBoard ? `${g.name}: keys won` : g.name, 940, 54, 40, { color: '#ffd23f' });
+  if (s.boardEvent && s.eventLine) text(ctx, s.eventLine, 940, 690 - 36, 22, { color: '#ffd23f' });
   const rows = s.placements;
   const rowH = Math.min(54, 560 / Math.max(1, rows.length));
   panel(ctx, 640, 86, 600, rowH * rows.length + 24, 0.5);
@@ -81,9 +97,9 @@ export function drawResults(ctx: CanvasRenderingContext2D, s: PartyState): void 
     text(ctx, p.name, 766, y, 23, { align: 'left' });
     text(ctx, pl.label, 1070, y, 18, { align: 'right', weight: 500, color: '#e8ddff' });
     text(ctx, pl.points ? `+${pl.points}` : '', 1130, y, 22, { color: onBoard ? '#ffd23f' : '#4cd97b' });
-    text(ctx, onBoard ? `${s.board!.players[pl.id]?.coins ?? 0}¢` : String(s.scores[pl.id] ?? 0), 1195, y, 22, { color: '#fff' });
+    text(ctx, onBoard ? `${s.board!.players[pl.id]?.keys ?? 0}🔑` : String(s.scores[pl.id] ?? 0), 1205, y, 22, { color: '#fff' });
   });
-  const more = onBoard && s.board!.turn < s.board!.maxTurns ? 'Host: A to go back to the board' : 'Host: A to continue';
+  const more = onBoard && (s.boardEvent || s.board!.turn < s.board!.maxTurns) ? 'Host: A to go back to the board' : 'Host: A to continue';
   text(ctx, more, 940, 694, 18, { weight: 700 });
 }
 
@@ -107,7 +123,7 @@ export function drawFinal(ctx: CanvasRenderingContext2D, s: PartyState): void {
       const bp = s.board.players[r.id];
       crownIcon(ctx, 1030, y, 1.1);
       text(ctx, String(bp?.crowns ?? 0), 1050, y, 22, { align: 'left' });
-      text(ctx, `${bp?.coins ?? 0}¢`, 1160, y, 22, { align: 'right' });
+      text(ctx, `${bp?.keys ?? 0} keys`, 1170, y, 22, { align: 'right' });
     } else text(ctx, `${r.score} pts`, 1150, y, 22, { align: 'right' });
   });
   text(ctx, 'Host: A to return to the lobby', 940, 694, 18, { weight: 700 });

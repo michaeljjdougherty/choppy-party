@@ -20,7 +20,7 @@ function randomInputs(ids: string[], r: { seed: number }): Inputs {
 }
 
 describe.each(GAMES.map((g) => [g.name, g] as const))('%s', (_name, game) => {
-  for (const n of [1, 2, 10]) {
+  for (const n of [...new Set([1, 2, 10].map((k) => Math.min(game.maxPlayers, Math.max(game.minPlayers, k))))]) {
     it(`finishes within 90s with ${n} players and ranks everyone`, () => {
       const ps = players(n);
       const s = game.setup(ps, 1234);

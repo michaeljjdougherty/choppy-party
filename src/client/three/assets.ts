@@ -7,6 +7,9 @@ import { CHARACTERS } from '../../shared/players';
  * Models from Kenney's CC0 kits (public/models). Everything is loaded once up front,
  * then cloned wherever it is placed so geometry and textures are shared.
  */
+/** Hosts that don't serve .glb get the same files with an extra suffix (set at build time). */
+const MODEL_SUFFIX: string = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_MODEL_SUFFIX ?? '';
+
 export const PROPS = [
   // pirate kit
   'pirate/palm-detailed-straight', 'pirate/palm-detailed-bend', 'pirate/palm-bend', 'pirate/ship-pirate-large', 'pirate/ship-pirate-medium',
@@ -49,6 +52,10 @@ export const PROPS = [
   'space/satelliteDish', 'space/crater', 'space/craterLarge', 'space/rock_crystals', 'space/rock_crystalsLargeA', 'space/astronautA',
   'space/astronautB', 'space/alien', 'space/rover', 'space/craft_speederA', 'space/craft_racer', 'space/machine_generator',
   'space/machine_wireless', 'space/hangar_roundGlass', 'space/meteor', 'space/turret_double',
+  // board layer: space pickups, posts, duels, items
+  'platformer/key', 'platformer/spike-block', 'platformer/crate-item', 'platformer/trap-spikes', 'platformer/platform', 'platformer/lever',
+  'platformer/saw', 'proto/weapon-sword', 'proto/weapon-shield', 'forest/weapon-bow', 'forest/weapon-arrow', 'pirate/tool-shovel',
+  'pirate/cannon-mobile', 'pirate/cannon-ball', 'pirate/structure-fence', 'pirate/flag-pennant', 'forest/patch-dirt',
   'station/computer-wide', 'station/container-tall', 'station/container', 'station/display-wall-wide', 'modspace/gate-lasers', 'modspace/gate',
 ];
 
@@ -120,7 +127,7 @@ export async function preloadAll(onProgress: (done: number, total: number) => vo
     ...side,
     ...files.map(async (f) => {
       try {
-        const g = await loader.loadAsync(`models/${f}`);
+        const g = await loader.loadAsync(`models/${f}${MODEL_SUFFIX}`);
         g.scene.traverse((o) => {
           const m = o as THREE.Mesh;
           if (m.isMesh) {

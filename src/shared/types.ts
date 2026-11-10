@@ -35,11 +35,13 @@ export interface PlayerInfo {
   name: string;
   color: string;
   slot: number; // 0..9, picks colour and face
+  /** Team games: 0 or 1. Set by the board for Stew Battles. */
+  team?: number;
 }
 
 export type Inputs = Record<string, TickInput>;
 
-export type GameMode = 'Free-for-all' | 'Team' | '1-vs-many';
+export type GameMode = 'Free-for-all' | 'Team' | '1-vs-many' | 'Duel';
 
 export interface ResultRow {
   id: string;

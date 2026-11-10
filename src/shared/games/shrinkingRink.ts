@@ -1,6 +1,7 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
 import { drawTimer, text } from '../draw';
+import { stepVertical, type Body } from '../physics';
 
 const CX = 640;
 const CY = 390;
@@ -15,12 +16,10 @@ const DASH_SPEED = 620;
 const DASH_COOLDOWN = 1.1;
 const FRICTION = 1.1; // per second, icy
 
-interface Skater {
+interface Skater extends Body {
   id: string;
   x: number;
   y: number;
-  vx: number;
-  vy: number;
   face: number;
   alive: boolean;
   dashCd: number;
@@ -58,6 +57,9 @@ export const shrinkingRink: Minigame<RinkState> = {
           y: CY + Math.sin(ang) * spawnR,
           vx: 0,
           vy: 0,
+          z: 0,
+          vz: 0,
+          land: 0,
           face: ang + Math.PI,
           alive: true,
           dashCd: 0.5,
@@ -92,7 +94,9 @@ export const shrinkingRink: Minigame<RinkState> = {
         k.vy = Math.sin(k.face) * DASH_SPEED;
         k.dashCd = DASH_COOLDOWN;
         k.dashing = 0.25;
+        if (k.z <= 0) k.vz = 300; // a little hop into the dash
       }
+      stepVertical(k, dt);
       const sp = Math.hypot(k.vx, k.vy);
       const cap = k.dashing > 0 ? DASH_SPEED : MAX_SPEED;
       if (sp > cap) {
@@ -127,8 +131,8 @@ export const shrinkingRink: Minigame<RinkState> = {
         b.y += (ny * overlap) / 2;
         const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
         if (rel <= 0) continue;
-        // a dashing skater hits harder and keeps more of its momentum
-        const bounce = 1.35;
+        // springy bumpers: everybody bounces off with extra pop
+        const bounce = 1.6;
         const wa = b.dashing > 0 && a.dashing === 0 ? 1.3 : a.dashing > 0 && b.dashing === 0 ? 0.6 : 1;
         const wb = 2 - wa;
         const imp = (rel * bounce) / 2;
@@ -136,11 +140,18 @@ export const shrinkingRink: Minigame<RinkState> = {
         a.vy -= imp * ny * wa;
         b.vx += imp * nx * wb;
         b.vy += imp * ny * wb;
+        // a big hit sends the victim boinging up into the air
+        if (rel > 150) {
+          const up = Math.min(520, rel * 0.55);
+          if (b.z <= 0) b.vz = up * wb * 0.7;
+          if (a.z <= 0) a.vz = up * wa * 0.35;
+        }
       }
     }
 
     for (const k of live) {
-      if (Math.hypot(k.x - CX, k.y - CY) > s.rink + R * 0.4) {
+      // you're only out once you come down over the water: big hits can be survived mid-air
+      if (k.z <= 0 && Math.hypot(k.x - CX, k.y - CY) > s.rink + R * 0.4) {
         k.alive = false;
         k.outAt = s.t;
       }

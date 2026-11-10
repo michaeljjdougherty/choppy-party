@@ -3,6 +3,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import { standings, type PartyState } from '../../../shared/party';
 import { ChoppyModel } from '../choppy';
 import { checkerTexture, makeScene, mesh, toy } from '../kit';
+import { place } from '../assets';
 import type { Tag, View } from '../stage';
 
 const BALLOON_COLORS = ['#ff5a5f', '#3fa9f5', '#ffd23f', '#4cd97b', '#b06cff', '#ff9f1c', '#ff7bd5'];
@@ -46,6 +47,28 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
     scene.add(g);
     balloons.push(g);
   }
+
+  // platformer-kit garden around the stage
+  const spinners: THREE.Object3D[] = [];
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI + (i / 8) * Math.PI; // back half of the stage
+    const x = Math.cos(a) * 11.5;
+    const z = Math.sin(a) * 6 - 4;
+    place(scene, i % 3 === 0 ? 'platformer/tree-pine' : i % 3 === 1 ? 'platformer/tree' : 'forest/tree-high', x, 0, z, { s: 2.2 + (i % 2) * 0.6, ry: i });
+  }
+  for (const [x, z, ry] of [[-8.5, -2, 0.4], [8.5, -2, -0.4], [-6, -6.5, 0.2], [6, -6.5, -0.2]] as [number, number, number][]) {
+    place(scene, 'platformer/flag', x, 0, z, { s: 2.4, ry });
+  }
+  for (let i = 0; i < 10; i++) {
+    const x = -9 + i * 2;
+    place(scene, i % 2 ? 'platformer/flowers' : 'platformer/mushrooms', x, 0, -7.5 + (i % 3) * 0.5, { s: 2, ry: i, shadow: false });
+  }
+  for (let i = 0; i < 6; i++) {
+    const c = place(scene, 'platformer/coin-gold', -7.5 + i * 3, 4.6 + (i % 2) * 0.8, -6, { s: 2.2 });
+    spinners.push(c);
+  }
+  place(scene, 'platformer/chest', 7.8, 0, 1.6, { s: 2, ry: -0.6 });
+  place(scene, 'platformer/barrel', -8, 0, 1.4, { s: 2, ry: 0.5 });
 
   // podium (results and final screens)
   const podium = new THREE.Group();
@@ -141,6 +164,10 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
         const ready = s.phase === 'intro' && s.ready.includes(id);
         e.m.update(dt, { speed: moving ? 0.6 : 0, happy: ready || winners.has(id), t: t + id.length });
       }
+      spinners.forEach((c, i) => {
+        c.rotation.y = t * 2 + i;
+        c.position.y = 4.6 + (i % 2) * 0.8 + Math.sin(t * 2 + i) * 0.2;
+      });
       balloons.forEach((b, i) => {
         const base = b.userData.base as THREE.Vector3;
         b.position.y = base.y + Math.sin(t * 0.9 + i) * 0.35;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import type { QuickDrawState } from '../../../shared/games/quickDrawCactus';
 import { ChoppyModel } from '../choppy';
+import { place } from '../assets';
 import { makeScene, mesh, toy } from '../kit';
 import type { Tag, View } from '../stage';
 
@@ -35,6 +36,18 @@ export function quickDrawView(env: THREE.Texture, state: QuickDrawState, players
     d.position.set(-24 + i * 12, 0, -14 - (i % 2) * 6);
     scene.add(d);
   }
+  // frontier town dressing
+  place(scene, 'forest/tent', -9, 0, -7, { s: 2.4, ry: 0.5 });
+  place(scene, 'pirate/structure', 9.5, 0, -8, { s: 1.4, ry: -0.4 });
+  place(scene, 'pirate/structure-roof', 9.5, 0, -8, { s: 1.4, ry: -0.4 });
+  place(scene, 'platformer/sign', -3.2, 0, -2.2, { s: 1.8, ry: 0.3 });
+  place(scene, 'pirate/barrel', 5.6, 0, -3.5, { s: 1.1 });
+  place(scene, 'pirate/barrel', 6.5, 0, -3.0, { s: 1.0, ry: 1 });
+  place(scene, 'pirate/crate', 7.2, 0, -4.2, { s: 1.1, ry: 0.4 });
+  place(scene, 'pirate/rocks-sand-a', -6, 0, -3, { s: 1.2 });
+  place(scene, 'pirate/rocks-sand-b', 3, 0, -9, { s: 1.4, ry: 2 });
+  place(scene, 'forest/fence', -13, 0, -4, { s: 2.2, ry: 0.2 });
+  place(scene, 'forest/fence', 13, 0, -3.5, { s: 2.2, ry: -0.2 });
   const sunBall = new THREE.Mesh(new THREE.SphereGeometry(5, 32, 16), new THREE.MeshBasicMaterial({ color: '#fff1c4', fog: false }));
   sunBall.position.set(22, 18, -70);
   scene.add(sunBall);

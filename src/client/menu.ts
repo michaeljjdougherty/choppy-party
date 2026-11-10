@@ -26,7 +26,7 @@ const ONLINE: Item[] = [
 /** Title screen and main menu. Any controller or keyboard can drive it. */
 export class MainMenu {
   screen: 'title' | 'main' | 'online' = 'title';
-  private sel = 0;
+  sel = 0;
   private bump = 0;
   private prev = new Map<string, { a: number; b: number; y: number }>();
   private navCd = 0;
@@ -126,9 +126,17 @@ export class MainMenu {
 
   draw(ctx: CanvasRenderingContext2D, t: number): void {
     if (this.screen === 'title') {
-      logo(ctx, 640, 250, 1.25, t);
-      if (Math.floor(t * 1.6) % 2 === 0) text(ctx, 'Press A to start', 640, 560, 44, { color: '#ffffff' });
-      text(ctx, 'Pads: bottom face button  ·  Keys: Space or Enter', 640, 620, 20, { weight: 600 });
+      logo(ctx, 640, 150, 1.0, t);
+      const pulse = 1 + Math.sin(t * 5) * 0.04;
+      ctx.save();
+      ctx.translate(640, 620);
+      ctx.scale(pulse, pulse);
+      ctx.fillStyle = 'rgba(42,27,94,0.55)';
+      roundRect(ctx, -230, -34, 460, 68, 34);
+      ctx.fill();
+      text(ctx, 'Press A to start', 0, 0, 40, { color: '#ffe14d' });
+      ctx.restore();
+      text(ctx, 'Pads: bottom face button  ·  Keys: Space or Enter', 640, 690, 18, { weight: 600 });
       return;
     }
     logo(ctx, 340, 140, 0.8, t);

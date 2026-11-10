@@ -71,4 +71,4 @@ export const CROWN_PRICE = 20;
 export const WISP_PRICE = 10;
 export const TRAIN_PRICE = 5;
 export const COUNTER_START = 8;
-export const HOP_TIME = 0.28;
+export const HOP_TIME = 0.34;

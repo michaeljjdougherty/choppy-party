@@ -2,6 +2,7 @@ import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT, clamp } from '../types';
 import { drawTimer, playerById, text } from '../draw';
 import { rand, randRange, type Rng } from '../rng';
+import { bump, jump, newBody, steer, stepVertical, type Body } from '../physics';
 
 const DURATION = 35;
 const SPEED = 300;
@@ -20,7 +21,7 @@ interface Drop {
   life: number; // seconds left after landing
 }
 
-interface Runner {
+interface Runner extends Body {
   id: string;
   x: number;
   y: number;
@@ -42,8 +43,8 @@ export const coinCloudburst: Minigame<CloudburstState> = {
   id: 'coin-cloudburst',
   name: 'Coin Cloudburst',
   mode: 'Free-for-all',
-  blurb: 'Coins are raining down! Grab as many as you can, but stay out from under the anvils.',
-  controls: 'Stick: run',
+  blurb: 'Coins are raining down! Grab as many as you can. Bombs land where the red shadows are: run, or jump over the blast!',
+  controls: 'Stick: run   A: jump',
   minPlayers: 1,
   maxPlayers: 10,
 
@@ -62,6 +63,7 @@ export const coinCloudburst: Minigame<CloudburstState> = {
         stun: 0,
         coins: 0,
         pop: 0,
+        ...newBody(),
       })),
     };
   },
@@ -89,28 +91,34 @@ export const coinCloudburst: Minigame<CloudburstState> = {
 
     for (const r of s.runners) {
       r.pop = Math.max(0, r.pop - dt);
-      if (r.stun > 0) {
-        r.stun = Math.max(0, r.stun - dt);
-        continue;
-      }
       const inp = inputs[r.id] ?? NO_INPUT;
-      const mag = Math.hypot(inp.x, inp.y);
-      if (mag > 0.15) {
-        const m = Math.min(1, mag);
-        r.face = Math.atan2(inp.y, inp.x);
-        r.x = clamp(r.x + (inp.x / mag) * m * SPEED * dt, AX0 + R, AX1 - R);
-        r.y = clamp(r.y + (inp.y / mag) * m * SPEED * dt, AY0 + R, AY1 - R);
-      }
+      const stunned = r.stun > 0;
+      if (stunned) r.stun = Math.max(0, r.stun - dt);
+      steer(r, stunned ? 0 : inp.x, stunned ? 0 : inp.y, SPEED, dt);
+      if (!stunned && inp.aPressed) jump(r);
+      stepVertical(r, dt);
+      r.x = clamp(r.x + r.vx * dt, AX0 + R, AX1 - R);
+      r.y = clamp(r.y + r.vy * dt, AY0 + R, AY1 - R);
+      if (Math.hypot(r.vx, r.vy) > 30 && !stunned) r.face = Math.atan2(r.vy, r.vx);
     }
+    for (let i = 0; i < s.runners.length; i++)
+      for (let j = i + 1; j < s.runners.length; j++) bump(s.runners[i], s.runners[j], R, 2.2, 0.45);
 
     for (const d of s.drops) {
       if (d.fall > 0) {
         d.fall -= dt;
         if (d.fall <= 0 && d.kind === 'anvil') {
           for (const r of s.runners) {
-            if (Math.hypot(r.x - d.x, r.y - d.y) < ANVIL_HIT) {
+            const dist = Math.hypot(r.x - d.x, r.y - d.y);
+            // jumping clears the blast
+            if (dist < ANVIL_HIT && r.z < 24) {
               r.stun = STUN;
               r.coins = Math.max(0, r.coins - 2);
+              // blown up and away, bouncy-style
+              r.vz = 620;
+              const k = 260 / Math.max(1, dist);
+              r.vx = (r.x - d.x) * k;
+              r.vy = (r.y - d.y) * k;
             }
           }
         }
@@ -122,7 +130,7 @@ export const coinCloudburst: Minigame<CloudburstState> = {
       let best: Runner | null = null;
       let bestD = R + 16;
       for (const r of s.runners) {
-        if (r.stun > 0) continue;
+        if (r.stun > 0 || r.z > 70) continue;
         const dd = Math.hypot(r.x - d.x, r.y - d.y);
         if (dd < bestD) {
           best = r;

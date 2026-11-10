@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import type { RinkState } from '../../../shared/games/shrinkingRink';
 import { ChoppyModel } from '../choppy';
+import { place } from '../assets';
 import { PX, makeScene, mesh, toy, wx, wz, yaw } from '../kit';
 import type { Tag, View } from '../stage';
 
@@ -32,6 +33,19 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
   }
 
   const cz = wz(390);
+  // pirate harbour around the ice floe
+  const ships: THREE.Object3D[] = [];
+  ships.push(place(scene, 'pirate/ship-pirate-large', -17, -1.2, -14, { s: 1.2, ry: 0.7 }));
+  ships.push(place(scene, 'pirate/ship-pirate-medium', 18, -1.0, -12, { s: 1.1, ry: -0.8 }));
+  ships.push(place(scene, 'pirate/ship-wreck', 15, -0.9, 9, { s: 1.0, ry: 2.2 }));
+  place(scene, 'pirate/rocks-a', -14, -0.6, 4, { s: 1.3 });
+  place(scene, 'pirate/rocks-b', 12.5, -0.6, -4, { s: 1.2, ry: 1 });
+  place(scene, 'pirate/rocks-sand-b', -11, -0.7, -8, { s: 1.1 });
+  const floaters: THREE.Object3D[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.4;
+    floaters.push(place(scene, i % 2 ? 'pirate/barrel' : 'pirate/crate', Math.cos(a) * 10.5, -0.25, Math.sin(a) * 8.5, { s: 0.9, ry: i }));
+  }
   const rim = mesh(new THREE.CylinderGeometry(1, 1, 0.7, 72), toy('#ff5466', 0.35), { receive: true });
   rim.position.set(0, -0.36, cz);
   scene.add(rim);
@@ -56,6 +70,14 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
     scene,
     camera,
     update(s: RinkState, _players, t, dt) {
+      ships.forEach((o, i) => {
+        o.position.y = -1.1 + Math.sin(t * 0.9 + i * 2) * 0.15;
+        o.rotation.z = Math.sin(t * 0.7 + i) * 0.04;
+      });
+      floaters.forEach((o, i) => {
+        o.position.y = -0.3 + Math.sin(t * 1.6 + i * 1.3) * 0.12;
+        o.rotation.x = Math.sin(t * 1.1 + i) * 0.15;
+      });
       last = s;
       const r = s.rink * PX;
       ice.scale.set(r, 1, r);
@@ -75,7 +97,7 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
           continue;
         }
         m.group.rotation.x = 0;
-        m.update(dt, { speed: Math.hypot(k.vx, k.vy) / 360, jump: k.dashing > 0 ? 0.15 : 0 });
+        m.update(dt, { speed: Math.hypot(k.vx, k.vy) / 360, jump: (k.z * PX) / SCALE });
       }
     },
     tags(): Tag[] {

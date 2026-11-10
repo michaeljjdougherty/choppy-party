@@ -35,6 +35,23 @@ From the main menu: **Party Boards** (roll the dice block, race around a board, 
 
 The lobby picks the best board for your head count automatically; the host can still change it.
 
+## Game feel
+
+Movement is meant to feel bouncy and a little floaty, not rigid. `src/shared/physics.ts` holds the shared rules every minigame can use:
+
+- Snappy start (full speed in about 0.1 s), a short glide when you let go, and a quick turnaround when reversing.
+- Floaty jumps: a strong kick, low gravity near the top of the arc for hang time, slightly heavier fall, and a small bounce on landing.
+- Springy bumps: players knock each other back harder than a plain collision and pop up off the ground on big hits.
+- Characters squash on landing and stretch on the way up, hop a little with every step, and bounce in when they appear. Board spaces dip and spring back when someone lands on them.
+
+Coin Cloudburst uses jumps to clear bomb blasts; in Shrinking Rink you're only out once you land over the water.
+
+Sound effects are synthesized with WebAudio (`src/client/sfx.ts`); `src/client/juice.ts` watches snapshots to play them and throws confetti on the results screens.
+
+## Art
+
+3D models are from Kenney's CC0 kits (Platformer, Mini Characters, Pirate, Mini Forest, Prototype) in `public/models`, with their license files. The 10 playable characters are listed in `src/shared/players.ts`.
+
 ## Online
 
 Click **Host online** to open a room; share the 4-letter code or the `?room=CODE` link. Each browser can bring up to 4 local players. The server runs every round (30 ticks/s) and sends snapshots; browsers send inputs and draw, blending between snapshots. A dropped browser can reload the link and pick its players back up.
@@ -44,6 +61,7 @@ Click **Host online** to open a room; share the 4-letter code or the `?room=CODE
 - `src/shared/types.ts` minigame interface and input types
 - `src/shared/party.ts` party flow: lobby, intro, play, results, final scores
 - `src/shared/games/` one file per minigame; register new ones in `games/index.ts`
+- `src/shared/physics.ts` shared bouncy movement, jumps and bumps
 - `src/shared/board/` board mode: layouts (`boards.ts`), rules (`engine.ts`)
 - `src/client/` input manager, local and online sessions, menu HUD screens
 - `src/client/three/` 3D renderer: stage, the Choppy character model, and one 3D view per minigame in `views/`

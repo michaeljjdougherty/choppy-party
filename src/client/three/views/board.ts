@@ -7,6 +7,7 @@ import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/type
 import { roundedRect } from '../../../shared/board/layout';
 import { ChoppyModel } from '../choppy';
 import { darken, makeScene, mesh, toy } from '../kit';
+import { place } from '../assets';
 import type { Tag, View } from '../stage';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
@@ -99,14 +100,8 @@ const hollowDecor: Dresser = (scene, def) => {
     const z = Math.sin(a) * r * 0.66;
     // tall trees only along the back and far sides, so they never block the follow camera
     if (i % 2 === 0 && (z < 2 || Math.abs(x) > 17)) {
-      const tr = mesh(new THREE.CylinderGeometry(0.25, 0.45, 3, 7), trunk);
-      tr.position.set(x, 1.5, z);
-      tr.rotation.z = Math.sin(i) * 0.25;
-      scene.add(tr);
-      const top = mesh(new THREE.SphereGeometry(1.5 + (i % 3) * 0.3, 14, 10), leaves[i % 3]);
-      top.position.set(x + Math.sin(i) * 0.5, 3.6, z);
-      top.scale.y = 0.8;
-      scene.add(top);
+      place(scene, i % 4 === 0 ? 'forest/tree-high' : 'forest/tree', x, 0, z, { s: 2.4 + (i % 3) * 0.3, ry: i });
+      void leaves;
     } else {
       const p = mesh(new THREE.SphereGeometry(0.6, 16, 12), pumpkin);
       p.scale.y = 0.7;
@@ -150,6 +145,16 @@ const hollowDecor: Dresser = (scene, def) => {
     scene.add(lamp);
     posts.push(lamp);
   }
+  // village props from the Mini Forest kit
+  place(scene, 'forest/tent', -16, 0, -6, { s: 2.4, ry: 0.8 });
+  place(scene, 'forest/tent', 16.5, 0, -5, { s: 2.2, ry: -0.9 });
+  place(scene, 'forest/building-structure', 9, 0, -12.5, { s: 2.4, ry: 0.2 });
+  place(scene, 'forest/building-roof', 9, 2.5, -12.5, { s: 2.4, ry: 0.2 });
+  place(scene, 'forest/flag', -10, 0, -11.5, { s: 2.5 });
+  place(scene, 'forest/flag', 13, 0, 11, { s: 2.5 });
+  for (let i = 0; i < 8; i++) place(scene, 'forest/fence', -19 + i * 1.1 * 2.4, 0, 13.4, { s: 2.4 });
+  for (const [x, z] of [[-4, 4.5], [4, -4.6], [-18, 7], [19, -1], [0, 12.5]] as [number, number][]) place(scene, 'forest/rocks-low', x, 0, z, { s: 2, ry: x });
+  for (const [x, z] of [[-2, 1], [2.5, 0.6], [-7, -5.6], [7, 5.6]] as [number, number][]) place(scene, 'platformer/mushrooms', x, 0, z, { s: 2.2, shadow: false });
   const moon = new THREE.Mesh(new THREE.SphereGeometry(4, 32, 16), new THREE.MeshBasicMaterial({ color: '#fff6d6', fog: false }));
   moon.position.set(30, 26, -60);
   scene.add(moon);
@@ -211,6 +216,24 @@ const cosmoDecor: Dresser = (scene) => {
   p3.position.set(18, 22, -50);
   scene.add(p1, p2, p3);
   planets.push(p1, p2, p3);
+  // prototype-kit station hardware around the deck
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    const x = Math.cos(a) * 21;
+    const z = Math.sin(a) * 13.6;
+    if (Math.abs(z) < 3 && x > 0) continue; // leave room for the cannon
+    place(scene, i % 2 ? 'proto/column-rounded' : 'proto/column', x, -0.05, z, { s: 3 });
+  }
+  for (const [x, z, ry] of [[-6, -5.5, 0.3], [6, 5.5, 3.4], [-9, 5, 2.4], [9, -5, -0.5]] as [number, number, number][]) {
+    place(scene, 'proto/figurine-large', x, -0.05, z, { s: 3.2, ry });
+  }
+  for (const [x, z] of [[-12, -3.5], [12, 3.5], [0, -6], [0, 6]] as [number, number][]) {
+    place(scene, 'proto/indicator-special-cross', x, -0.03, z, { s: 3, shadow: false });
+  }
+  place(scene, 'proto/vehicle-convertible', -13.5, -0.05, 6.2, { s: 2.2, ry: 0.7 });
+  place(scene, 'proto/crate-color', 13, -0.05, -6.5, { s: 2.6, ry: 0.3 });
+  place(scene, 'proto/crate-color', 14.2, -0.05, -5.6, { s: 2.2, ry: 1 });
+
   // laser cannon at the right end of the lane, aiming back along it
   const cannon = new THREE.Group();
   const base = mesh(new THREE.CylinderGeometry(1.4, 1.8, 1.2, 20), toy('#5b647d', 0.35));
@@ -263,6 +286,13 @@ const gulchDecor: Dresser = (scene, def) => {
     const x = -13 + (i % 4) * 8.6;
     const z = i < 4 ? -5 : 5;
     if (Math.abs(x - -7.5) < 2.2 || Math.abs(x - 7.5) < 2.2) continue; // keep the cut-throughs clear
+    if (i % 2 === 1) {
+      // a pirate-kit timber frame building with a roof, saloon style
+      place(scene, 'pirate/structure', x, 0, z, { s: 1.5, ry: z < 0 ? 0 : Math.PI });
+      place(scene, 'pirate/structure-roof', x, 3.3, z, { s: 1.5, ry: z < 0 ? 0 : Math.PI });
+      place(scene, 'pirate/barrel', x + 2.4, 0, z + 1, { s: 0.7 });
+      continue;
+    }
     const h = 2.5 + (i % 3) * 0.8;
     const b = mesh(new THREE.BoxGeometry(4, h, 3.2), toy(woods[i % 4], 0.8), { receive: true });
     b.position.set(x, h / 2, z);
@@ -330,6 +360,16 @@ const gulchDecor: Dresser = (scene, def) => {
     train.add(car);
   }
   scene.add(train);
+  place(scene, 'pirate/tower-complete-small', -27, 0, -2, { s: 1.2 });
+  place(scene, 'pirate/tower-complete-small', 27, 0, 3, { s: 1.1, ry: 2 });
+  for (const [x, z, ry] of [[-3, 0.5, 0], [3, -0.5, 1], [-17, -9, 0.4], [17, 9, 2], [-17, 9.5, 1.2], [17, -9.5, 0.8]] as [number, number, number][]) {
+    place(scene, 'pirate/crate', x, 0, z, { s: 0.9, ry });
+    place(scene, 'pirate/barrel', x + 1.1, 0, z + 0.6, { s: 0.7, ry });
+  }
+  for (const [x, z] of [[-30, 12], [30, -12], [-34, -6], [33, 8], [0, 21], [-12, -21]] as [number, number][]) place(scene, 'pirate/rocks-sand-a', x, 0, z, { s: 1.4, ry: x });
+  place(scene, 'pirate/flag-high-pennant', 0, 0, 2.4, { s: 1.4 });
+  place(scene, 'pirate/chest', 1.6, 0, -1.5, { s: 1, ry: 0.6 });
+
   // station platforms
   for (const st of def.stations ?? []) {
     const n = def.nodes[st];
@@ -378,7 +418,9 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const capGeo = new THREE.CircleGeometry(0.78, 36);
   const capMats = new Map<SpaceType, THREE.Material>();
   const tileMats = new Map<SpaceType, THREE.Material>();
-  for (const n of Object.values(def.nodes)) {
+  // every space is a little spring: it dips when someone lands on it and wobbles back
+  const springs = new Map<string, { parts: THREE.Object3D[]; base: number[]; y: number; v: number }>();
+  for (const [nodeId, n] of Object.entries(def.nodes)) {
     if (!capMats.has(n.type)) {
       capMats.set(n.type, new THREE.MeshStandardMaterial({ map: iconTexture(SPACE_ICON[n.type], SPACE_COLORS[n.type]), roughness: 0.35 }));
       tileMats.set(n.type, toy(darken(SPACE_COLORS[n.type], 0.15), 0.4));
@@ -390,6 +432,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     cap.rotation.x = -Math.PI / 2;
     cap.position.set(n.x, 0.33, n.z);
     scene.add(cap);
+    springs.set(nodeId, { parts: [tile, cap], base: [0.16, 0.33], y: 0, v: 0 });
     if (def.theme === 'cosmo') {
       const pillar = mesh(new THREE.CylinderGeometry(0.6, 0.3, 1.2, 12), toy('#7b86b8', 0.3));
       pillar.position.set(n.x, -0.45, n.z);
@@ -451,6 +494,11 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const camLook = new THREE.Vector3();
   let last = party.board!;
   const pos = new Map<string, THREE.Vector3>();
+  const lastNode = new Map<string, string>();
+  const kick = (nodeId: string, v: number) => {
+    const sp = springs.get(nodeId);
+    if (sp) sp.v -= v;
+  };
 
   function spotFor(b: BoardState, id: string): THREE.Vector3 {
     const me = b.players[id];
@@ -460,7 +508,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       const from = def.nodes[b.hop.from];
       const to = def.nodes[b.hop.to];
       const f = Math.max(0, Math.min(1, b.hop.t));
-      const arc = Math.sin(f * Math.PI) * (b.hop.t < 0 || Math.hypot(to.x - from.x, to.z - from.z) > 6 ? 4 : 0.9);
+      const arc = Math.sin(f * Math.PI) * (b.hop.t < 0 || Math.hypot(to.x - from.x, to.z - from.z) > 6 ? 4.5 : 1.5);
       return new THREE.Vector3(from.x + (to.x - from.x) * f, 0.33 + arc, from.z + (to.z - from.z) * f);
     }
     // spread out players sharing a space; the current player stands in the middle
@@ -508,6 +556,27 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         c.rotation.y = t * 1.2;
       });
 
+      // tile springs
+      for (const [id, pl] of Object.entries(b.players)) {
+        const prevNode = lastNode.get(id);
+        if (prevNode !== undefined && prevNode !== pl.node) {
+          kick(pl.node, 3.2);
+          models.get(id)?.squash(6);
+        }
+        lastNode.set(id, pl.node);
+      }
+      for (const sp of springs.values()) {
+        if (sp.y === 0 && sp.v === 0) continue;
+        for (let left = Math.min(dt, 0.1); left > 1e-6; left -= 1 / 120) {
+          const h = Math.min(left, 1 / 120);
+          sp.v += (-sp.y * 260 - sp.v * 9) * h;
+          sp.y += sp.v * h;
+        }
+        if (Math.abs(sp.y) < 1e-4 && Math.abs(sp.v) < 1e-3) sp.y = sp.v = 0;
+        sp.parts.forEach((o, i) => (o.position.y = sp.base[i] + sp.y));
+        sp.parts[0].scale.set(1 - sp.y * 0.6, 1 + sp.y * 1.5, 1 - sp.y * 0.6);
+      }
+
       for (const [id, m] of models) {
         if (!b.players[id]) continue;
         const target = spotFor(b, id);
@@ -515,7 +584,10 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         if (id === cur && b.hop) p.copy(target);
         else p.lerp(target, Math.min(1, dt * 10));
         pos.set(id, p);
-        m.group.position.copy(p);
+        // ride the tile spring, and let the model handle the hop arc so it squashes on landing
+        const under = springs.get(b.players[id].node);
+        const lift = Math.max(0, p.y - 0.33);
+        m.group.position.set(p.x, 0.33 + (b.hop && id === cur ? 0 : (under?.y ?? 0)), p.z);
         const moving = id === cur && !!b.hop;
         if (moving) {
           const to = def.nodes[b.hop!.to];
@@ -523,7 +595,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         } else {
           m.group.rotation.y += (Math.atan2(camera.position.x - p.x, camera.position.z - p.z) - m.group.rotation.y) * Math.min(1, dt * 4);
         }
-        m.update(dt, { speed: moving ? 0.8 : 0, happy: id === cur && b.sub === 'rolled', t });
+        m.update(dt, { speed: 0, jump: lift / 0.55, happy: id === cur && b.sub === 'rolled', t });
       }
 
       // dice above the current player while rolling

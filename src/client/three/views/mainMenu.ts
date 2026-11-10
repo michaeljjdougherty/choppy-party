@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { ChoppyModel } from '../choppy';
 import { makeScene, mesh, toy } from '../kit';
+import { place } from '../assets';
 import type { Tag, View } from '../stage';
 import { PLAYER_COLORS } from '../../../shared/players';
 
 /** Title and main menu: a little party island where the Choppies dance around a giant dice block. */
-export function mainMenuView(env: THREE.Texture): View {
+export function mainMenuView(env: THREE.Texture, screen: () => string = () => 'title'): View {
   const scene = makeScene(env, { skyTop: '#3ba7ff', skyBottom: '#c9f0ff', fog: ['#c9f0ff', 40, 120], shadowSize: 16 });
   const camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.1, 300);
 
@@ -37,23 +38,24 @@ export function mainMenuView(env: THREE.Texture): View {
   dice.position.set(0, 3.4, 0);
   scene.add(dice);
 
-  // palm trees
-  const trunkMat = toy('#9a6a3a', 0.8);
-  const leafMat = toy('#2fb35a', 0.6);
-  for (const [x, z] of [[-7, -3], [6.5, -4.5], [-5.5, 5], [7, 3.5]] as [number, number][]) {
-    const tr = mesh(new THREE.CylinderGeometry(0.25, 0.4, 5, 8), trunkMat);
-    tr.position.set(x, 2.3, z);
-    tr.rotation.z = x > 0 ? -0.15 : 0.15;
-    scene.add(tr);
-    for (let k = 0; k < 5; k++) {
-      const leaf = mesh(new THREE.SphereGeometry(1.4, 10, 6), leafMat);
-      leaf.scale.set(1, 0.18, 0.4);
-      const a = (k / 5) * Math.PI * 2;
-      leaf.position.set(x + Math.cos(a) * 1.1 + (x > 0 ? -0.4 : 0.4), 4.9, z + Math.sin(a) * 1.1);
-      leaf.rotation.y = -a;
-      leaf.rotation.z = -0.35;
-      scene.add(leaf);
-    }
+  // pirate-kit dressing: palms, a dock, treasure and ships out at sea
+  place(scene, 'pirate/palm-detailed-bend', -7, 0.2, -4, { s: 1.0, ry: 0.6 });
+  place(scene, 'pirate/palm-detailed-straight', 6.5, 0.2, -5, { s: 1.1 });
+  place(scene, 'pirate/palm-bend', -8, 0.2, 1.5, { s: 0.9, ry: -1 });
+  place(scene, 'pirate/palm-detailed-straight', 8.2, 0.2, 0.5, { s: 0.9, ry: 2 });
+  place(scene, 'pirate/chest', 4.6, 0.2, 2.2, { s: 1.1, ry: -0.6 });
+  place(scene, 'pirate/barrel', -4.2, 0.2, -5.6, { s: 0.9 });
+  place(scene, 'pirate/barrel', -3.0, 0.2, -6.2, { s: 0.8, ry: 1 });
+  place(scene, 'pirate/crate-bottles', 3.5, 0.2, -6.0, { s: 1, ry: 0.4 });
+  place(scene, 'pirate/flag-pirate', 0, 0.2, -6.5, { s: 1.3 });
+  place(scene, 'pirate/structure-platform-dock', 9.5, -1.2, 6, { s: 1.4, ry: 0.4 });
+  place(scene, 'pirate/boat-row-small', 12.5, -1.1, 8, { s: 1, ry: 1.2 });
+  const ship = place(scene, 'pirate/ship-pirate-large', -24, -1.6, -22, { s: 1.3, ry: 0.9 });
+  const ship2 = place(scene, 'pirate/ship-small', 26, -1.4, -26, { s: 1.1, ry: -0.5 });
+  place(scene, 'pirate/rocks-a', 18, -1.4, -6, { s: 1 });
+  place(scene, 'pirate/rocks-sand-a', -14, -1.2, 8, { s: 1.2 });
+  for (const [x, z] of [[-3, 6.5], [2, 7], [-8.5, 0], [8.4, -0.5], [-1, -7.5]] as [number, number][]) {
+    place(scene, 'pirate/grass-plant', x, 0.2, z, { s: 1.2, shadow: false });
   }
 
   // balloons
@@ -62,7 +64,7 @@ export function mainMenuView(env: THREE.Texture): View {
     const b = mesh(new THREE.SphereGeometry(0.6, 20, 14), toy(PLAYER_COLORS[i % 8], 0.25), { cast: false });
     b.scale.y = 1.2;
     const a = (i / 12) * Math.PI * 2;
-    b.position.set(Math.cos(a) * 14, 5 + (i % 3) * 1.5, Math.sin(a) * 14 - 4);
+    b.position.set(Math.cos(a) * 18, 6 + (i % 3) * 1.8, Math.sin(a) * 10 - 14);
     b.userData.y = b.position.y;
     scene.add(b);
     balloons.push(b);
@@ -70,28 +72,40 @@ export function mainMenuView(env: THREE.Texture): View {
 
   // dancers
   const dancers: ChoppyModel[] = [];
-  for (let i = 0; i < 6; i++) {
-    const m = new ChoppyModel(PLAYER_COLORS[i], 0.7);
+  for (let i = 0; i < PLAYER_COLORS.length; i++) {
+    const m = new ChoppyModel(PLAYER_COLORS[i], 0.62);
     scene.add(m.group);
     dancers.push(m);
   }
 
+  const camGoal = new THREE.Vector3(0, 7.5, 17);
+  const lookGoal = new THREE.Vector3(0, 3.2, 0);
+  const look = lookGoal.clone();
+  camera.position.copy(camGoal);
   return {
     scene,
     camera,
     update(_s, _p, t, dt) {
-      const a = t * 0.08;
-      camera.position.set(Math.sin(a) * 4 - 4, 6.2, 16 + Math.cos(a) * 1.5);
-      camera.lookAt(-3.6, 2.2, 0);
+      // title: island centred under the logo; menu: island on the left, buttons on the right
+      const sway = Math.sin(t * 0.15) * 1.2;
+      const onMenu = screen() !== 'title';
+      camGoal.set(onMenu ? 6.5 + sway : sway, onMenu ? 6 : 7.5, onMenu ? 15 : 17);
+      lookGoal.set(onMenu ? 6.5 : 0, onMenu ? 1.6 : 3.2, 0);
+      camera.position.lerp(camGoal, Math.min(1, dt * 3));
+      look.lerp(lookGoal, Math.min(1, dt * 3));
+      camera.lookAt(look);
       dice.rotation.set(Math.sin(t * 0.7) * 0.3, t * 0.9, Math.cos(t * 0.6) * 0.3);
       dice.position.y = 3.4 + Math.sin(t * 2) * 0.25;
       dancers.forEach((m, i) => {
         const ang = (i / dancers.length) * Math.PI * 2 + t * 0.5;
-        m.group.position.set(Math.cos(ang) * 3.2, 0.36, Math.sin(ang) * 3.2);
-        m.group.rotation.y = ang + Math.PI; // face along the circle
-        m.update(dt, { speed: 0.5, happy: Math.sin(t * 1.5 + i) > 0.3, t: t + i });
+        m.group.position.set(Math.cos(ang) * 3.6, 0.36, Math.sin(ang) * 3.6);
+        m.group.rotation.y = -ang; // walk along the circle
+        m.update(dt, { speed: 0.45, happy: Math.sin(t * 0.9 + i * 1.7) > 0.75, t: t + i });
       });
       balloons.forEach((b, i) => (b.position.y = (b.userData.y as number) + Math.sin(t + i) * 0.4));
+      ship.position.y = -1.6 + Math.sin(t * 0.8) * 0.15;
+      ship.rotation.z = Math.sin(t * 0.6) * 0.03;
+      ship2.position.y = -1.4 + Math.sin(t * 0.9 + 1) * 0.12;
     },
     tags(): Tag[] {
       return [];

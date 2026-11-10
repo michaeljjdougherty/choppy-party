@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import { ANVIL_HIT, AX0, AX1, AY0, AY1, FALL_TIME, type CloudburstState } from '../../../shared/games/coinCloudburst';
 import { ChoppyModel } from '../choppy';
+import { place, prop } from '../assets';
 import { PX, makeScene, mesh, stripeTexture, toy, wx, wz, yaw } from '../kit';
 import type { Tag, View } from '../stage';
 
@@ -40,6 +41,15 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
   bush(cx, cz - fd / 2 - 0.5, fw + 2, 1);
   bush(cx - fw / 2 - 0.5, cz, 1, fd);
   bush(cx + fw / 2 + 0.5, cz, 1, fd);
+  // garden around the field
+  for (let i = 0; i < 8; i++) {
+    const side = i % 2 ? 1 : -1;
+    place(scene, i % 3 ? 'platformer/tree' : 'platformer/tree-pine', cx + side * (fw / 2 + 3 + (i % 3)), 0, cz - fd / 2 + (i >> 1) * (fd / 3), { s: 2.4 + (i % 2) * 0.5, ry: i });
+  }
+  for (let i = 0; i < 7; i++) place(scene, i % 2 ? 'platformer/flowers' : 'platformer/flowers-tall', cx - fw / 2 + 1 + i * (fw / 6.5), 0, cz - fd / 2 - 1.6, { s: 1.6, ry: i, shadow: false });
+  place(scene, 'platformer/hedge', cx - fw / 2 - 2, 0, cz + fd / 2 + 0.6, { s: 2 });
+  place(scene, 'platformer/hedge', cx + fw / 2 + 2, 0, cz + fd / 2 + 0.6, { s: 2 });
+  place(scene, 'platformer/mushrooms', cx + fw / 2 + 1.8, 0, cz + fd / 4, { s: 1.6, shadow: false });
   // puffy clouds overhead (where the loot comes from)
   const cloudMat = toy('#ffffff', 0.6);
   const clouds: THREE.Group[] = [];
@@ -55,27 +65,22 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
     clouds.push(c);
   }
 
-  const coinGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.12, 28);
-  const coinMat = new THREE.MeshStandardMaterial({ color: '#ffcb2f', roughness: 0.25, metalness: 0.6 });
-  const gemGeo = new THREE.OctahedronGeometry(0.55);
-  const gemMat = new THREE.MeshStandardMaterial({ color: '#45e3ff', roughness: 0.1, metalness: 0.2, emissive: '#0a4a66' });
-  const anvilMat = new THREE.MeshStandardMaterial({ color: '#4b5160', roughness: 0.4, metalness: 0.5 });
   const shadowGeo = new THREE.CircleGeometry(1, 32);
   const shadowMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.25, depthWrite: false });
   const dangerMat = new THREE.MeshBasicMaterial({ color: '#ff2a2a', transparent: true, opacity: 0.35, depthWrite: false });
+  const blastMat = new THREE.MeshBasicMaterial({ color: '#ffb020', transparent: true, opacity: 0.8, depthWrite: false });
+  const blastGeo = new THREE.SphereGeometry(1, 20, 14);
 
+  // Kenney platformer pickups: gold coins, jewels and round bombs
+  const makeCoin = () => prop('platformer/coin-gold', 1.25);
+  const makeGem = () => prop('platformer/jewel', 1.3);
   const makeAnvil = () => {
     const g = new THREE.Group();
-    const top = mesh(new THREE.BoxGeometry(1.7, 0.35, 0.8), anvilMat);
-    top.position.y = 0.85;
-    const waist = mesh(new THREE.BoxGeometry(0.6, 0.45, 0.6), anvilMat);
-    waist.position.y = 0.48;
-    const base = mesh(new THREE.BoxGeometry(1.2, 0.3, 0.9), anvilMat);
-    base.position.y = 0.15;
-    const horn = mesh(new THREE.ConeGeometry(0.17, 0.6, 12), anvilMat);
-    horn.rotation.z = Math.PI / 2;
-    horn.position.set(1.1, 0.88, 0);
-    g.add(top, waist, base, horn);
+    const bomb = prop('platformer/bomb', 1.8);
+    bomb.name = 'bomb';
+    const blast = new THREE.Mesh(blastGeo, blastMat.clone());
+    blast.name = 'blast';
+    g.add(bomb, blast);
     return g;
   };
 
@@ -119,16 +124,30 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
         const k = d.kind;
         const obj =
           k === 'coin'
-            ? take(pools.coin, used.coin++, () => mesh(coinGeo, coinMat))
+            ? take(pools.coin, used.coin++, makeCoin)
             : k === 'gem'
-              ? take(pools.gem, used.gem++, () => mesh(gemGeo, gemMat))
+              ? take(pools.gem, used.gem++, makeGem)
               : take(pools.anvil, used.anvil++, makeAnvil);
         const air = Math.max(0, d.fall) / FALL_TIME;
         const hoverY = k === 'anvil' ? 0 : 0.5 + Math.sin(t * 4 + d.x) * 0.08;
         obj.position.set(x, hoverY + air * DROP_HEIGHT, z);
-        if (k === 'coin') obj.rotation.set(Math.PI / 2, 0, t * 4 + d.x);
+        if (k === 'coin') obj.rotation.set(0, t * 4 + d.x, 0);
         if (k === 'gem') obj.rotation.set(0, t * 3, 0);
-        if (k === 'anvil') obj.rotation.set(0, d.x, 0);
+        if (k === 'anvil') {
+          // falling bomb wobbles; on landing it bursts into a big puffy blast
+          const landed = d.fall <= 0;
+          const bomb = obj.getObjectByName('bomb')!;
+          const blast = obj.getObjectByName('blast') as THREE.Mesh;
+          bomb.visible = !landed;
+          blast.visible = landed;
+          obj.rotation.set(Math.sin(t * 9 + d.x) * 0.25, d.x, 0);
+          if (landed) {
+            const p = 1 - d.life / 0.6;
+            const r = ANVIL_HIT * PX * (0.5 + Math.sqrt(p) * 0.7);
+            blast.scale.set(r, r * 0.7, r);
+            (blast.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - p);
+          }
+        }
         // blink before vanishing
         if (k !== 'anvil' && d.fall <= 0 && d.life < 1) obj.visible = Math.floor(d.life * 10) % 2 === 0;
         if (d.fall > 0) {
@@ -151,7 +170,7 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
         lastPos.set(r.id, [r.x, r.y]);
         m.group.position.set(wx(r.x), 0, wz(r.y));
         m.group.rotation.y = yaw(r.face);
-        m.update(dt, { speed: r.stun > 0 ? 0 : speed, stunned: r.stun > 0, jump: r.pop > 0 ? r.pop : 0 });
+        m.update(dt, { speed: r.stun > 0 ? 0 : speed, stunned: r.stun > 0, jump: ((r.z ?? 0) * PX) / 0.8 });
       }
     },
     tags(): Tag[] {

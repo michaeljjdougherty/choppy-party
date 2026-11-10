@@ -4,11 +4,15 @@ import { FIRST_GAME, FIRST_MIX, addPlayer } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { drawFinal, drawIntro, drawLobby, drawResults } from './screens';
+import { sfx, unlockAudio } from './sfx';
+import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
 import { MainMenu } from './menu';
 import { roundRect, text } from '../shared/draw';
 import { Stage, type Tag } from './three/stage';
 import { GAME_VIEWS, boardView, mainMenuView, menuView } from './three/views';
+import { preloadAll } from './three/assets';
+import { logo } from './menu';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -37,6 +41,8 @@ function enter(next: Session) {
 }
 
 function backToMenu() {
+  sfx.back();
+  resetJuice();
   session?.close();
   session = null;
   menu.screen = 'main';
@@ -87,7 +93,9 @@ const roomParam = new URLSearchParams(location.search).get('room');
 if (roomParam) enter(new OnlineSession(input, { code: roomParam }, showError));
 
 // in the lobby: A joins, B leaves (or goes back to the menu if you're not in)
+for (const ev of ['keydown', 'pointerdown', 'touchstart']) window.addEventListener(ev, unlockAudio);
 input.onAPress = (d) => {
+  unlockAudio();
   if (!session) return;
   const s = session.view();
   if (!s || s.phase === 'lobby') session.join(d.key);
@@ -125,8 +133,16 @@ function frame(now: number) {
   last = now;
   input.poll();
   if (!session) {
+    const before = `${menu.screen}:${menu.sel}`;
     if (joinBox.classList.contains('hidden')) act(menu.update(dt));
-  } else session.update(dt);
+    const after = `${menu.screen}:${menu.sel}`;
+    if (session) sfx.select();
+    else if (before !== after) (before.split(':')[0] !== after.split(':')[0] ? sfx.select : sfx.move)();
+  } else {
+    session.update(dt);
+    const v = session.view();
+    if (v) watch(v);
+  }
   render(now / 1000, dt);
   requestAnimationFrame(frame);
 }
@@ -135,7 +151,7 @@ function render(wallT: number, dt: number) {
   ctx.clearRect(0, 0, VIEW_W, VIEW_H);
   if (!session) {
     bar.classList.add('hidden');
-    const view = stage.show('main-menu', () => mainMenuView(stage.env));
+    const view = stage.show('main-menu', () => mainMenuView(stage.env, () => menu.screen));
     view.update(null, [], wallT, dt);
     stage.render();
     menu.draw(ctx, wallT);
@@ -187,6 +203,7 @@ function render(wallT: number, dt: number) {
       drawFinal(ctx, s);
       break;
   }
+  drawConfetti(ctx, dt, wallT);
 }
 
 /** Name plates that follow characters around the 3D scene. */
@@ -211,7 +228,27 @@ function drawTags(tags: Tag[]) {
   }
 }
 
-requestAnimationFrame(frame);
+// load every model first, with a little loading screen
+let loadT = 0;
+function drawLoading(done: number, total: number) {
+  loadT += 0.05;
+  ctx.clearRect(0, 0, VIEW_W, VIEW_H);
+  const g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+  g.addColorStop(0, '#3ba7ff');
+  g.addColorStop(1, '#c9f0ff');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  logo(ctx, 640, 270, 1, loadT);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  roundRect(ctx, 390, 470, 500, 34, 17);
+  ctx.fill();
+  ctx.fillStyle = '#ffd23f';
+  roundRect(ctx, 394, 474, Math.max(26, 492 * (done / Math.max(1, total))), 26, 13);
+  ctx.fill();
+  text(ctx, `Loading party supplies… ${done}/${total}`, 640, 540, 22, { weight: 700 });
+}
+drawLoading(0, 1);
+preloadAll(drawLoading).then(() => requestAnimationFrame(frame));
 
 // expose for automated smoke tests
 (window as any).__choppy = {
@@ -220,6 +257,7 @@ requestAnimationFrame(frame);
   },
   input,
   menu,
+  stage,
   /** Test helper: fill local lobby seats with idle players. */
   addBots(n: number) {
     const st = (session as any)?.state;

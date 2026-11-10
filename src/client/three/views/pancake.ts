@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import type { PancakeState } from '../../../shared/games/pancakePanic';
 import { ChoppyModel } from '../choppy';
+import { place } from '../assets';
 import { checkerTexture, makeScene, mesh, toy } from '../kit';
 import type { Tag, View } from '../stage';
 
@@ -24,6 +25,14 @@ export function pancakeView(env: THREE.Texture, state: PancakeState, players: Pl
   wall.position.set(0, 15, -12);
   scene.add(wall);
 
+  // a cosy kitchen shelf behind the plates
+  place(scene, 'pirate/crate-bottles', -9, 0, -7, { s: 1.3, ry: 0.3 });
+  place(scene, 'pirate/barrel', 9.5, 0, -7, { s: 1.3 });
+  place(scene, 'pirate/barrel', 11, 0, -6.2, { s: 1.1, ry: 1 });
+  place(scene, 'pirate/bottle-large', -6.8, 0, -6.4, { s: 1.6 });
+  place(scene, 'pirate/bottle-large', 7.6, 0, -6.6, { s: 1.4, ry: 1 });
+  place(scene, 'platformer/flowers-tall', -11.5, 0, -5.5, { s: 2.2 });
+  place(scene, 'pirate/crate', 12.5, 0, -8.2, { s: 1.4, ry: -0.3 });
   const n = state.ids.length;
   const gap = 2.3;
   const plateMat = toy('#ffffff', 0.15);

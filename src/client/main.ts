@@ -10,6 +10,7 @@ import { netDialogOpen, openNetDialog } from './netDialog';
 const SERVER_MODE = new URLSearchParams(location.search).has('server');
 import { INTRO_PREVIEW, PREVIEW, drawFinal, drawIntro, drawLobby, drawResults } from './screens';
 import { loadSamples, sfx, unlockAudio } from './sfx';
+import { kickMusic, menuMusic } from './music';
 import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
 import { MainMenu } from './menu';
@@ -25,7 +26,7 @@ import type { View } from './three/stage';
 import { setCharacters } from './three/choppy';
 import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
 import { clearGamePreview, gamePreview } from './three/views/gamePreview';
-import { attachUi, beginUi, button, endUi, pointerAt, takeStrayClick } from './ui';
+import { attachUi, beginUi, button, endUi, pointerAt, takeStrayClick, uiSound } from './ui';
 import { Y, setPromptKind } from './prompts';
 import { closeMap, mapCam, openMap } from './mapCam';
 import { setMapLook } from './three/views/board';
@@ -41,6 +42,8 @@ const joinBox = document.getElementById('joinBox')!;
 const toast = document.getElementById('toast')!;
 
 const input = new InputManager();
+uiSound.hover = () => sfx.hover();
+uiSound.press = (k) => (k === 'back' ? sfx.back : sfx.select)();
 const menu = new MainMenu(input);
 /** null while the title screen / main menu is up. */
 let session: Session | null = null;
@@ -116,9 +119,10 @@ if (roomParam) {
 }
 
 // in the lobby: A joins, B leaves (or goes back to the menu if you're not in)
-for (const ev of ['keydown', 'pointerdown', 'touchstart']) window.addEventListener(ev, unlockAudio);
+for (const ev of ['keydown', 'pointerdown', 'touchstart']) window.addEventListener(ev, () => (unlockAudio(), kickMusic()));
 input.onAPress = (d) => {
   unlockAudio();
+  kickMusic();
   if (!session) return;
   const s = session.view();
   if (!s || s.phase === 'lobby') session.join(d.key);
@@ -141,7 +145,7 @@ function setMap(on: boolean) {
   if (on) openMap();
   else closeMap();
   input.capture = on;
-  sfx.select();
+  (on ? sfx.select : sfx.back)();
 }
 input.onYPress = () => {
   if (!mapCam.on && canMap()) setMap(true);
@@ -178,7 +182,7 @@ function mapLayer(s: PartyState) {
   if (mapCam.on && !canMap()) setMap(false);
   if (s.phase !== 'board' || s.pause) return;
   if (!mapCam.on) {
-    if (button(ctx, `Map (${Y()})`, 1106, 668, 106, 40, { color: '#3fa9f5', size: 17 })) setMap(true);
+    if (button(ctx, `Map (${Y()})`, 1106, 668, 106, 40, { color: '#3fa9f5', size: 17, sound: 'none' })) setMap(true);
     return;
   }
   ctx.fillStyle = 'rgba(20,12,40,0.7)';
@@ -192,7 +196,7 @@ function mapLayer(s: PartyState) {
         ? 'Drag: turn · Wheel: zoom · WASD: move · click Close'
         : 'WASD: move · Q/E: turn · R/F: tilt · Z/X: zoom · Space: close';
   text(ctx, hint, 640, 566, 15, { color: '#ffffff', weight: 600 });
-  if (button(ctx, 'Close map', 1106, 668, 106, 40, { color: '#ff8a1f', size: 16 })) setMap(false);
+  if (button(ctx, 'Close map', 1106, 668, 106, 40, { color: '#ff8a1f', size: 16, sound: 'none' })) setMap(false);
 }
 
 /** The local device that pauses from the keyboard or mouse: a keyboard player if there is one. */
@@ -273,6 +277,8 @@ function frame(now: number) {
   input.soloKeys = !hasLocal('kb2');
   input.poll();
   setPromptKind(input.kind, input.soloKeys);
+  // menu music on the title, main menu and lobby; it fades out when the party starts
+  menuMusic(!session || session.view()?.phase === 'lobby' || !session.view(), dt);
   if (session && pendingJoin && session.view()?.phase === 'lobby') {
     session.join(pendingJoin);
     pendingJoin = null;
@@ -284,7 +290,13 @@ function frame(now: number) {
     if (joinBox.classList.contains('hidden') && !netDialogOpen()) act(menu.update(dt));
     const after = `${menu.screen}:${menu.sel}`;
     if (session) sfx.select();
-    else if (before !== after) (before.split(':')[0] !== after.split(':')[0] ? sfx.select : sfx.move)();
+    else if (before !== after) {
+      const [from, to] = [before.split(':')[0], after.split(':')[0]];
+      const depth = { title: 0, main: 1, online: 2 } as Record<string, number>;
+      if (from === to) sfx.move();
+      else if (depth[to] < depth[from]) sfx.back();
+      else sfx.select();
+    }
   } else {
     session.update(dt);
     const v = session.view();
@@ -346,8 +358,8 @@ function lookButtons(s: PartyState, mine: Set<string>) {
     if (!at.visible) continue;
     const dev = deviceOf(p.id);
     const w = 46, h = 30, y = at.y + 18;
-    if (button(ctx, '☺', at.x - w - 3, y, w, h, { color: '#9a5bff', size: 18 })) (input.tap(dev, 'x'), sfx.move());
-    if (button(ctx, '', at.x + 3, y, w, h, { color: p.color, size: 16 })) (input.tap(dev, 'y'), sfx.move());
+    if (button(ctx, '☺', at.x - w - 3, y, w, h, { color: '#9a5bff', size: 18 })) (input.tap(dev, 'x'));
+    if (button(ctx, '', at.x + 3, y, w, h, { color: p.color, size: 16 })) (input.tap(dev, 'y'));
     // paint-drop icon on the colour button
     ctx.save();
     ctx.fillStyle = lightness(p.color) > 0.7 ? '#2a1b5e' : '#ffffff';
@@ -368,7 +380,7 @@ function lightness(hex: string): number {
 
 function lobbyButtons(s: PartyState) {
   if (!session) return;
-  if (button(ctx, '◀  Back', 16, 16, 150, 50, { color: '#6b6f86', size: 20 })) {
+  if (button(ctx, '◀  Back', 16, 16, 150, 50, { color: '#6b6f86', size: 20, sound: 'none' })) {
     backToMenu();
     return;
   }
@@ -390,20 +402,20 @@ function lobbyButtons(s: PartyState) {
   const gap = 12;
   let x = 640 - (row.length * w + (row.length - 1) * gap) / 2;
   for (const [label, color, fn, disabled] of row) {
-    if (button(ctx, label, x, 196, w, 46, { color, size: 18, disabled })) fn();
+    if (button(ctx, label, x, 196, w, 46, { color, size: 18, disabled, sound: 'none' })) fn();
     x += w + gap;
   }
   // host controls
   const h = hostId(s);
   if (!h || !mine.has(h)) return;
   const dev = deviceOf(h);
-  if (button(ctx, '◀', 236, 572, 64, 52, { color: '#9a5bff', size: 26 })) (input.nudge(dev, -1, 0), sfx.move());
-  if (button(ctx, '▶', 980, 572, 64, 52, { color: '#9a5bff', size: 26 })) (input.nudge(dev, 1, 0), sfx.move());
+  if (button(ctx, '◀', 236, 572, 64, 52, { color: '#9a5bff', size: 26 })) (input.nudge(dev, -1, 0));
+  if (button(ctx, '▶', 980, 572, 64, 52, { color: '#9a5bff', size: 26 })) (input.nudge(dev, 1, 0));
   const kind = OPTIONS[s.selection].kind;
   if (kind !== 'game') {
     text(ctx, kind === 'mix' ? 'Rounds' : 'Turns', 160, 698, 18, { weight: 800 });
-    if (button(ctx, '+', 130, 566, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, -1), sfx.move());
-    if (button(ctx, '−', 130, 626, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, 1), sfx.move());
+    if (button(ctx, '+', 130, 566, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, -1));
+    if (button(ctx, '−', 130, 626, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, 1));
   }
   if (button(ctx, 'START!', 1080, 566, 184, 110, { color: '#21c45a', size: 34, disabled: !s.players.length })) input.tap(dev, 'a');
 }
@@ -527,7 +539,22 @@ function renderScreens(wallT: number, dt: number) {
 
 /* ---------- pause menu (Start / Esc / P), shared by everyone in the room */
 let seenQuit = -1;
+let pauseWas = '';
+/** Pause menu sounds: open = select, close = back, moving the highlight = move. */
+function pauseSounds(s: PartyState) {
+  const p = s.pause;
+  const now = p ? `${p.sel}:${p.help}` : '';
+  if (now !== pauseWas) {
+    if (!pauseWas) sfx.select();
+    else if (!now) sfx.back();
+    else if (p!.help) sfx.select();
+    else if (pauseWas.endsWith('true')) sfx.back();
+    else sfx.move();
+  }
+  pauseWas = now;
+}
 function pauseLayer(s: PartyState) {
+  pauseSounds(s);
   // someone on this screen chose "Quit to main menu"
   const q = s.quit;
   if (seenQuit < 0) seenQuit = q?.n ?? 0;
@@ -544,7 +571,7 @@ function pauseLayer(s: PartyState) {
   if (!p) {
     // small pause button for mouse players
     const dev = pauseDevice();
-    if (dev && s.phase !== 'intro' && button(ctx, 'II', 1220, 668, 44, 40, { color: '#6b6f86', size: 18 })) input.start(dev);
+    if (dev && s.phase !== 'intro' && button(ctx, 'II', 1220, 668, 44, 40, { color: '#6b6f86', size: 18, sound: 'none' })) input.start(dev);
     return;
   }
   const who = s.players.find((x) => x.id === p.by);
@@ -580,7 +607,7 @@ function pauseLayer(s: PartyState) {
   });
   text(ctx, mine ? 'Stick: choose   A: pick   B / Start: resume' : `Only ${who?.name ?? 'they'} can use this menu`, 640, 540, 17, { color: '#6b5aa8', outline: false, weight: 700 });
   // mouse: Resume
-  if (mine && button(ctx, 'Resume', 1110, 668, 150, 40, { color: '#4cd97b', size: 18 })) input.start(deviceOf(p.by));
+  if (mine && button(ctx, 'Resume', 1110, 668, 150, 40, { color: '#4cd97b', size: 18, sound: 'none' })) input.start(deviceOf(p.by));
 }
 
 function wrap(t: string, n: number): string[] {

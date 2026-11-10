@@ -100,7 +100,10 @@ function play(n: Sample, vol = 0.6, pitch = 1, jitter = 0.08): boolean {
 let stepFlip = false;
 
 export const sfx = {
+  /** Highlighting a different menu item or button. */
   move: () => play('move', 0.5, 1, 0.03) || tone(520, 640, 0.06, 'triangle', 0.18),
+  /** The mouse moving onto a button: a lighter tick than the stick/keys highlight. */
+  hover: () => play('click', 0.35, 1.25, 0.04) || tone(900, 1000, 0.03, 'triangle', 0.1),
   select: () => {
     if (play('select', 0.7, 1, 0)) return;
     tone(660, 990, 0.09, 'square', 0.15);

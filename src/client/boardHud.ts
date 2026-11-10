@@ -1,5 +1,6 @@
 import { A, B, STICK } from './prompts';
 import { slam, sunburst } from './showtime';
+import { sfx } from './sfx';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
 import { currentPlayer } from '../shared/board/engine';
@@ -7,7 +8,20 @@ import { TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
 import { ITEMS } from '../shared/board/items';
 import { playerById, popText, roundRect, text } from '../shared/draw';
 
+/** Moving the highlight in a board menu (items, targets, forks) ticks like the main menu. */
+let menuWas = '';
+function menuSounds(s: PartyState): void {
+  const b = s.board!;
+  const pm = b.prompt as { kind: string; sel?: number } | null;
+  const ctxKey = `${b.turn}:${b.cur}:${b.sub}:${pm?.kind ?? ''}`;
+  const sel = b.sub === 'branch' ? b.branch?.sel : pm?.sel;
+  const now = sel === undefined ? '' : `${ctxKey}#${sel}`;
+  if (now && menuWas && now !== menuWas && menuWas.split('#')[0] === ctxKey) sfx.move();
+  menuWas = now;
+}
+
 export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
+  menuSounds(s);
   const b = s.board!;
   const def = getBoard(b.boardId);
   const pr = b.preset;

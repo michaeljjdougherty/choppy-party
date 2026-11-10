@@ -13,6 +13,11 @@ let pointer: Pt | null = null;
 let click: Pt | null = null;
 let hot = false;
 let canvasEl: HTMLCanvasElement | null = null;
+/** Which button the pointer is over (by label and position), so hovering a new one can tick. */
+let hoverKey = '';
+let hoverSeen = false;
+/** Sounds for mouse players: hovering onto a button, and pressing one (select or back). */
+export const uiSound: { hover: () => void; press: (kind: 'select' | 'back') => void } = { hover: () => {}, press: () => {} };
 
 export function attachUi(canvas: HTMLCanvasElement, w: number, h: number): void {
   canvasEl = canvas;
@@ -38,10 +43,12 @@ export function inside(p: Pt | null, x: number, y: number, w: number, h: number)
 /** Call at the start of each frame's drawing. */
 export function beginUi(): void {
   hot = false;
+  hoverSeen = false;
 }
 
 /** Call after drawing: sets the cursor and drops a click nobody wanted. */
 export function endUi(): void {
+  if (!hoverSeen) hoverKey = '';
   if (canvasEl) canvasEl.style.cursor = hot ? 'pointer' : 'default';
 }
 
@@ -67,6 +74,8 @@ export interface ButtonOpts {
   size?: number;
   disabled?: boolean;
   selected?: boolean;
+  /** Press sound: 'back' for buttons that leave or close something, 'none' if the caller plays its own. */
+  sound?: 'select' | 'back' | 'none';
 }
 
 /** Chunky toy-style pill button. Returns true when clicked. */
@@ -75,6 +84,15 @@ export function button(ctx: CanvasRenderingContext2D, label: string, x: number, 
   const hit = !o.disabled && clicked(x, y, w, h);
   const color = o.color ?? '#2f8cff';
   const lift = over ? -3 : 0;
+  if (over) {
+    const key = `${label}@${x},${y}`;
+    hoverSeen = true;
+    if (key !== hoverKey) {
+      hoverKey = key;
+      uiSound.hover();
+    }
+  }
+  if (hit && o.sound !== 'none') uiSound.press(o.sound ?? (/back|close|cancel|resume|leave|remove/i.test(label) ? 'back' : 'select'));
   ctx.save();
   ctx.globalAlpha = o.disabled ? 0.45 : 1;
   ctx.fillStyle = 'rgba(0,0,0,0.3)';

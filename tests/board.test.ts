@@ -65,6 +65,7 @@ describe('board party', () => {
     const s = createParty(11);
     for (let i = 0; i < 8; i++) addPlayer(s, `p${i}`);
     s.selection = OPTIONS.findIndex((o) => o.kind === 'board' && o.id === id);
+    s.autoPick = false; // the test picks the board itself
     s.turnsIdx = 0; // 5 turns
     const press = (): Inputs => Object.fromEntries(s.players.map((p) => [p.id, { ...NO_INPUT, x: 1, a: true, aPressed: true, aTaps: 1 }]));
     stepParty(s, Object.fromEntries(s.players.map((p) => [p.id, { ...NO_INPUT, a: true, aPressed: true, aTaps: 1 }])), DT);

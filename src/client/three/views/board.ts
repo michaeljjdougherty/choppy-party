@@ -12,6 +12,7 @@ import { darken, makeScene, mesh, toonWater, toy } from '../kit';
 import { ramp, terrainMesh, waves } from '../terrain';
 import { place, sky, texture } from '../assets';
 import { fitProp } from './crew';
+import { TILE_H, spaceGeo } from '../spaceShapes';
 import type { Tag, View } from '../stage';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
@@ -75,13 +76,12 @@ function iconTexture(icon: string, color: string): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d')!;
+  // fills the whole square: the space's own shape cuts it out
   g.fillStyle = color;
-  g.beginPath();
-  g.arc(64, 64, 64, 0, Math.PI * 2);
-  g.fill();
+  g.fillRect(0, 0, 128, 128);
   g.fillStyle = 'rgba(255,255,255,0.22)';
   g.beginPath();
-  g.arc(64, 64, 50, 0, Math.PI * 2);
+  g.arc(64, 64, 40, 0, Math.PI * 2);
   g.fill();
   g.fillStyle = '#ffffff';
   g.font = '900 78px system-ui, sans-serif';
@@ -783,6 +783,55 @@ const SKY: Record<BoardDef['theme'], [string, string, [string, number, number] |
 const PATH_COLOR: Record<BoardDef['theme'], string> = { hollow: '#d9b98a', cosmo: '#9fb4ff', gulch: '#a8743f' };
 const RAIL_COLOR: Record<BoardDef['theme'], string> = { hollow: '#ffb347', cosmo: '#45e3ff', gulch: '#ffcf5a' };
 
+/**
+ * Keep scenery off the path: anything small enough to move that crowds a space is nudged
+ * straight out from it, so trees, rocks and fences leave a clear lane around every space.
+ */
+function clearPath(scene: THREE.Scene, from: number, def: BoardDef, gy: (x: number, z: number) => number): void {
+  const nodes = Object.values(def.nodes);
+  const pts: [number, number, number][] = nodes.map((n) => [n.x, n.z, n.y]);
+  // halfway points too, so nothing sits on the walkway between two spaces
+  for (const n of nodes) for (const id of n.next) {
+    const m = def.nodes[id];
+    pts.push([(n.x + m.x) / 2, (n.z + m.z) / 2, (n.y + m.y) / 2]);
+  }
+  const box = new THREE.Box3();
+  const size = new THREE.Vector3();
+  const centre = new THREE.Vector3();
+  for (let i = from; i < scene.children.length; i++) {
+    const o = scene.children[i];
+    if (o.userData.ground || o.userData.sky || o.userData.keep) continue;
+    box.setFromObject(o);
+    if (box.isEmpty()) continue;
+    box.getSize(size);
+    box.getCenter(centre);
+    const r = Math.max(size.x, size.z) / 2;
+    // big set pieces (manor, mine, decks) and groups spread over the map stay where they are
+    if (r > 3.2 || Math.hypot(centre.x - o.position.x, centre.z - o.position.z) > r * 0.6 + 0.3) continue;
+    for (let pass = 0; pass < 3; pass++) {
+      let moved = false;
+      for (const [px, pz, py] of pts) {
+        // only things at about the same height as the path get in its way
+        if (box.max.y < py - 0.5 || box.min.y > py + 2.5) continue;
+        const need = 1.35 + r * 0.85;
+        const dx = o.position.x - px;
+        const dz = o.position.z - pz;
+        const d = Math.hypot(dx, dz);
+        if (d >= need) continue;
+        const ux = d > 1e-3 ? dx / d : 1;
+        const uz = d > 1e-3 ? dz / d : 0;
+        const before = gy(o.position.x, o.position.z);
+        o.position.x = px + ux * need;
+        o.position.z = pz + uz * need;
+        if (def.hills && !o.userData.fixedY) o.position.y += gy(o.position.x, o.position.z) - before;
+        moved = true;
+      }
+      if (!moved) break;
+      box.setFromObject(o);
+    }
+  }
+}
+
 export function boardView(env: THREE.Texture, party: PartyState, players: PlayerInfo[]): View {
   const def = getBoard(party.board!.boardId);
   const gy = (x: number, z: number) => groundAt(def.hills, x, z);
@@ -799,11 +848,10 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       o.position.y += gy(o.position.x, o.position.z);
     }
   }
+  clearPath(scene, c0, def, gy);
 
   // spaces
-  const tileGeo = new THREE.CylinderGeometry(0.9, 1.0, 0.32, 36);
   const rimMat = toy('#ffffff', 0.35);
-  const capGeo = new THREE.CircleGeometry(0.78, 36);
   const capMats = new Map<SpaceType, THREE.Material>();
   const tileMats = new Map<SpaceType, THREE.Material>();
   const steamSpots: THREE.Vector3[] = [];
@@ -815,14 +863,18 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       capMats.set(n.type, new THREE.MeshStandardMaterial({ map: iconTexture(SPACE_ICON[n.type], SPACE_COLORS[n.type]), roughness: 0.35 }));
       tileMats.set(n.type, toy(darken(SPACE_COLORS[n.type], 0.15), 0.4));
     }
-    const tile = mesh(tileGeo, [tileMats.get(n.type)!, rimMat, rimMat], { receive: true });
-    tile.position.set(n.x, n.y + 0.16, n.z);
+    // each kind of space has its own silhouette (coins round, lucky stars, battle shields...)
+    const sg = spaceGeo(n.type);
+    const tile = mesh(sg.body, tileMats.get(n.type)!, { receive: true });
+    tile.position.set(n.x, n.y, n.z);
     scene.add(tile);
-    const cap = mesh(capGeo, capMats.get(n.type)!, { cast: false, receive: true });
-    cap.rotation.x = -Math.PI / 2;
-    cap.position.set(n.x, n.y + 0.33, n.z);
+    const rim = mesh(sg.rim, rimMat, { cast: false, receive: true });
+    rim.position.set(n.x, n.y + TILE_H + 0.045, n.z);
+    scene.add(rim);
+    const cap = mesh(sg.face, capMats.get(n.type)!, { cast: false, receive: true });
+    cap.position.set(n.x, n.y + TILE_H + 0.055, n.z);
     scene.add(cap);
-    springs.set(nodeId, { parts: [tile, cap], base: [n.y + 0.16, n.y + 0.33], y: 0, v: 0 });
+    springs.set(nodeId, { parts: [tile, rim, cap], base: [n.y, n.y + TILE_H + 0.045, n.y + TILE_H + 0.055], y: 0, v: 0 });
     if (def.theme === 'cosmo' && !(Math.hypot(n.x, n.z) < 6 && n.y > 4)) {
       // every pad stands on a strut down to the deck
       const onDeck = (n.x / 22) ** 2 + (n.z / 14.5) ** 2 < 1;

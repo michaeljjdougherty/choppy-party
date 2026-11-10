@@ -21,7 +21,12 @@ interface Client {
   id: string;
   link: Link | null;
   raws: Record<string, RawInput>;
+  /** Tick of the last message, to notice a silent drop (WebRTC can take ages to report one). */
+  seen: number;
 }
+
+/** Ticks of silence before a guest counts as gone (browsers ping at least once a second). */
+const SILENT_TICKS = 30 * 6;
 
 const DEVICE_KEY = /^[a-z0-9]{1,8}$/;
 const CLIENT_ID = /^[a-z0-9]{8}$/;
@@ -51,6 +56,9 @@ export class Room {
   readonly party: PartyState;
   private clients = new Map<string, Client>();
   private prev = new Map<string, RawInput>();
+  private ticks = 0;
+  /** The host's own browser never times out. */
+  private local = new Set<string>();
 
   constructor(
     readonly code: string,
@@ -67,11 +75,12 @@ export class Room {
   /** A browser connected (or reconnected). Returns its client id. */
   connect(link: Link, wantedId?: string): string {
     let id = typeof wantedId === 'string' && CLIENT_ID.test(wantedId) ? wantedId : '';
+    // a returning browser takes its seat back, even if its old connection hasn't timed out yet
     const existing = id ? this.clients.get(id) : undefined;
-    if (existing?.link) id = ''; // that id belongs to a live tab; issue a fresh one
     if (!id) id = randomId();
-    const client = existing && !existing.link ? existing : { id, link: null, raws: {} };
+    const client = existing ?? { id, link: null, raws: {}, seen: 0 };
     client.link = link;
+    client.seen = this.ticks;
     this.clients.set(client.id, client);
     // welcome back: take your players back from the stand-in CPU
     for (const p of this.party.players) if (p.id.startsWith(client.id + '.')) delete p.away;
@@ -79,9 +88,10 @@ export class Room {
     return client.id;
   }
 
-  disconnect(clientId: string): void {
+  /** `link` is the connection that closed; a stale one (already replaced by a reconnect) is ignored. */
+  disconnect(clientId: string, link?: Link): void {
     const client = this.clients.get(clientId);
-    if (!client) return;
+    if (!client || (link && client.link !== link)) return;
     client.link = null;
     client.raws = {};
     const mine = this.party.players.filter((p) => p.id.startsWith(clientId + '.'));
@@ -94,10 +104,16 @@ export class Room {
     }
   }
 
-  message(clientId: string, msg: ClientMsg): void {
+  /** `link` is the connection it came in on: a client that was timed out for silence comes back to life. */
+  message(clientId: string, msg: ClientMsg, link?: Link): void {
     const client = this.clients.get(clientId);
+    if (client && !client.link && link) {
+      client.link = link;
+      for (const p of this.party.players) if (p.id.startsWith(client.id + '.')) delete p.away;
+    }
     if (!client?.link || !msg || typeof msg !== 'object') return;
     const send = (m: ServerMsg) => out(client.link, m);
+    client.seen = this.ticks;
     if (msg.t === 'add' && DEVICE_KEY.test(msg.deviceKey)) {
       const mine = this.party.players.filter((p) => p.id.startsWith(client.id + '.')).length;
       if (mine >= MAX_DEVICES_PER_CLIENT) return send({ t: 'error', message: 'Max 4 players per browser.' });
@@ -121,7 +137,16 @@ export class Room {
   }
 
   /** Advance one tick and send everyone the new state. */
+  /** Mark a client (the host's own browser) as never timing out. */
+  keepAlive(clientId: string): void {
+    this.local.add(clientId);
+  }
+
   tick(): void {
+    this.ticks++;
+    for (const c of this.clients.values()) {
+      if (c.link && !this.local.has(c.id) && this.ticks - c.seen > SILENT_TICKS) this.disconnect(c.id);
+    }
     const inputs: Inputs = {};
     for (const p of this.party.players) {
       const dot = p.id.indexOf('.');

@@ -3,7 +3,7 @@ import { roundRect, text } from '../shared/draw';
 import { sunburst } from './showtime';
 import { A, B, promptKind } from './prompts';
 
-export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | null;
+export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | 'netcfg' | null;
 
 interface Item {
   key: Exclude<MenuAction, null> | 'online' | 'back';
@@ -22,6 +22,7 @@ const MAIN: Item[] = [
 const ONLINE: Item[] = [
   { key: 'host', title: 'Host a Room', sub: 'Get a code to share with friends', color: '#ff8a1f', icon: 'home' },
   { key: 'join', title: 'Join a Room', sub: 'Type in a 4-letter code', color: '#2f8cff', icon: 'key' },
+  { key: 'netcfg', title: 'Connection Settings', sub: 'Optional TURN relay for strict networks', color: '#21c45a', icon: 'pad' },
   { key: 'back', title: 'Back', sub: '', color: '#6b6f86', icon: 'back' },
 ];
 

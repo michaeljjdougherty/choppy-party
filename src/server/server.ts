@@ -69,10 +69,10 @@ function handle(ws: WebSocket): void {
       }
       return;
     }
-    room.message(clientId, msg);
+    room.message(clientId, msg, link);
   });
 
-  ws.on('close', () => room?.disconnect(clientId));
+  ws.on('close', () => room?.disconnect(clientId, link));
 }
 
 const MIME: Record<string, string> = {

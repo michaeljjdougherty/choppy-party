@@ -3,6 +3,11 @@ import { getGame } from '../shared/games';
 import { FINISH_T, FIRST_GAME, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
+import { loadHosted } from './net';
+import { netDialogOpen, openNetDialog } from './netDialog';
+
+/** ?server uses the optional Node room server instead of peer-to-peer. */
+const SERVER_MODE = new URLSearchParams(location.search).has('server');
 import { INTRO_PREVIEW, PREVIEW, drawFinal, drawIntro, drawLobby, drawResults } from './screens';
 import { loadSamples, sfx, unlockAudio } from './sfx';
 import { drawConfetti, resetJuice, watch } from './juice';
@@ -69,7 +74,7 @@ function submitJoin() {
   joinBox.classList.add('hidden');
   codeEl.blur();
   pendingJoin = menu.picker === 'mouse' ? 'kb1' : menu.picker;
-  enter(new OnlineSession(input, { code }, showError));
+  enter(new OnlineSession(input, { code, server: SERVER_MODE }, showError));
 }
 document.getElementById('joinBtn')!.addEventListener('click', submitJoin);
 codeEl.addEventListener('keydown', (e) => {
@@ -88,8 +93,9 @@ function act(action: ReturnType<MainMenu['update']>) {
   if (action === 'boards') enter(new LocalSession(input, 0));
   else if (action === 'mix') enter(new LocalSession(input, FIRST_MIX));
   else if (action === 'free') enter(new LocalSession(input, FIRST_GAME));
-  else if (action === 'host') enter(new OnlineSession(input, { create: true }, showError));
+  else if (action === 'host') enter(new OnlineSession(input, SERVER_MODE ? { create: true, server: true } : { host: true }, showError));
   else if (action === 'join') openJoin();
+  else if (action === 'netcfg') openNetDialog();
 }
 
 canvas.style.pointerEvents = 'auto';
@@ -99,8 +105,13 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 let pendingJoin: string | null = null;
 
 // ?room=ABCD joins straight away, so a host can share a link
-const roomParam = new URLSearchParams(location.search).get('room');
-if (roomParam) enter(new OnlineSession(input, { code: roomParam }, showError));
+const params = new URLSearchParams(location.search);
+const roomParam = params.get('room');
+if (roomParam) {
+  // the host reloading their page picks their own room back up; everyone else rejoins it
+  if (params.has('host') && loadHosted(roomParam)) enter(new OnlineSession(input, { host: true, resume: roomParam.toUpperCase() }, showError));
+  else enter(new OnlineSession(input, { code: roomParam, server: SERVER_MODE }, showError));
+}
 
 // in the lobby: A joins, B leaves (or goes back to the menu if you're not in)
 for (const ev of ['keydown', 'pointerdown', 'touchstart']) window.addEventListener(ev, unlockAudio);
@@ -119,7 +130,7 @@ input.onBPress = (d) => {
   else if (session.localIds().size === 0) backToMenu();
 };
 window.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || !joinBox.classList.contains('hidden')) return;
+  if (e.key !== 'Escape' || !joinBox.classList.contains('hidden') || netDialogOpen()) return;
   if (!session) {
     const was = menu.screen;
     menu.back();
@@ -189,7 +200,7 @@ function frame(now: number) {
     const p = pointerAt();
     if (p && input.kind === 'mouse') menu.hover(p.x, p.y);
     const before = `${menu.screen}:${menu.sel}`;
-    if (joinBox.classList.contains('hidden')) act(menu.update(dt));
+    if (joinBox.classList.contains('hidden') && !netDialogOpen()) act(menu.update(dt));
     const after = `${menu.screen}:${menu.sel}`;
     if (session) sfx.select();
     else if (before !== after) (before.split(':')[0] !== after.split(':')[0] ? sfx.select : sfx.move)();
@@ -214,7 +225,7 @@ function mouseFallback() {
   const c = takeStrayClick();
   if (!c) return;
   if (!session) {
-    if (joinBox.classList.contains('hidden')) {
+    if (joinBox.classList.contains('hidden') && !netDialogOpen()) {
       const before = menu.screen;
       act(menu.click(c.x, c.y));
       if (session || menu.screen !== before) sfx.select();

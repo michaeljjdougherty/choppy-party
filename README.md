@@ -13,6 +13,20 @@ npm test             # game logic tests
 npm run build && npm start   # production: one Node process serves the game and rooms on :8787
 ```
 
+## Online play (peer-to-peer)
+
+Online rooms need no server of our own. **Host a Room** turns the host's browser into the room: it runs the game and everyone else connects straight to it over WebRTC. The free PeerJS service only introduces the browsers to each other, using the room code. So the game works from any static host, such as GitHub Pages (`.github/workflows/pages.yml` deploys it on every push to `main`).
+
+- **Joining:** use **Join a Room** and type the 4-letter code, or open `…/?room=ABCD`.
+- **Dropped connections:** a Normal CPU plays for anyone who drops mid-game. Typing the same code again in the same browser gives them their seat back.
+- **Host reloads:** if the host's page reloads, it reopens the same room from a save made every 2 seconds. Guests reconnect on their own.
+- **Strict networks:** about 1 in 10 networks block direct connections, such as school or office Wi-Fi. For those, add a TURN relay in **Play Online → Connection Settings**. The same screen can point at a self-hosted PeerJS server.
+- **Limits:**
+  - The host's connection carries the whole match, so the host should be on decent internet.
+  - The free PeerJS signalling service has no uptime guarantee.
+  - Online play doesn't work inside the claude.ai preview, which blocks WebRTC.
+- **Server mode:** the old Node room server still works with `?server` (`npm run build && npm start`).
+
 ## Controls
 
 | Input | Move | A | B |

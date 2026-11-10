@@ -195,6 +195,7 @@ export class PeerHost implements Transport {
       this.tries = 0;
       const self: Link = { send: (_m, json) => this.onMessage(JSON.parse(json) as ServerMsg) };
       this.selfId = this.room.connect(self, saved?.selfId ?? localClientId(code));
+      this.room.keepAlive(this.selfId);
       this.onOpen();
       this.stop = ticker(TICK_HZ, () => this.tick());
     });
@@ -216,6 +217,7 @@ export class PeerHost implements Transport {
 
   private accept(conn: DataConnection) {
     let clientId = '';
+    const link: Link = { send: (_m, json) => conn.open && conn.send(json) };
     conn.on('data', (d) => {
       let msg: ClientMsg;
       try {
@@ -224,14 +226,12 @@ export class PeerHost implements Transport {
         return;
       }
       if (!clientId) {
-        if (msg.t === 'join' || msg.t === 'create') {
-          clientId = this.room.connect({ send: (_m, json) => conn.open && conn.send(json) }, msg.clientId);
-        }
+        if (msg.t === 'join' || msg.t === 'create') clientId = this.room.connect(link, msg.clientId);
         return;
       }
-      this.room.message(clientId, msg);
+      this.room.message(clientId, msg, link);
     });
-    const gone = () => clientId && this.room.disconnect(clientId);
+    const gone = () => clientId && this.room.disconnect(clientId, link);
     conn.on('close', gone);
     conn.on('error', gone);
   }

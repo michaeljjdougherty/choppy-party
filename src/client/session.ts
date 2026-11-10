@@ -2,9 +2,10 @@ import type { RawInput, Inputs } from '../shared/types';
 import { DT, TICK_HZ, toTickInput } from '../shared/types';
 import { addBot, addPlayer, createParty, removeBot, removePlayer, stepParty, type PartyState } from '../shared/party';
 import type { BotLevel } from '../shared/bots';
-import type { ClientMsg, ServerMsg } from '../shared/protocol';
+import type { ClientMsg } from '../shared/protocol';
 import { onlinePlayerId } from '../shared/protocol';
 import type { InputManager } from './input';
+import { PeerClient, PeerHost, WsTransport, localClientId, rememberClientId, type Transport } from './net';
 
 export interface Session {
   kind: 'local' | 'online';
@@ -89,61 +90,91 @@ export class LocalSession implements Session {
   close() {}
 }
 
+/** How an online session reaches its room: as the host (runs it), a guest (peer-to-peer), or via the Node server. */
+export type OnlineMode = { host: true; resume?: string } | { code: string; server?: boolean } | { create: true; server: true };
+
 export class OnlineSession implements Session {
   kind = 'online' as const;
-  private ws: WebSocket;
+  private t!: Transport;
   private clientId: string | null = null;
   private code: string | null = null;
   private err: string | null = null;
+  private retrying = 0;
+  private closed = false;
   private prevSnap: PartyState | null = null;
   private curSnap: PartyState | null = null;
   private curAt = 0;
   private sendAcc = 0;
+  private pingAcc = 0;
+  private pendingJoins = new Set<string>();
+  private beat: ReturnType<typeof setInterval>;
 
   constructor(
     private input: InputManager,
-    mode: { create: true } | { code: string },
+    private mode: OnlineMode,
     private onError: (msg: string) => void,
   ) {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    this.ws = new WebSocket(`${proto}://${location.host}/ws`);
-    const savedId = sessionStorage.getItem('choppy.clientId') ?? undefined;
-    this.ws.addEventListener('open', () => {
-      if ('create' in mode) this.send({ t: 'create', clientId: savedId });
-      else this.send({ t: 'join', code: mode.code.toUpperCase(), clientId: savedId });
-    });
-    this.ws.addEventListener('message', (ev) => {
-      const msg = JSON.parse(ev.data as string) as ServerMsg;
+    this.connect();
+    // a heartbeat on a timer, so a tab in the background (no animation frames) still counts as here
+    this.beat = setInterval(() => this.clientId && this.send({ t: 'input', raws: {} }), 1000);
+  }
+
+  /** True when this browser is hosting the room. */
+  get hosting(): boolean {
+    return 'host' in this.mode;
+  }
+
+  private connect() {
+    const m = this.mode;
+    const code = 'code' in m ? m.code.toUpperCase() : (this.code ?? undefined);
+    this.t = 'host' in m ? new PeerHost(m.resume ?? this.code ?? undefined) : 'server' in m && m.server ? new WsTransport() : new PeerClient(code!);
+    this.t.onOpen = () => {
+      if ('host' in m) return; // the host's own browser is connected by the room itself
+      const clientId = code ? localClientId(code) : undefined;
+      if ('create' in m) this.t.send({ t: 'create', clientId });
+      else this.t.send({ t: 'join', code: code!, clientId });
+    };
+    this.t.onMessage = (msg) => {
       if (msg.t === 'welcome') {
         this.clientId = msg.clientId;
         this.code = msg.code;
-        sessionStorage.setItem('choppy.clientId', msg.clientId);
-        history.replaceState(null, '', `?room=${msg.code}`);
+        this.err = null;
+        this.retrying = 0;
+        rememberClientId(msg.code, msg.clientId);
+        for (const k of this.pendingJoins) this.t.send({ t: 'add', deviceKey: k });
+        this.pendingJoins.clear();
+        history.replaceState(null, '', `?room=${msg.code}${'host' in m ? '&host=1' : ''}`);
       } else if (msg.t === 'error') {
-        this.err = msg.message;
         this.onError(msg.message);
       } else if (msg.t === 'state') {
         this.prevSnap = this.curSnap;
         this.curSnap = msg.s;
         this.curAt = performance.now();
       }
-    });
-    this.ws.addEventListener('close', () => {
-      if (!this.err) {
-        this.err = 'Disconnected';
-        this.onError('Lost connection to the room server.');
+    };
+    this.t.onClose = (why, retry) => {
+      if (this.closed) return;
+      // dropped mid-party: keep trying the same code; a CPU covers for us meanwhile
+      if (retry && this.code && this.retrying < 30) {
+        this.retrying++;
+        this.err = `Reconnecting… (${this.retrying})`;
+        if (this.retrying === 1) this.onError(`${why} Trying to reconnect…`);
+        setTimeout(() => !this.closed && this.connect(), 2000);
+        return;
       }
-    });
+      this.err = 'Disconnected';
+      this.onError(why);
+    };
   }
 
   private send(m: ClientMsg) {
-    if (this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m));
+    this.t.send(m);
   }
 
   status() {
     if (this.err) return this.err;
-    if (!this.code) return 'Connecting…';
-    return `Online room ${this.code}`;
+    if (!this.code) return this.hosting ? 'Opening a room…' : 'Connecting…';
+    return `${this.hosting ? 'Hosting' : 'Online'} room ${this.code}`;
   }
   roomCode() {
     return this.code;
@@ -151,6 +182,7 @@ export class OnlineSession implements Session {
 
   update(realDt: number): void {
     this.sendAcc += realDt;
+    this.pingAcc += realDt;
     if (this.sendAcc < 1 / (TICK_HZ * 2) || !this.clientId || !this.curSnap) return;
     this.sendAcc = 0;
     const raws: Record<string, RawInput> = {};
@@ -158,7 +190,11 @@ export class OnlineSession implements Session {
     for (const d of this.input.list()) {
       if (mine.has(onlinePlayerId(this.clientId, d.key))) raws[d.key] = d.raw;
     }
-    if (Object.keys(raws).length) this.send({ t: 'input', raws });
+    // always send something now and then: it's how the host knows we're still here
+    if (Object.keys(raws).length || this.pingAcc > 1) {
+      this.pingAcc = 0;
+      this.send({ t: 'input', raws });
+    }
   }
 
   view(): PartyState | null {
@@ -174,7 +210,9 @@ export class OnlineSession implements Session {
   }
 
   join(deviceKey: string): void {
-    this.send({ t: 'add', deviceKey });
+    // pressed A before the room answered: join as soon as we're in
+    if (!this.clientId) this.pendingJoins.add(deviceKey);
+    else this.send({ t: 'add', deviceKey });
   }
   leave(deviceKey: string): void {
     this.send({ t: 'remove', deviceKey });
@@ -197,8 +235,10 @@ export class OnlineSession implements Session {
   }
 
   close() {
+    clearInterval(this.beat);
+    this.closed = true;
     this.err = 'Closed';
-    this.ws.close();
+    this.t.close();
   }
 }
 

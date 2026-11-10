@@ -26,7 +26,9 @@ import { setCharacters } from './three/choppy';
 import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
 import { clearGamePreview, gamePreview } from './three/views/gamePreview';
 import { attachUi, beginUi, button, endUi, pointerAt, takeStrayClick } from './ui';
-import { setPromptKind } from './prompts';
+import { Y, setPromptKind } from './prompts';
+import { closeMap, mapCam, openMap } from './mapCam';
+import { setMapLook } from './three/views/board';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -129,6 +131,70 @@ input.onBPress = (d) => {
   if (mine) session.leave(d.key);
   else if (session.localIds().size === 0) backToMenu();
 };
+/* ---------- map view: Y (or M, or the Map button) on the board */
+const canMap = () => {
+  const s = session?.view();
+  return !!s && s.phase === 'board' && !s.pause;
+};
+function setMap(on: boolean) {
+  if (on && !canMap()) return;
+  if (on) openMap();
+  else closeMap();
+  input.capture = on;
+  sfx.select();
+}
+input.onYPress = () => {
+  if (!mapCam.on && canMap()) setMap(true);
+};
+input.onCaptureExit = () => setMap(false);
+setMapLook(() => {
+  const l = { ...input.look };
+  input.look = { panX: 0, panY: 0, orbit: 0, tilt: 0, zoom: 0 };
+  return l;
+});
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM' && !e.repeat && (e.target as HTMLElement)?.tagName !== 'INPUT') setMap(!mapCam.on);
+});
+// mouse: drag to orbit and tilt, wheel to zoom
+let dragAt: { x: number; y: number } | null = null;
+canvas.addEventListener('pointerdown', (e) => mapCam.on && (dragAt = { x: e.clientX, y: e.clientY }));
+window.addEventListener('pointerup', () => (dragAt = null));
+window.addEventListener('pointermove', (e) => {
+  if (!mapCam.on || !dragAt) return;
+  mapCam.yaw -= (e.clientX - dragAt.x) * 0.006;
+  mapCam.pitch = Math.max(0.35, Math.min(1.45, mapCam.pitch + (e.clientY - dragAt.y) * 0.004));
+  dragAt = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener(
+  'wheel',
+  (e) => {
+    if (!mapCam.on) return;
+    e.preventDefault();
+    mapCam.dist = Math.max(8, Math.min(120, mapCam.dist * Math.exp(e.deltaY * 0.0012)));
+  },
+  { passive: false },
+);
+function mapLayer(s: PartyState) {
+  if (mapCam.on && !canMap()) setMap(false);
+  if (s.phase !== 'board' || s.pause) return;
+  if (!mapCam.on) {
+    if (button(ctx, `Map (${Y()})`, 1106, 668, 106, 40, { color: '#3fa9f5', size: 17 })) setMap(true);
+    return;
+  }
+  ctx.fillStyle = 'rgba(20,12,40,0.7)';
+  roundRect(ctx, 370, 512, 540, 74, 18);
+  ctx.fill();
+  text(ctx, 'MAP VIEW', 640, 536, 26, { color: '#ffd23f' });
+  const hint =
+    input.kind === 'pad'
+      ? 'Left stick: move · Right stick: turn · Bumpers: zoom · A/B: close'
+      : input.kind === 'mouse'
+        ? 'Drag: turn · Wheel: zoom · WASD: move · click Close'
+        : 'WASD: move · Q/E: turn · R/F: tilt · Z/X: zoom · Space: close';
+  text(ctx, hint, 640, 566, 15, { color: '#ffffff', weight: 600 });
+  if (button(ctx, 'Close map', 1106, 668, 106, 40, { color: '#ff8a1f', size: 16 })) setMap(false);
+}
+
 /** The local device that pauses from the keyboard or mouse: a keyboard player if there is one. */
 function pauseDevice(): string | null {
   const ids = [...(session?.localIds() ?? [])].filter((id) => !session?.view()?.players.find((p) => p.id === id)?.bot);
@@ -249,6 +315,8 @@ function mouseFallback() {
   }
   const s = session.view();
   if (!s || s.phase === 'lobby') return;
+  // dragging the map around, or a click on the pause screen, is not a press of A
+  if (mapCam.on || s.pause) return;
   const mine = [...session.localIds()];
   if (!mine.length) return;
   let who: string[] = [mine[0]];
@@ -452,6 +520,7 @@ function renderScreens(wallT: number, dt: number) {
   }
   if (s.phase !== 'play' && s.phase !== 'board' && !finishing) drawHostBubble(view, s.phase, wallT);
   drawConfetti(ctx, dt, wallT);
+  mapLayer(s);
   pauseLayer(s);
   drawWipe(dt);
 }

@@ -102,9 +102,9 @@ export function toTickInput(raw: RawInput, prev: RawInput | undefined): TickInpu
     bPressed: bTaps > 0,
     aTaps: Math.min(aTaps, 4),
     bTaps: Math.min(bTaps, 4),
-    xPressed: (raw.xCount ?? 0) > (prev?.xCount ?? raw.xCount ?? 0),
-    yPressed: (raw.yCount ?? 0) > (prev?.yCount ?? raw.yCount ?? 0),
-    startPressed: (raw.startCount ?? 0) > (prev?.startCount ?? raw.startCount ?? 0),
+    xPressed: (raw.xCount ?? 0) > (prev ? (prev.xCount ?? 0) : (raw.xCount ?? 0)),
+    yPressed: (raw.yCount ?? 0) > (prev ? (prev.yCount ?? 0) : (raw.yCount ?? 0)),
+    startPressed: (raw.startCount ?? 0) > (prev ? (prev.startCount ?? 0) : (raw.startCount ?? 0)),
   };
 }
 

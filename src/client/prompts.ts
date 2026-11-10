@@ -31,6 +31,11 @@ export function X(): string {
   return kind === 'pad' ? 'X' : 'C';
 }
 
+/** The map / change-colour button: Y on a pad, M on the keyboard (V also works). */
+export function Y(): string {
+  return kind === 'pad' ? 'Y' : 'M';
+}
+
 /** "Stick" or "WASD". */
 export function STICK(): string {
   return kind === 'pad' ? 'Stick' : solo ? 'WASD / Arrows' : 'WASD / Arrows';

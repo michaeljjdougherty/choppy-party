@@ -82,6 +82,16 @@ export class InputManager {
   private padX = new Map<string, boolean>();
   private padY = new Map<string, boolean>();
   private padStart = new Map<string, boolean>();
+  /**
+   * Map view: while true, sticks and buttons drive the camera instead of the game. `look` collects
+   * this frame's camera controls; A, B or Y closes the map (onCaptureExit).
+   */
+  capture = false;
+  look = { panX: 0, panY: 0, orbit: 0, tilt: 0, zoom: 0 };
+  onCaptureExit: () => void = () => {};
+  /** Y pressed (pad Y, keyboard V / Period): the board uses it to open the map. */
+  onYPress: (d: Device) => void = () => {};
+  private padHeld = new Map<string, boolean>();
   private nudges = new Map<string, { x: number; y: number; until: number; polls: number }>();
 
   constructor(target: Window = window) {
@@ -95,8 +105,15 @@ export class InputManager {
       if (e.repeat) return;
       this.kind = 'keys';
       this.keys.add(e.code);
+      if (this.capture) {
+        // Q / E turn the map, so they don't close it
+        const close = e.code !== 'KeyQ' && e.code !== 'KeyE' && this.profiles().some((p) => p.a.includes(e.code) || p.b.includes(e.code) || p.y.includes(e.code));
+        if (close) this.onCaptureExit();
+        return;
+      }
       for (const p of this.profiles()) {
         const d = this.devices.get(p.key)!;
+        if (p.y.includes(e.code)) this.onYPress(d);
         if (p.a.includes(e.code)) {
           d.raw.aCount++;
           this.onAPress(d);
@@ -166,6 +183,20 @@ export class InputManager {
       d.raw.b = any(p.b);
     }
 
+    if (this.capture) {
+      // keyboard map controls: WASD / arrows pan, Q / E orbit, R / F tilt, Z / X zoom
+      const k = (c: string) => (this.keys.has(c) ? 1 : 0);
+      this.look.panX += k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft');
+      this.look.panY += k('KeyS') + k('ArrowDown') - k('KeyW') - k('ArrowUp');
+      this.look.orbit += k('KeyE') - k('KeyQ');
+      this.look.tilt += k('KeyF') - k('KeyR');
+      this.look.zoom += k('KeyZ') + k('Equal') - k('KeyX') - k('Minus');
+      for (const p of this.profiles()) {
+        const d = this.devices.get(p.key)!;
+        d.raw.x = d.raw.y = 0;
+        d.raw.a = d.raw.b = false;
+      }
+    }
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
     const seen = new Set<string>();
     const padX = this.padX, padY = this.padY;
@@ -196,6 +227,23 @@ export class InputManager {
       if (pressed(BTN_RIGHT)) x = 1;
       if (pressed(BTN_UP)) y = -1;
       if (pressed(BTN_DOWN)) y = 1;
+      if (this.capture) {
+        // map view: left stick pans, right stick orbits and tilts, bumpers / triggers zoom
+        const rx = Math.abs(gp.axes[2] ?? 0) > DEADZONE ? gp.axes[2] : 0;
+        const ry = Math.abs(gp.axes[3] ?? 0) > DEADZONE ? gp.axes[3] : 0;
+        this.look.panX += x;
+        this.look.panY += y;
+        this.look.orbit += rx;
+        this.look.tilt += ry;
+        this.look.zoom += (pressed(5) || pressed(7) ? 1 : 0) - (pressed(4) || pressed(6) ? 1 : 0);
+        const any = pressed(BTN_A) || pressed(BTN_B) || pressed(BTN_Y);
+        if (any && !this.padHeld.get(key)) this.onCaptureExit();
+        this.padHeld.set(key, any);
+        d.raw.x = d.raw.y = 0;
+        d.raw.a = d.raw.b = false;
+        continue;
+      }
+      this.padHeld.set(key, pressed(BTN_A) || pressed(BTN_B) || pressed(BTN_Y));
       const a = pressed(BTN_A);
       const b = pressed(BTN_B);
       if (a || b || Math.abs(x) > 0.5 || Math.abs(y) > 0.5 || gp.buttons.some((bt) => bt.pressed)) this.kind = 'pad';
@@ -212,7 +260,10 @@ export class InputManager {
       this.padStart.set(key, bs);
       const bx = pressed(BTN_X), by = pressed(BTN_Y);
       if (bx && !padX.get(key)) d.raw.xCount = (d.raw.xCount ?? 0) + 1;
-      if (by && !padY.get(key)) d.raw.yCount = (d.raw.yCount ?? 0) + 1;
+      if (by && !padY.get(key)) {
+        d.raw.yCount = (d.raw.yCount ?? 0) + 1;
+        this.onYPress(d);
+      }
       padX.set(key, bx);
       padY.set(key, by);
       d.raw.x = x;
@@ -251,7 +302,7 @@ export class InputManager {
 }
 
 function blank(): RawInput {
-  return { x: 0, y: 0, a: false, b: false, aCount: 0, bCount: 0, xCount: 0, yCount: 0 };
+  return { x: 0, y: 0, a: false, b: false, aCount: 0, bCount: 0, xCount: 0, yCount: 0, startCount: 0 };
 }
 
 function shortPadName(id: string): string {

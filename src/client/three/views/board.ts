@@ -13,6 +13,13 @@ import { ramp, terrainMesh, waves } from '../terrain';
 import { place, sky, texture } from '../assets';
 import { fitProp } from './crew';
 import { TILE_H, spaceGeo } from '../spaceShapes';
+import { mapCam, steerMap } from '../../mapCam';
+
+/** This frame's map-view controls; main.ts points it at the input manager. */
+export let mapLook: () => { panX: number; panY: number; orbit: number; tilt: number; zoom: number } = () => ({ panX: 0, panY: 0, orbit: 0, tilt: 0, zoom: 0 });
+export function setMapLook(f: typeof mapLook): void {
+  mapLook = f;
+}
 import type { Tag, View } from '../stage';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
@@ -1330,10 +1337,28 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
 
       // camera: overview at the top of a turn, then follow whoever is moving
       const wantOverview = (b.sub === 'turnIntro' && b.cur === 0 && b.t < 2) || b.sub === 'orderRoll' || b.sub === 'orderShow';
-      const goalPos = wantOverview ? overview : new THREE.Vector3(cp.x, cp.y + 10.5, cp.z + 10.5);
-      const goalLook = wantOverview ? new THREE.Vector3(0, 0, midZ + 1) : new THREE.Vector3(cp.x, cp.y + 0.6, cp.z);
-      camPos.lerp(goalPos, Math.min(1, dt * 2.2));
-      camLook.lerp(goalLook, Math.min(1, dt * 3));
+      let goalPos = wantOverview ? overview : new THREE.Vector3(cp.x, cp.y + 10.5, cp.z + 10.5);
+      let goalLook = wantOverview ? new THREE.Vector3(0, 0, midZ + 1) : new THREE.Vector3(cp.x, cp.y + 0.6, cp.z);
+      let follow = 2.2;
+      if (mapCam.on) {
+        // map view: a free orbit camera over the board
+        if (mapCam.fresh) {
+          mapCam.fresh = false;
+          mapCam.fx = 0;
+          mapCam.fz = midZ;
+          mapCam.yaw = 0;
+          mapCam.pitch = 0.95;
+          mapCam.dist = span * 0.95;
+        }
+        steerMap(mapLook(), dt, span);
+        const h = Math.sin(mapCam.pitch) * mapCam.dist;
+        const r = Math.cos(mapCam.pitch) * mapCam.dist;
+        goalLook = new THREE.Vector3(mapCam.fx, 0, mapCam.fz);
+        goalPos = new THREE.Vector3(mapCam.fx + Math.sin(mapCam.yaw) * r, h, mapCam.fz + Math.cos(mapCam.yaw) * r);
+        follow = 6;
+      }
+      camPos.lerp(goalPos, Math.min(1, dt * follow));
+      camLook.lerp(goalLook, Math.min(1, dt * (follow + 0.8)));
       camera.position.copy(camPos);
       camera.lookAt(camLook);
     },

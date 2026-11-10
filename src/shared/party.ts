@@ -159,7 +159,7 @@ export function selectionLabel(s: PartyState): string {
 }
 
 function eligibleGames(n: number): string[] {
-  return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && g.mode === 'Free-for-all').map((g) => g.id);
+  return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && (g.mode === 'Free-for-all' || g.mode === '1-vs-many')).map((g) => g.id);
 }
 
 export function totalRounds(s: PartyState): number {

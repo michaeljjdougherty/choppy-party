@@ -31,7 +31,7 @@ describe('bots', () => {
       const avg: Record<string, number> = { easy: 0, hard: 0 };
       const n = 12;
       for (let seed = 1; seed <= n; seed++) {
-        const levels: BotLevel[] = g.minPlayers <= 2 && g.maxPlayers === 2 ? ['easy', 'hard'] : g.mode === 'Team' ? ['easy', 'hard', 'easy', 'hard'] : ['easy', 'normal', 'hard'];
+        const levels: BotLevel[] = g.minPlayers <= 2 && g.maxPlayers === 2 ? ['easy', 'hard'] : g.mode === 'Team' ? ['easy', 'hard', 'easy', 'hard'] : g.mode === '1-vs-many' ? ['easy', 'normal', 'hard', 'easy', 'normal', 'hard'] : ['easy', 'normal', 'hard'];
         const s = freePlay(g.id, levels, seed * 7919);
         if (g.mode === 'Team') s.players.forEach((p, i) => (p.team = p.bot === 'hard' ? 1 : 0));
         startParty(s);

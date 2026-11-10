@@ -11,6 +11,9 @@ import { graveyardView } from './graveyard';
 import { trainView } from './train';
 import { fuseView, paddleView } from './duels';
 import { crateView, ropeView } from './teams';
+import { hotPotatoView, kitchenView } from './wave3a';
+import { lanternView, memoryView, snowView } from './wave3b';
+import { laserView } from './laser';
 
 type Factory = (env: THREE.Texture, state: any, players: PlayerInfo[]) => View;
 
@@ -28,6 +31,12 @@ export const GAME_VIEWS: Record<string, Factory> = {
   'paddle-clash': paddleView,
   'rope-pull': ropeView,
   'crate-grab': crateView,
+  'hot-potato-bomb': hotPotatoView,
+  'kitchen-raid': kitchenView,
+  'lantern-hunt': lanternView,
+  'haunted-memory': memoryView,
+  'snowball-scramble': snowView,
+  'laser-limbo': laserView,
 };
 
 export { menuView } from './menu';

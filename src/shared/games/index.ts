@@ -11,9 +11,15 @@ import { fuseDraw } from './fuseDraw';
 import { paddleClash } from './paddleClash';
 import { ropePull } from './ropePull';
 import { crateGrab } from './crateGrab';
+import { hotPotato } from './hotPotato';
+import { kitchenRaid } from './kitchenRaid';
+import { lanternHunt } from './lanternHunt';
+import { hauntedMemory } from './hauntedMemory';
+import { snowballScramble } from './snowballScramble';
+import { laserLimbo } from './laserLimbo';
 
 /** Every playable minigame. Add new games here. */
-export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab];
+export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab, hotPotato, kitchenRaid, lanternHunt, hauntedMemory, snowballScramble, laserLimbo];
 
 export function getGame(id: string): Minigame {
   const g = GAMES.find((x) => x.id === id);

@@ -28,6 +28,16 @@ import type { RinkState } from './games/shrinkingRink';
 import type { TrainState } from './games/trainHop';
 import { TRACKS, TRACK_HALF, TX0, TX1, TY0, TY1, trainSpan } from './games/trainHop';
 
+import type { PotatoState } from './games/hotPotato';
+import type { KitchenState } from './games/kitchenRaid';
+import { ISLAND } from './games/kitchenRaid';
+import type { LanternState } from './games/lanternHunt';
+import { CRYPT_Y, KEEPER, inBeam } from './games/lanternHunt';
+import type { MemoryState } from './games/hauntedMemory';
+import type { SnowState } from './games/snowballScramble';
+import { fortAt } from './games/snowballScramble';
+import type { LaserState } from './games/laserLimbo';
+
 export type BotLevel = 'easy' | 'normal' | 'hard';
 export const BOT_LEVELS: BotLevel[] = ['easy', 'normal', 'hard'];
 export const BOT_LABEL: Record<BotLevel, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
@@ -183,6 +193,18 @@ function gameBot(s: BotView, p: PlayerInfo, sk: Skill, mem: BotMem, dt: number):
       return trainBot(s.game as TrainState, p.id, sk, mem, r);
     case 'crate-grab':
       return crateBot(s.game as CrateGrabState, p.id, sk, mem, r);
+    case 'hot-potato-bomb':
+      return potatoBot(s.game as PotatoState, p.id, sk, mem, r);
+    case 'kitchen-raid':
+      return kitchenBot(s.game as KitchenState, p.id, sk, mem, r);
+    case 'lantern-hunt':
+      return lanternBot(s.game as LanternState, p.id, sk, mem, r);
+    case 'haunted-memory':
+      return memoryBot(s.game as MemoryState, p.id, sk, mem, r);
+    case 'snowball-scramble':
+      return snowBot(s.game as SnowState, p.id, sk, mem, r);
+    case 'laser-limbo':
+      return laserBot(s.game as LaserState, p.id, sk, mem, r);
     default:
       return NO_INPUT;
   }
@@ -671,4 +693,199 @@ function pickTarget(b: BoardState, id: string, options: string[], purpose: strin
     if (score(o) > score(options[best])) best = i;
   });
   return best;
+}
+
+
+/* ------------------------------------------------------------------ wave 3 */
+
+function potatoBot(g: PotatoState, id: string, sk: Skill, mem: BotMem, r: Rng): TickInput {
+  const me = g.sailors.find((q) => q.id === id);
+  if (!me || me.outAt >= 0 || g.t < 3) return NO_INPUT;
+  const others = g.sailors.filter((q) => q.outAt < 0 && q.id !== id);
+  if (g.holder === id) {
+    // chase the nearest sailor and dash into them
+    const tgt = nearest(me, others);
+    if (!tgt) return NO_INPUT;
+    if (mem.next <= 0) {
+      mem.next = sk.think;
+      toward(me, tgt.x, tgt.y, mem);
+      const wob = (rand(r) * 2 - 1) * sk.wobble * 0.6;
+      [mem.sx, mem.sy] = [mem.sx * Math.cos(wob) - mem.sy * Math.sin(wob), mem.sx * Math.sin(wob) + mem.sy * Math.cos(wob)];
+    }
+    const d = Math.hypot(tgt.x - me.x, tgt.y - me.y);
+    return stick(mem.sx, mem.sy, me.dashCd === 0 && d < 160 && rand(r) < 0.3 + sk.sense * 0.5);
+  }
+  const h = g.sailors.find((q) => q.id === g.holder);
+  look(me, sk, mem, r, (x, y) => {
+    if (x < 260 || x > 1020 || y < 180 || y > 610) return 1e6;
+    let c = Math.hypot(x - 640, y - 395) * 0.1;
+    if (h) c += Math.max(0, 420 - Math.hypot(h.x - x, h.y - y)) * 3 * (0.4 + sk.sense);
+    return c;
+  });
+  const close = h && Math.hypot(h.x - me.x, h.y - me.y) < 110;
+  return stick(mem.sx, mem.sy, !!close && me.dashCd === 0 && rand(r) < sk.sense * 0.25);
+}
+
+function kitchenBot(g: KitchenState, id: string, sk: Skill, mem: BotMem, r: Rng): TickInput {
+  const me = g.cooks.find((q) => q.id === id);
+  if (!me || me.stun > 0 || g.t < 3) return NO_INPUT;
+  const chef = g.cooks.find((q) => q.chef)!;
+  if (me.chef) {
+    // go after carriers first, else whoever is closest to the island
+    const raiders = g.cooks.filter((q) => !q.chef && q.stun === 0);
+    const tgt = nearest(me, raiders, (q) => (q.carry >= 0 ? -150 : Math.hypot(q.x - ISLAND.x, q.y - ISLAND.y) * 0.3));
+    if (!tgt) return NO_INPUT;
+    if (mem.next <= 0) {
+      mem.next = sk.think;
+      toward(me, tgt.x + tgt.vx * 0.2, tgt.y + tgt.vy * 0.2, mem);
+    }
+    const d = Math.hypot(tgt.x - me.x, tgt.y - me.y);
+    return stick(mem.sx, mem.sy, me.cd === 0 && d < 130 && rand(r) < 0.1 + sk.sense * 0.3);
+  }
+  // head for the goal, going round the island's corners when it's in the way, and shy away from the chef
+  const hx = ISLAND.w / 2 + 40;
+  const hy = ISLAND.h / 2 + 40;
+  const blocked = (tx: number, ty: number) => {
+    for (let k = 1; k < 12; k++) {
+      const x = me.x + ((tx - me.x) * k) / 12;
+      const y = me.y + ((ty - me.y) * k) / 12;
+      if (Math.abs(x - ISLAND.x) < hx - 16 && Math.abs(y - ISLAND.y) < hy - 16) return true;
+    }
+    return false;
+  };
+  const go = (tx: number, ty: number, grab: boolean) => {
+    if (blocked(tx, ty)) {
+      const corners: [number, number][] = [[ISLAND.x - hx, ISLAND.y - hy], [ISLAND.x + hx, ISLAND.y - hy], [ISLAND.x - hx, ISLAND.y + hy], [ISLAND.x + hx, ISLAND.y + hy]];
+      const c = corners.filter(([x, y]) => !blocked(x, y)).sort((a, b) => Math.hypot(a[0] - me.x, a[1] - me.y) + Math.hypot(tx - a[0], ty - a[1]) - (Math.hypot(b[0] - me.x, b[1] - me.y) + Math.hypot(tx - b[0], ty - b[1])))[0];
+      if (c) [tx, ty] = c;
+    }
+    toward(me, tx, ty, mem);
+    const cd = Math.hypot(chef.x - me.x, chef.y - me.y);
+    if (cd < 170 && chef.cd < 0.8 && notices(chef.x, Math.floor(g.t), sk.sense)) {
+      const k = ((170 - cd) / 170) * 1.6;
+      mem.sx += ((me.x - chef.x) / cd) * k;
+      mem.sy += ((me.y - chef.y) / cd) * k;
+      const m = Math.hypot(mem.sx, mem.sy) || 1;
+      mem.sx /= m;
+      mem.sy /= m;
+    }
+    return stick(mem.sx, mem.sy, grab);
+  };
+  if (me.carry >= 0) return go(me.plateX, me.plateY, false);
+  const snack = nearest(me, g.snacks);
+  if (!snack) return go(ISLAND.x, ISLAND.y + hy + 40, false);
+  // stand on the island's edge right next to the snack
+  const ex = Math.max(ISLAND.x - hx + 14, Math.min(ISLAND.x + hx - 14, snack.x));
+  const ey = snack.y < ISLAND.y ? ISLAND.y - hy + 14 : ISLAND.y + hy - 14;
+  const near = Math.hypot(snack.x - me.x, snack.y - me.y) < 66;
+  return go(ex, ey, near);
+}
+
+function lanternBot(g: LanternState, id: string, sk: Skill, mem: BotMem, r: Rng): TickInput {
+  const me = g.folk.find((q) => q.id === id);
+  if (!me || g.t < 3) return NO_INPUT;
+  if (me.keeper) {
+    // sweep toward the sneaker closest to the crypt, with a lazy wobble
+    const tgt = nearest(me, g.folk.filter((f) => !f.keeper && f.inAt < 0 && f.caught === 0), (f) => (f.y - CRYPT_Y) * 0.5);
+    if (mem.next <= 0) {
+      mem.next = sk.think * 1.5;
+      mem.m = (rand(r) * 2 - 1) * (1 - sk.sense) * 0.6;
+    }
+    const a = tgt ? Math.atan2(tgt.y - KEEPER.y, tgt.x - KEEPER.x) + mem.m : Math.PI / 2 + Math.sin(g.t) * 0.9;
+    return stick(Math.cos(a), Math.sin(a));
+  }
+  if (me.inAt >= 0 || me.caught > 0) return NO_INPUT;
+  look(me, sk, mem, r, (x, y) => {
+    // stay out of where the light is pointing
+    let da = Math.atan2(y - KEEPER.y, x - KEEPER.x) - g.angle;
+    da = Math.abs(Math.atan2(Math.sin(da), Math.cos(da)));
+    return Math.hypot(x - KEEPER.x, y - (CRYPT_Y - 10)) + Math.max(0, 0.7 - da) * 260 * sk.sense;
+  }, 90);
+  // freeze if the beam is on me or about to sweep over me
+  const ahead = (da: number) => {
+    const g2 = { ...g, angle: g.angle + da };
+    return inBeam(g2, me.x, me.y) || inBeam(g2, me.x + mem.sx * 30, me.y + mem.sy * 30);
+  };
+  const m = 0.08 + (1 - sk.sense) * 0.12;
+  const danger = inBeam(g, me.x + mem.sx * 20, me.y + mem.sy * 20) || ahead(m) || ahead(-m);
+  if (danger) {
+    if (mem.early < 0) mem.early = rand(r) < 0.1 + sk.sense * 0.9 ? 1 : 0;
+    if (mem.early === 1) {
+      if (me.breath > 0.4) return { ...NO_INPUT, b: true, bPressed: false };
+      // out of breath: slip sideways out of the light instead
+      const a = Math.atan2(me.y - KEEPER.y, me.x - KEEPER.x);
+      const side = Math.sin(a - g.angle) > 0 ? 1 : -1;
+      return stick(Math.cos(a + side * 1.4), Math.sin(a + side * 1.4));
+    }
+  } else mem.early = -1;
+  return stick(mem.sx, mem.sy);
+}
+
+function memoryBot(g: MemoryState, id: string, sk: Skill, mem: BotMem, r: Rng): TickInput {
+  const me = g.folk.find((q) => q.id === id);
+  if (!me || me.outRound >= 0 || g.phase !== 'input' || me.doneAt >= 0) return NO_INPUT;
+  if (remember(mem, `mem:${g.round}`, randRange(r, sk.react[0], sk.react[1]) + 0.3)) mem.prev = 0;
+  if (mem.prev === 1) {
+    mem.prev = 0; // let go of the stick between entries
+    mem.wait = mem.t + randRange(r, sk.react[0] * 0.6, sk.react[1] * 0.8);
+    return NO_INPUT;
+  }
+  if (mem.t < mem.wait) return NO_INPUT;
+  const len = g.seq.length;
+  const slip = sk.smart >= 1 ? 0.004 + 0.003 * len : sk.smart >= 0.7 ? 0.015 + 0.007 * len : 0.04 + 0.014 * len;
+  let d = g.seq[me.pos];
+  if (rand(r) < slip) d = (d + 1 + Math.floor(rand(r) * 3)) % 4;
+  mem.prev = 1;
+  const dirs: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  return stick(dirs[d][0], dirs[d][1]);
+}
+
+function clearShot(ax: number, ay: number, bx: number, by: number): boolean {
+  for (let k = 1; k < 10; k++) if (fortAt(ax + ((bx - ax) * k) / 10, ay + ((by - ay) * k) / 10, 4)) return false;
+  return true;
+}
+
+function snowBot(g: SnowState, id: string, sk: Skill, mem: BotMem, r: Rng): TickInput {
+  const me = g.folk.find((q) => q.id === id);
+  if (!me || me.outAt >= 0 || g.t < 3) return NO_INPUT;
+  const foes = g.folk.filter((f) => f.outAt < 0 && f.id !== id);
+  const tgt = nearest(me, foes);
+  // hop over an incoming snowball
+  const incoming = g.balls.some((b) => b.by !== id && Math.hypot(b.x - me.x, b.y - me.y) < 90 && (me.x - b.x) * b.vx + (me.y - b.y) * b.vy > 0 && notices(b.x, b.y, sk.sense));
+  const jumpNow = incoming && me.z <= 0.01 && rand(r) < 0.5;
+  if (!tgt) return NO_INPUT;
+  const d = Math.hypot(tgt.x - me.x, tgt.y - me.y);
+  if (me.cd === 0 && d < 520 && clearShot(me.x, me.y, tgt.x, tgt.y) && rand(r) < 0.08 + sk.sense * 0.5) {
+    const lead = d / 620;
+    const err = (rand(r) * 2 - 1) * sk.wobble * 0.9;
+    const a = Math.atan2(tgt.y + tgt.vy * lead * sk.sense - me.y, tgt.x + tgt.vx * lead - me.x) + err;
+    return { ...stick(Math.cos(a), Math.sin(a), true), b: jumpNow, bPressed: jumpNow };
+  }
+  look(me, sk, mem, r, (x, y) => {
+    if (fortAt(x, y, 26) || x < 150 || x > 1130 || y < 180 || y > 640) return 1e6;
+    let c = Math.abs(Math.hypot(tgt.x - x, tgt.y - y) - 280);
+    for (const b of g.balls) if (b.by !== id) c += Math.max(0, 70 - Math.hypot(b.x - x, b.y - y)) * 4 * sk.sense;
+    return c;
+  });
+  return { ...stick(mem.sx, mem.sy), b: jumpNow, bPressed: jumpNow };
+}
+
+function laserBot(g: LaserState, id: string, sk: Skill, mem: BotMem, r: Rng): TickInput {
+  const me = g.folk.find((q) => q.id === id);
+  if (!me || me.outAt >= 0 || me.topAt >= 0 || g.t < 3) return NO_INPUT;
+  // the next beam coming down at me, and how long until it arrives
+  let next = null as LaserState['beams'][number] | null;
+  for (const b of g.beams) if (b.p >= me.p - 0.003 && (!next || b.p < next.p)) next = b;
+  if (!next) return stick(0, -1);
+  const tta = (next.p - me.p) / (next.speed + 0.034);
+  if (remember(mem, `beam:${next.id}`, 0)) {
+    // each beam gets its own timing error, and sometimes goes unnoticed
+    mem.m = (rand(r) * 2 - 1) * (sk.react[1] - sk.react[0]) * 1.4;
+    mem.n = notices(next.id * 7.1, next.p, 0.45 + sk.sense * 0.55) ? 1 : 0;
+  }
+  if (!mem.n) return stick(0, -1);
+  const high = next.flipAt >= 0 && next.flipAt > me.p && tta < 0.5 ? !next.high : next.high;
+  if (high) return tta < 0.32 + mem.m * 0.5 ? { ...NO_INPUT, b: true } : stick(0, -1);
+  const jumpAt = 0.3 + mem.m;
+  return stick(0, -1, tta < jumpAt && tta > jumpAt - 0.08 && me.z <= 0.01);
 }

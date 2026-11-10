@@ -57,6 +57,10 @@ export const PROPS = [
   'platformer/saw', 'proto/weapon-sword', 'proto/weapon-shield', 'forest/weapon-bow', 'forest/weapon-arrow', 'pirate/tool-shovel',
   'pirate/cannon-mobile', 'pirate/cannon-ball', 'pirate/structure-fence', 'pirate/flag-pennant', 'forest/patch-dirt',
   'station/computer-wide', 'station/container-tall', 'station/container', 'station/display-wall-wide', 'modspace/gate-lasers', 'modspace/gate',
+  // wave 3 minigames
+  'holiday/snow-bunker', 'holiday/snow-pile', 'holiday/snowman', 'holiday/tree-snow-a', 'holiday/tree-snow-b', 'holiday/cabin-wall', 'holiday/lantern',
+  'holiday/bench', 'holiday/sled', 'furniture/kitchenBar', 'furniture/kitchenFridgeLarge', 'furniture/rugRectangle', 'furniture/table', 'furniture/chair',
+  'modspace/cables',
 ];
 
 /** Equirectangular skies (Kenney Skyboxes), in public/sky. */

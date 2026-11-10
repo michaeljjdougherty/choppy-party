@@ -1,3 +1,4 @@
+import { A, B, STICK } from './prompts';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
 import { currentPlayer } from '../shared/board/engine';
@@ -94,11 +95,11 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     text(ctx, `${name}'s turn!`, 640, 280, 64, { color: me?.color ?? '#fff' });
   } else if (b.sub === 'roll') {
     const canItem = mine.items.length > 0 && mine.usedItemTurn !== b.turn;
-    text(ctx, `${name}: A to roll${canItem ? '   ·   B to use an item' : ''}`, 640, 110, 32, { color: '#ffffff' });
+    text(ctx, `${name}: ${A()} to roll${canItem ? `   ·   ${B()} to use an item` : ''}`, 640, 110, 32, { color: '#ffffff' });
     const bonus = [mine.dice > 1 ? '2 dice' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `max ${mine.rollCap}` : ''].filter(Boolean).join('  ');
     if (bonus) text(ctx, bonus, 640, 150, 26, { color: '#ffd23f' });
   } else if (b.sub === 'branch') {
-    text(ctx, 'Pick a path: Stick to aim, A to go', 640, 110, 32, { color: '#ffffff' });
+    text(ctx, `Pick a path: ${STICK()} to aim, ${A()} to go`, 640, 110, 32, { color: '#ffffff' });
   } else if (b.sub === 'wheel' && b.event?.wheel) {
     // the sit-out wheel flicks between first and last place, slowing down
     const k = Math.floor(Math.pow(b.t, 1.6) * 6) % b.event.wheel.length;

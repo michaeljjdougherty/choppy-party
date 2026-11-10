@@ -11,19 +11,44 @@ export interface Device {
   connected: boolean;
 }
 
-const KEY_PROFILES = [
-  { key: 'kb1', label: 'Keys: WASD + Space', up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', a: 'Space', b: 'ShiftLeft' },
+interface KeyProfile {
+  key: string;
+  label: string;
+  up: string[];
+  down: string[];
+  left: string[];
+  right: string[];
+  a: string[];
+  b: string[];
+}
+
+/** Two keyboard halves so two people can share one keyboard. */
+const KEY_PROFILES: KeyProfile[] = [
+  { key: 'kb1', label: 'Keys: WASD + Space', up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], a: ['Space', 'KeyE'], b: ['ShiftLeft', 'KeyQ'] },
   {
     key: 'kb2',
     label: 'Keys: Arrows + Enter',
-    up: 'ArrowUp',
-    down: 'ArrowDown',
-    left: 'ArrowLeft',
-    right: 'ArrowRight',
-    a: 'Enter',
-    b: 'ShiftRight',
+    up: ['ArrowUp'],
+    down: ['ArrowDown'],
+    left: ['ArrowLeft'],
+    right: ['ArrowRight'],
+    a: ['Enter', 'NumpadEnter'],
+    b: ['ShiftRight', 'Backspace'],
   },
 ];
+/** While only one person is on the keyboard, every key drives them: WASD or arrows, Space or Enter. */
+const SOLO: KeyProfile = {
+  key: 'kb1',
+  label: 'Keyboard',
+  up: ['KeyW', 'ArrowUp'],
+  down: ['KeyS', 'ArrowDown'],
+  left: ['KeyA', 'ArrowLeft'],
+  right: ['KeyD', 'ArrowRight'],
+  a: ['Space', 'KeyE', 'Enter', 'NumpadEnter'],
+  b: ['ShiftLeft', 'KeyQ', 'ShiftRight', 'Backspace'],
+};
+
+export type InputKind = 'pad' | 'keys' | 'mouse';
 
 const DEADZONE = 0.22;
 // Standard Gamepad mapping: 0 = bottom face button, 1 = right face button, 12-15 = d-pad
@@ -37,47 +62,78 @@ export class InputManager {
   /** Fired on the frame a device's A goes down; used for joining. */
   onAPress: (d: Device) => void = () => {};
   onBPress: (d: Device) => void = () => {};
+  /** True while only one person uses the keyboard: then both halves drive kb1. */
+  soloKeys = true;
+  /** What the player last touched, so on-screen prompts can name the right buttons. */
+  kind: InputKind = 'keys';
+  private nudges = new Map<string, { x: number; y: number; until: number; polls: number }>();
 
   constructor(target: Window = window) {
     for (const p of KEY_PROFILES) {
       this.devices.set(p.key, { key: p.key, label: p.label, raw: blank(), connected: true });
     }
-    const watched = new Set(KEY_PROFILES.flatMap((p) => [p.up, p.down, p.left, p.right, p.a, p.b]));
+    const watched = new Set(KEY_PROFILES.flatMap((p) => [...p.up, ...p.down, ...p.left, ...p.right, ...p.a, ...p.b]));
     target.addEventListener('keydown', (e) => {
       if (isTyping(e)) return;
       if (watched.has(e.code)) e.preventDefault();
       if (e.repeat) return;
+      this.kind = 'keys';
       this.keys.add(e.code);
-      for (const p of KEY_PROFILES) {
+      for (const p of this.profiles()) {
         const d = this.devices.get(p.key)!;
-        if (e.code === p.a) {
+        if (p.a.includes(e.code)) {
           d.raw.aCount++;
           this.onAPress(d);
         }
-        if (e.code === p.b) {
+        if (p.b.includes(e.code)) {
           d.raw.bCount++;
           this.onBPress(d);
         }
       }
     });
+    target.addEventListener('pointermove', () => (this.kind = 'mouse'));
+    target.addEventListener('pointerdown', () => (this.kind = 'mouse'));
     target.addEventListener('keyup', (e) => this.keys.delete(e.code));
     target.addEventListener('blur', () => this.keys.clear());
   }
 
+  private profiles(): KeyProfile[] {
+    return this.soloKeys ? [SOLO] : KEY_PROFILES;
+  }
+
+  /** A press of A or B from the mouse, for whichever device the click stands in for. */
+  tap(key: string, btn: 'a' | 'b'): void {
+    const d = this.devices.get(key);
+    if (!d) return;
+    if (btn === 'a') d.raw.aCount++;
+    else d.raw.bCount++;
+  }
+
+  /** Hold the stick in a direction briefly (one menu step), for mouse clicks on arrows. */
+  nudge(key: string, x: number, y: number, secs = 0.12): void {
+    this.nudges.set(key, { x, y, until: performance.now() + secs * 1000, polls: 0 });
+  }
+
   /** Call once per animation frame. */
   poll(): void {
-    for (const p of KEY_PROFILES) {
+    if (this.soloKeys) {
+      const d2 = this.devices.get('kb2')!;
+      d2.raw.x = d2.raw.y = 0;
+      d2.raw.a = d2.raw.b = false;
+    }
+    for (const p of this.profiles()) {
       const d = this.devices.get(p.key)!;
-      let x = (this.keys.has(p.right) ? 1 : 0) - (this.keys.has(p.left) ? 1 : 0);
-      let y = (this.keys.has(p.down) ? 1 : 0) - (this.keys.has(p.up) ? 1 : 0);
+      const any = (codes: string[]) => codes.some((c) => this.keys.has(c));
+      let x = (any(p.right) ? 1 : 0) - (any(p.left) ? 1 : 0);
+      let y = (any(p.down) ? 1 : 0) - (any(p.up) ? 1 : 0);
       if (x && y) {
         x *= Math.SQRT1_2;
         y *= Math.SQRT1_2;
       }
       d.raw.x = x;
       d.raw.y = y;
-      d.raw.a = this.keys.has(p.a);
-      d.raw.b = this.keys.has(p.b);
+      d.raw.a = any(p.a);
+      d.raw.b = any(p.b);
     }
 
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
@@ -111,6 +167,7 @@ export class InputManager {
       if (pressed(BTN_DOWN)) y = 1;
       const a = pressed(BTN_A);
       const b = pressed(BTN_B);
+      if (a || b || Math.abs(x) > 0.5 || Math.abs(y) > 0.5 || gp.buttons.some((bt) => bt.pressed)) this.kind = 'pad';
       if (a && !d.raw.a) {
         d.raw.aCount++;
         this.onAPress(d);
@@ -130,6 +187,18 @@ export class InputManager {
         d.raw.x = d.raw.y = 0;
         d.raw.a = d.raw.b = false;
       }
+    }
+    const now = performance.now();
+    for (const [key, n] of this.nudges) {
+      const d = this.devices.get(key);
+      // held for a short time, but always for at least one frame even on a slow machine
+      if (!d || (now > n.until && n.polls > 0)) {
+        this.nudges.delete(key);
+        continue;
+      }
+      n.polls++;
+      d.raw.x = n.x;
+      d.raw.y = n.y;
     }
   }
 

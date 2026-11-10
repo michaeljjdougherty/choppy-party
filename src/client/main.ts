@@ -1,6 +1,6 @@
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
-import { FINISH_T, FIRST_GAME, FIRST_MIX, addPlayer, inGame, standings, startParty, type PartyState } from '../shared/party';
+import { FINISH_T, FIRST_GAME, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { drawFinal, drawIntro, drawLobby, drawResults } from './screens';
@@ -17,6 +17,8 @@ import type { BotLevel } from '../shared/bots';
 import { HostLine, LINES, countIn, finishBanner, hostCorner, pick } from './showtime';
 import { getBoard } from '../shared/board/boards';
 import type { View } from './three/stage';
+import { attachUi, beginUi, button, endUi, pointerAt, takeStrayClick } from './ui';
+import { setPromptKind } from './prompts';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -63,6 +65,7 @@ function submitJoin() {
   if (code.length !== 4) return showError('Room codes are 4 letters.');
   joinBox.classList.add('hidden');
   codeEl.blur();
+  pendingJoin = menu.picker === 'mouse' ? 'kb1' : menu.picker;
   enter(new OnlineSession(input, { code }, showError));
 }
 document.getElementById('joinBtn')!.addEventListener('click', submitJoin);
@@ -78,6 +81,7 @@ document.getElementById('menuBtn')!.addEventListener('click', () => {
 
 function act(action: ReturnType<MainMenu['update']>) {
   if (!action) return;
+  if (action !== 'join') pendingJoin = menu.picker === 'mouse' ? 'kb1' : menu.picker;
   if (action === 'boards') enter(new LocalSession(input, 0));
   else if (action === 'mix') enter(new LocalSession(input, FIRST_MIX));
   else if (action === 'free') enter(new LocalSession(input, FIRST_GAME));
@@ -86,11 +90,10 @@ function act(action: ReturnType<MainMenu['update']>) {
 }
 
 canvas.style.pointerEvents = 'auto';
-canvas.addEventListener('click', (e) => {
-  if (session) return;
-  const r = canvas.getBoundingClientRect();
-  act(menu.click(((e.clientX - r.left) / r.width) * VIEW_W, ((e.clientY - r.top) / r.height) * VIEW_H));
-});
+attachUi(canvas, VIEW_W, VIEW_H);
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+/** Device to drop into the lobby as soon as it opens: whoever picked the mode. */
+let pendingJoin: string | null = null;
 
 // ?room=ABCD joins straight away, so a host can share a link
 const roomParam = new URLSearchParams(location.search).get('room');
@@ -113,7 +116,12 @@ input.onBPress = (d) => {
   else if (session.localIds().size === 0) backToMenu();
 };
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && session?.view()?.phase === 'lobby') backToMenu();
+  if (e.key !== 'Escape' || !joinBox.classList.contains('hidden')) return;
+  if (!session) {
+    const was = menu.screen;
+    menu.back();
+    if (menu.screen !== was) sfx.back();
+  } else if (session.view()?.phase === 'lobby') backToMenu();
 });
 
 // bots: buttons in the lobby bar, or keys 1/2/3 to add and 0 to remove
@@ -124,15 +132,29 @@ function lobbyBot(level: BotLevel | null) {
   else session.removeBot();
   (level ? sfx.join : sfx.leave)();
 }
-for (const b of document.querySelectorAll<HTMLButtonElement>('.botBtn')) {
-  b.addEventListener('click', () => lobbyBot(b.dataset.level as BotLevel));
-}
-document.getElementById('unbotBtn')!.addEventListener('click', () => lobbyBot(null));
 window.addEventListener('keydown', (e) => {
   if (e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
   if (BOT_KEYS[e.code]) lobbyBot(BOT_KEYS[e.code]);
-  else if (e.code === 'Digit0' || e.code === 'Numpad0' || e.code === 'Backspace') lobbyBot(null);
+  else if (e.code === 'Digit0' || e.code === 'Numpad0') lobbyBot(null);
+  else if (e.code === 'Tab' && session?.view()?.phase === 'lobby') {
+    e.preventDefault();
+    addSecondKeyboard();
+  }
 });
+
+/** Split the keyboard: WASD + Space for one player, Arrows + Enter for another. */
+function addSecondKeyboard() {
+  if (!session) return;
+  if (!hasLocal('kb1')) session.join('kb1');
+  session.join('kb2');
+  sfx.join();
+}
+function hasLocal(dev: string): boolean {
+  return [...(session?.localIds() ?? [])].some((id) => deviceOf(id) === dev);
+}
+function deviceOf(id: string): string {
+  return id.slice(id.lastIndexOf('.') + 1);
+}
 
 function resize() {
   const scale = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
@@ -153,8 +175,16 @@ let last = performance.now();
 function frame(now: number) {
   const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
   last = now;
+  input.soloKeys = !hasLocal('kb2');
   input.poll();
+  setPromptKind(input.kind, input.soloKeys);
+  if (session && pendingJoin && session.view()?.phase === 'lobby') {
+    session.join(pendingJoin);
+    pendingJoin = null;
+  }
   if (!session) {
+    const p = pointerAt();
+    if (p && input.kind === 'mouse') menu.hover(p.x, p.y);
     const before = `${menu.screen}:${menu.sel}`;
     if (joinBox.classList.contains('hidden')) act(menu.update(dt));
     const after = `${menu.screen}:${menu.sel}`;
@@ -170,6 +200,83 @@ function frame(now: number) {
 }
 
 function render(wallT: number, dt: number) {
+  beginUi();
+  renderScreens(wallT, dt);
+  mouseFallback();
+  endUi();
+}
+
+/** A click that no button used acts like A for the right local player (roll, ready, continue). */
+function mouseFallback() {
+  const c = takeStrayClick();
+  if (!c) return;
+  if (!session) {
+    if (joinBox.classList.contains('hidden')) {
+      const before = menu.screen;
+      act(menu.click(c.x, c.y));
+      if (session || menu.screen !== before) sfx.select();
+    }
+    return;
+  }
+  const s = session.view();
+  if (!s || s.phase === 'lobby') return;
+  const mine = [...session.localIds()];
+  if (!mine.length) return;
+  let who: string[] = [mine[0]];
+  if (s.phase === 'intro') who = mine;
+  else if (s.phase === 'board' && s.board) {
+    const cur = s.board.order[s.board.cur];
+    if (mine.includes(cur)) who = [cur];
+  } else if (s.phase === 'results' || s.phase === 'final') {
+    const h = hostId(s);
+    if (h && mine.includes(h)) who = [h];
+  }
+  for (const id of who) input.tap(deviceOf(id), 'a');
+}
+
+/** Clickable lobby controls: back, CPUs, mode arrows, turns, start. */
+function lobbyButtons(s: PartyState) {
+  if (!session) return;
+  if (button(ctx, '◀  Back', 16, 16, 150, 50, { color: '#6b6f86', size: 20 })) {
+    backToMenu();
+    return;
+  }
+  const mine = session.localIds();
+  const humans = [...mine];
+  // the CPU row
+  const full = s.players.length >= MAX_PLAYERS;
+  const bots = s.players.filter((p) => p.bot).length;
+  const row: [string, string, () => void, boolean][] = [
+    ['+ Easy CPU', '#21c45a', () => lobbyBot('easy'), full],
+    ['+ Normal CPU', '#e0a800', () => lobbyBot('normal'), full],
+    ['+ Hard CPU', '#ff4d5a', () => lobbyBot('hard'), full],
+    ['− Remove CPU', '#6b6f86', () => lobbyBot(null), bots === 0],
+  ];
+  if (!humans.length) row.unshift(['Join', '#2f8cff', () => (session!.join('kb1'), sfx.join()), full]);
+  else if (!hasLocal('kb2')) row.push(['+ 2nd keyboard', '#9a5bff', addSecondKeyboard, full]);
+  const w = 170;
+  const gap = 12;
+  let x = 640 - (row.length * w + (row.length - 1) * gap) / 2;
+  for (const [label, color, fn, disabled] of row) {
+    if (button(ctx, label, x, 196, w, 46, { color, size: 18, disabled })) fn();
+    x += w + gap;
+  }
+  // host controls
+  const h = hostId(s);
+  if (!h || !mine.has(h)) return;
+  const dev = deviceOf(h);
+  if (button(ctx, '◀', 236, 572, 64, 52, { color: '#9a5bff', size: 26 })) (input.nudge(dev, -1, 0), sfx.move());
+  if (button(ctx, '▶', 980, 572, 64, 52, { color: '#9a5bff', size: 26 })) (input.nudge(dev, 1, 0), sfx.move());
+  const kind = OPTIONS[s.selection].kind;
+  if (kind !== 'game') {
+    text(ctx, kind === 'mix' ? 'Rounds' : 'Turns', 160, 548, 18, { weight: 800 });
+    if (button(ctx, '+', 130, 566, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, -1), sfx.move());
+    if (button(ctx, '−', 130, 626, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, 1), sfx.move());
+  }
+  if (button(ctx, 'START!', 1080, 566, 184, 110, { color: '#21c45a', size: 34, disabled: !s.players.length })) input.tap(dev, 'a');
+}
+
+function renderScreens(wallT: number, dt: number) {
   ctx.clearRect(0, 0, VIEW_W, VIEW_H);
   if (!session) {
     bar.classList.add('hidden');
@@ -192,7 +299,7 @@ function render(wallT: number, dt: number) {
     text(ctx, session.status(), 640, 360, 36);
     return;
   }
-  bar.classList.toggle('hidden', s.phase !== 'lobby');
+  bar.classList.add('hidden');
 
   // 3D: one view per minigame round, one per board game, and a shared party stage for the menus
   let view;
@@ -222,6 +329,7 @@ function render(wallT: number, dt: number) {
   switch (s.phase) {
     case 'lobby':
       drawLobby(ctx, s, sc);
+      lobbyButtons(s);
       break;
     case 'board':
       drawBoardHud(ctx, s, wallT);

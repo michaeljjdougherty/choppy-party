@@ -5,6 +5,7 @@ import { crownIcon } from './boardHud';
 import { playerById, roundRect, text } from '../shared/draw';
 import { clamp01, controlChips, easeOut, ribbon, slam, springIn, sunburst, vignette } from './showtime';
 import { burst } from './juice';
+import { A, B, promptKind } from './prompts';
 
 /** 2D overlays for the menu screens. The 3D party stage is drawn underneath by the menu view. */
 export interface ScreenCtx {
@@ -21,20 +22,21 @@ function panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
 export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: ScreenCtx): void {
   text(ctx, 'Choppy Party', 640, 74, 84, { color: '#ffd23f' });
   text(ctx, sc.roomCode ? `Room code: ${sc.roomCode}` : sc.status, 640, 136, 28, { color: '#ffffff', weight: 700 });
+  const k = promptKind();
   if (s.players.length === 0) {
-    text(ctx, 'Press A to join!', 640, 330, 46, { color: '#fff' });
-    text(ctx, 'Add bots with keys 1 / 2 / 3 (Easy / Normal / Hard) or the buttons up top', 640, 420, 20, { weight: 600, color: '#ffd23f' });
-    text(ctx, 'Pads: bottom face button   ·   Keys: Space (WASD) or Enter (Arrows)', 640, 384, 20, { weight: 600 });
+    text(ctx, k === 'mouse' ? 'Click Join, or press A on a controller' : `Press ${A()} to join!`, 640, 360, 40, { color: '#fff' });
+    text(ctx, 'Controllers: A   ·   Keyboard: Space or Enter', 640, 408, 20, { weight: 600 });
   } else {
     const bots = s.players.filter((p) => p.bot).length;
-    text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? ` (${bots} ${bots === 1 ? 'bot' : 'bots'})` : ''}  ·  A to join, B to leave  ·  Keys 1/2/3 add an Easy/Normal/Hard bot, 0 removes one`, 640, 176, 20, {
+    const keysHint = k === 'pad' ? `${A()}: join  ·  ${B()}: leave` : k === 'mouse' ? 'Controllers press A to join' : `1 / 2 / 3: add a CPU  ·  0: remove one  ·  Tab: 2nd keyboard player`;
+    text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? ` (${bots} CPU)` : ''}   ·   ${keysHint}`, 640, 172, 20, {
       color: '#ffe9f6',
       weight: 600,
     });
   }
 
   panel(ctx, 220, 556, 840, 130);
-  text(ctx, `◀  ${selectionLabel(s)}  ▶`, 640, 598, 36, { color: '#fff' });
+  text(ctx, selectionLabel(s), 640, 598, 36, { color: '#fff' });
   const o = OPTIONS[s.selection];
   let sub: string;
   if (o.kind === 'board') {
@@ -49,7 +51,8 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
   }
   text(ctx, truncate(sub, 92), 640, 636, 17, { color: '#e8ddff', weight: 500, outline: false });
   if (s.players.length) {
-    text(ctx, 'Host: Left/Right to choose, A to start', 640, 664, 17, { color: '#ffd23f', weight: 700, outline: false });
+    const hint = k === 'mouse' ? 'Host: click the arrows to choose, then START' : k === 'pad' ? 'Host: Left/Right to choose, A to start' : `Host: A/D or Left/Right to choose, ${A()} to start`;
+    text(ctx, hint, 640, 664, 17, { color: '#ffd23f', weight: 700, outline: false });
   }
 }
 
@@ -96,7 +99,7 @@ export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
   ctx.fillStyle = 'rgba(20,10,50,0.6)';
   roundRect(ctx, -210, -24, 420, 48, 24);
   ctx.fill();
-  text(ctx, `Press A when ready  ·  ${ready}/${who.length}`, 0, 0, 22, { color: '#fff', weight: 800 });
+  text(ctx, `${promptKind() === 'mouse' ? 'Click' : `Press ${A()}`} when ready  ·  ${ready}/${who.length}`, 0, 0, 22, { color: '#fff', weight: 800 });
   ctx.restore();
 }
 
@@ -172,7 +175,7 @@ export function drawResults(ctx: CanvasRenderingContext2D, s: PartyState, age: n
     ctx.restore();
   });
   if (s.boardEvent && s.eventLine && age > 1.2) ribbon(ctx, 970, y0 + n * rowH + 30, 560, 44, '#ff8a1f', s.eventLine, 18);
-  const more = onBoard && (s.boardEvent || s.board!.turn < s.board!.maxTurns) ? 'Host: A to go back to the board' : 'Host: A to continue';
+  const more = onBoard && (s.boardEvent || s.board!.turn < s.board!.maxTurns) ? `Host: ${A()} to go back to the board` : `Host: ${A()} to continue`;
   if (age > 1.4) {
     ctx.save();
     ctx.globalAlpha = 0.75 + Math.sin(t * 4) * 0.25;
@@ -248,7 +251,7 @@ export function drawFinal(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
   if (age > 2) {
     ctx.save();
     ctx.globalAlpha = 0.75 + Math.sin(t * 4) * 0.25;
-    text(ctx, 'Host: A to return to the lobby', 970, 694, 20, { weight: 800 });
+    text(ctx, `Host: ${A()} to return to the lobby`, 970, 694, 20, { weight: 800 });
     ctx.restore();
   }
 }

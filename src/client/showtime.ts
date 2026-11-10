@@ -2,6 +2,7 @@
  * Presentation helpers for the big moments: sunbursts, ribbons, slam-in titles, count-ins,
  * Square Brian's speech bubble, and his lines.
  */
+import { glyph } from './prompts';
 import { roundRect, text } from '../shared/draw';
 import { drawBrianBust, type BrianFace } from './three/brian';
 
@@ -182,12 +183,13 @@ export function controlChips(ctx: CanvasRenderingContext2D, controls: string, cx
     ctx.beginPath();
     ctx.arc(x + 28, y, 20, 0, Math.PI * 2);
     ctx.fill();
-    const glyph = key.startsWith('stick') ? '✥' : key.startsWith('mash') ? 'A!' : p.key.charAt(0).toUpperCase();
+    const g = key.startsWith('stick') ? glyph('stick') : key.startsWith('mash') ? glyph('mash') : key.startsWith('a') ? glyph('a') : key.startsWith('b') ? glyph('b') : p.key.charAt(0).toUpperCase();
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `900 ${glyph.length > 1 ? 15 : 20}px system-ui, sans-serif`;
-    ctx.fillText(glyph, x + 28, y + 1);
+    ctx.font = `900 ${g.length > 3 ? 11 : g.length > 1 ? 14 : 20}px system-ui, sans-serif`;
+    const glyphText = g;
+    ctx.fillText(glyphText, x + 28, y + 1);
     ctx.fillStyle = '#2a1b5e';
     ctx.textAlign = 'left';
     ctx.font = '800 22px system-ui, sans-serif';

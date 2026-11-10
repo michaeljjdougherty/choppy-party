@@ -254,7 +254,7 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
           color: p.color,
           sub,
           subColor,
-          badge: p.id === host ? 'HOST' : p.bot ? `${BOT_LABEL[p.bot].toUpperCase()} BOT` : isOnline() && mine.has(p.id) ? 'YOU' : undefined,
+          badge: p.id === host ? 'HOST' : p.bot ? `${BOT_LABEL[p.bot].toUpperCase()} CPU` : isOnline() && mine.has(p.id) ? 'YOU' : undefined,
         };
       });
     },

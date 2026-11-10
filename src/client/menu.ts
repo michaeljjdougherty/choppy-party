@@ -1,6 +1,7 @@
 import type { InputManager } from './input';
 import { roundRect, text } from '../shared/draw';
 import { sunburst } from './showtime';
+import { A, B, promptKind } from './prompts';
 
 export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | null;
 
@@ -28,6 +29,8 @@ const ONLINE: Item[] = [
 export class MainMenu {
   screen: 'title' | 'main' | 'online' = 'title';
   sel = 0;
+  /** Device that made the last pick ('mouse' for a click), so it can join the lobby straight away. */
+  picker = 'kb1';
   private bump = 0;
   private prev = new Map<string, { a: number; b: number; y: number }>();
   private navCd = 0;
@@ -48,7 +51,10 @@ export class MainMenu {
     for (const d of this.input.list()) {
       const p = this.prev.get(d.key);
       if (p) {
-        if (d.raw.aCount > p.a) a = true;
+        if (d.raw.aCount > p.a) {
+          a = true;
+          this.picker = d.key;
+        }
         if (d.raw.bCount > p.b) b = true;
       }
       if (Math.abs(d.raw.y) > 0.6 && (!p || Math.abs(p.y) <= 0.6 || this.navCd === 0)) dy = Math.sign(d.raw.y);
@@ -91,8 +97,30 @@ export class MainMenu {
     return null;
   }
 
+  /** Mouse hover moves the highlight onto the button under the pointer. */
+  hover(x: number, y: number): void {
+    if (this.screen === 'title') return;
+    const items = this.items();
+    for (let i = 0; i < items.length; i++) {
+      const r = this.rect(i, items.length);
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h && this.sel !== i) {
+        this.sel = i;
+        this.bump = 1;
+      }
+    }
+  }
+
+  /** Esc: one screen back. */
+  back(): void {
+    if (this.screen === 'online') {
+      this.screen = 'main';
+      this.sel = 3;
+    } else this.screen = 'title';
+  }
+
   /** Lets mouse users pick too. Coordinates are in 1280x720 space. */
   click(x: number, y: number): MenuAction {
+    this.picker = 'mouse';
     if (this.screen === 'title') {
       this.screen = 'main';
       return null;
@@ -110,11 +138,13 @@ export class MainMenu {
         }
         if (it.key === 'back') {
           this.screen = 'main';
+          this.sel = 3;
           return null;
         }
         return it.key;
       }
     }
+    // a click on empty space while the main list is up goes back to the title only via Esc/B
     return null;
   }
 
@@ -137,9 +167,10 @@ export class MainMenu {
       ctx.fillStyle = 'rgba(42,27,94,0.55)';
       roundRect(ctx, -230, -34, 460, 68, 34);
       ctx.fill();
-      text(ctx, 'Press A to start', 0, 0, 40, { color: '#ffe14d' });
+      const k = promptKind();
+      text(ctx, k === 'mouse' ? 'Click to start' : `Press ${A()} to start`, 0, 0, 40, { color: '#ffe14d' });
       ctx.restore();
-      text(ctx, 'Pads: bottom face button  ·  Keys: Space or Enter', 640, 690, 18, { weight: 600 });
+      text(ctx, 'Controller: A   ·   Keyboard: Space or Enter   ·   Mouse: click', 640, 690, 18, { weight: 600 });
       return;
     }
     sunburst(ctx, 330, 160, 300, t, '#ffd23f', 0.28, 16);
@@ -211,7 +242,14 @@ export class MainMenu {
         ctx.stroke();
       }
     });
-    text(ctx, 'Stick / Arrows: move   ·   A: choose   ·   B: back', 960, 694, 18, { weight: 600 });
+    const k = promptKind();
+    const hint =
+      k === 'pad'
+        ? 'Stick: move   ·   A: choose   ·   B: back'
+        : k === 'mouse'
+          ? 'Click to choose   ·   Esc: back'
+          : `W/S or Arrows: move   ·   ${A()} or Enter: choose   ·   Esc or ${B()}: back`;
+    text(ctx, hint, 960, 694, 18, { weight: 600 });
   }
 }
 

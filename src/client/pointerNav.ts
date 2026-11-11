@@ -114,6 +114,13 @@ export function boardPointer(
     }
     return;
   }
+  // Evil LeBron's dance party: the host can skip it (X), like the tour
+  if (b.sub === 'boss' && b.boss?.dance && hostLocal) {
+    if (button(ctx, 'Skip dance', 560, 618, 160, 44, { color: '#ff3b4e', size: 18 })) {
+      for (const id of localIds) if (human(id)) input.tap(deviceOf(id), 'x');
+    }
+    return;
+  }
   if (!human(cur)) return;
   const dev = deviceOf(cur);
   const me = b.players[cur];

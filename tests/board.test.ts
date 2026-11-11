@@ -149,7 +149,9 @@ describe('board party', () => {
     let guard = 0;
     while (s.phase !== 'final' && guard++ < 30 * 60 * 30) {
       phasesSeen.add(s.phase);
-      stepParty(s, guard % 4 === 0 || s.phase === 'intro' ? press() : {}, DT);
+      // the host skips Evil LeBron's dance party with X
+      const skip = s.board?.sub === 'boss' && guard % 4 === 2;
+      stepParty(s, skip ? { [s.players[0].id]: { ...NO_INPUT, x: 0, xPressed: true } } : guard % 4 === 0 || s.phase === 'intro' ? press() : {}, DT);
     }
     expect(s.phase).toBe('final');
     expect([...phasesSeen].sort()).toEqual(['board', 'intro', 'play', 'results']);

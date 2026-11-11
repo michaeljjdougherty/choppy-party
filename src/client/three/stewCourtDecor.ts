@@ -7,6 +7,9 @@ import { BOSS_INTRO, BOSS_SLAM, SPIN_STOP } from '../../shared/board/engine';
 import { shake } from './fx';
 import { sfx } from '../sfx';
 import { postPulse } from './look/post';
+import { DANCES, DANCE_BEATS, LEBRON_BEAT0, LEBRON_BPM, applyPose, dancePose, danceOrder, lebronNow, makeRig, mixPose, type Pose, type Rig } from './lebronDance';
+import { buildDanceParty, descendPose, TADA } from './lebronParty';
+import { music } from '../soundtrack';
 import { buildArena, buildInferno, buildJumbotron } from './stewCourtLook';
 
 /**
@@ -31,12 +34,24 @@ const RIM_X = COURT.hoopX + 1.1;
 const RIM_Y = 4.4;
 
 function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
-  const px = 18; // pixels per world unit
+  return canvasTex(paintCourt(evil, glow, 18));
+}
+
+function canvasTex(c: HTMLCanvasElement, srgb = true): THREE.CanvasTexture {
+  const t = new THREE.CanvasTexture(c);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/** The court's paint job on a canvas, `px` pixels per world unit. */
+function paintCourt(evil: boolean, glow: boolean, px: number): HTMLCanvasElement {
   const cw = FLOOR.w * px, ch = FLOOR.h * px;
   const c = document.createElement('canvas');
   c.width = cw;
   c.height = ch;
-  const g = c.getContext('2d')!;
+  // the burned floor is read back for its pixel pass: keep that canvas in memory, not on the GPU
+  const g = c.getContext('2d', { willReadFrequently: evil })!;
   // hardwood: long boards running lengthways, slightly different tones
   const plank = 0.9 * px;
   let seed = 7;
@@ -45,8 +60,9 @@ function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
     let x = -r() * 6 * px;
     while (x < cw) {
       const len = (4 + r() * 5) * px;
-      const t = evil ? 34 + Math.floor(r() * 22) : 176 + Math.floor(r() * 24);
-      g.fillStyle = glow ? '#000000' : evil ? `rgb(${t},${Math.floor(t * 0.5)},${Math.floor(t * 0.45)})` : `rgb(${t},${Math.floor(t * 0.66)},${Math.floor(t * 0.36)})`;
+      // the Choppy Verse floor starts as the same oak boards; the burn pass adds grain and chars them
+      const t = evil ? 150 + Math.floor(r() * 34) : 176 + Math.floor(r() * 24);
+      g.fillStyle = glow ? '#000000' : evil ? `rgb(${t},${Math.floor(t * 0.6)},${Math.floor(t * 0.34)})` : `rgb(${t},${Math.floor(t * 0.66)},${Math.floor(t * 0.36)})`;
       g.fillRect(x, y, len - 2, plank - 2);
       x += len;
     }
@@ -104,23 +120,6 @@ function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
     g.stroke();
     void dx;
   }
-  if (evil) {
-    // glowing cracks burned right across the boards
-    g.strokeStyle = '#ffb020';
-    g.lineCap = 'round';
-    for (let k = 0; k < 26; k++) {
-      let x = r() * cw, y = r() * ch;
-      g.lineWidth = (0.08 + r() * 0.16) * px;
-      g.beginPath();
-      g.moveTo(x, y);
-      for (let j = 0; j < 6; j++) {
-        x += (r() - 0.5) * 5 * px;
-        y += (r() - 0.5) * 5 * px;
-        g.lineTo(x, y);
-      }
-      g.stroke();
-    }
-  }
   // centre court: a bubbling stew pot and the name
   g.save();
   g.translate(X(0), Z(0));
@@ -154,10 +153,176 @@ function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
     g.fillText(word, 0, 0);
     g.restore();
   }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
-  return t;
+  return c;
+}
+
+// ---- burned hardwood (the Choppy Verse floor) ------------------------------------------------
+
+const hash2 = (x: number, y: number) => {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+};
+function vnoise(x: number, y: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function fbm(x: number, y: number, oct = 4): number {
+  let s = 0, a = 0.5, f = 1, n = 0;
+  for (let i = 0; i < oct; i++) {
+    s += vnoise(x * f, y * f) * a;
+    n += a;
+    a *= 0.5;
+    f *= 2.03;
+  }
+  return s / n;
+}
+const sstep = (a: number, b: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * The Choppy Verse court: the same oak floor and paint, burned. Scorched brown where the fire only
+ * licked it, blackened charcoal split into blocky "alligator" cracks where it burned deep (with a
+ * silvery sheen on the char), ash in the low spots, and embers still glowing down in the cracks.
+ * Returns the colour map, the ember glow map (the painted lines still smoulder) and a bump map.
+ */
+export function burnedCourt(): { map: THREE.CanvasTexture; glow: THREE.CanvasTexture; bump: THREE.CanvasTexture; rough: THREE.CanvasTexture } {
+  const px = 24;
+  const col = paintCourt(true, false, px);
+  const glo = paintCourt(true, true, px);
+  const w = col.width, h = col.height;
+  const cg = col.getContext('2d', { willReadFrequently: true })!, gg = glo.getContext('2d', { willReadFrequently: true })!;
+  const cd = cg.getImageData(0, 0, w, h), gd = gg.getImageData(0, 0, w, h);
+  const bump = document.createElement('canvas');
+  bump.width = w;
+  bump.height = h;
+  const bg = bump.getContext('2d')!;
+  const bd = bg.createImageData(w, h);
+  const rough = document.createElement('canvas');
+  rough.width = w;
+  rough.height = h;
+  const rg = rough.getContext('2d')!;
+  const rd = rg.createImageData(w, h);
+  const C = cd.data, G = gd.data, B = bd.data, R = rd.data;
+  // char cells: longer along the grain (x) than across it
+  const CX = 0.85, CY = 0.26;
+  // the slow-changing fields (how burned, ash drifts, ember clusters) on a coarse grid, smoothed
+  // between samples; the cell jitter for the cracks in a table (keeps the pass to a fraction of a second)
+  const S = 4;
+  const fw = Math.ceil(w / S) + 2, fh = Math.ceil(h / S) + 2;
+  const fBurn = new Float32Array(fw * fh), fAsh = new Float32Array(fw * fh), fHot = new Float32Array(fw * fh);
+  for (let j = 0; j < fh; j++) {
+    for (let k = 0; k < fw; k++) {
+      const wx = (k * S) / px - FLOOR.w / 2, wy = (j * S) / px - FLOOR.h / 2;
+      const mid = 1 - Math.min(1, Math.hypot(wx / 34, wy / 22));
+      fBurn[j * fw + k] = fbm(wx * 0.09 + 3.1, wy * 0.12 - 7.3) * 0.9 + fbm(wx * 0.5, wy * 0.7, 3) * 0.25 + mid * 0.2 - 0.2;
+      fAsh[j * fw + k] = fbm(wx * 1.3 + 11, wy * 1.6 - 4, 3);
+      fHot[j * fw + k] = fbm(wx * 0.7 - 5, wy * 0.9 + 9, 3);
+    }
+  }
+  const field = (f: Float32Array, x: number, y: number) => {
+    const fx = x / S, fy = y / S;
+    const k = fx | 0, j = fy | 0, u = fx - k, v = fy - j;
+    const a = f[j * fw + k], b = f[j * fw + k + 1], c = f[(j + 1) * fw + k], d = f[(j + 1) * fw + k + 1];
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+  const gw = Math.ceil(FLOOR.w / CX) + 4, gh = Math.ceil(FLOOR.h / CY) + 4;
+  const ox0 = Math.floor(-FLOOR.w / 2 / CX) - 2, oy0 = Math.floor(-FLOOR.h / 2 / CY) - 2;
+  const jx = new Float32Array(gw * gh), jy = new Float32Array(gw * gh);
+  for (let j = 0; j < gh; j++) {
+    for (let k = 0; k < gw; k++) {
+      jx[j * gw + k] = hash2(k + ox0, (j + oy0) * 3 + 1);
+      jy[j * gw + k] = hash2((k + ox0) * 5 + 2, j + oy0);
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    const wy = y / px - FLOOR.h / 2;
+    for (let x = 0; x < w; x++) {
+      const wx = x / px - FLOOR.w / 2;
+      const i = (y * w + x) * 4;
+      // how badly this bit burned: big blotches, worst towards the middle, ragged at the edges
+      const burn = field(fBurn, x, y);
+      const scorch = 0.3 + 0.7 * sstep(0, 0.38, burn);
+      const charK = sstep(0.36, 0.58, burn) * 0.92;
+      // the alligator pattern: distance to the nearest two cell centres
+      const gx = wx / CX, gy = wy / CY;
+      const ix = Math.floor(gx), iy = Math.floor(gy);
+      let d1 = 9, d2 = 9;
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          const cx = ix + ox, cy = iy + oy;
+          const ti = (cy - oy0) * gw + (cx - ox0);
+          const dx = cx + jx[ti] - gx;
+          const dy = cy + jy[ti] - gy;
+          const d = dx * dx + dy * dy;
+          if (d < d1) {
+            d2 = d1;
+            d1 = d;
+          } else if (d < d2) d2 = d;
+        }
+      }
+      const edge = Math.sqrt(d2) - Math.sqrt(d1);
+      const crack = charK * (1 - sstep(0.015, 0.07, edge));
+      const dome = Math.min(1, edge * 3);
+      // wood grain: fine streaks along each board (shifted board to board), darker where it's tight
+      const row = Math.floor(wy / 0.9);
+      const gr = vnoise(wx * 0.9 + row * 17.3, wy * 34 + Math.sin(wx * 0.7 + row) * 2.2);
+      const grainK = 0.78 + gr * 0.3 - (gr > 0.72 ? 0.18 : 0);
+      // the gaps between boards (left empty by the paint job) are burned black
+      const gap = C[i + 3] < 128;
+      let r = gap ? 14 : C[i] * grainK, gch = gap ? 9 : C[i + 1] * grainK, b = gap ? 6 : C[i + 2] * grainK;
+      // scorched: browned and darkened, the grain still showing
+      r = r * (1 - scorch * 0.62);
+      gch = gch * (1 - scorch * 0.72);
+      b = b * (1 - scorch * 0.78);
+      // charred: near-black, with a cool silver sheen on the cell tops
+      // (the grain still shows faintly through the char)
+      const grain = (r + gch) / 330;
+      const sheen = charK * dome * 0.35;
+      r = r + (8 + grain * 22 + sheen * 30 - r) * charK;
+      gch = gch + (7 + grain * 16 + sheen * 30 - gch) * charK;
+      b = b + (6 + grain * 10 + sheen * 32 - b) * charK;
+      // the cracks go black
+      r *= 1 - crack * 0.85;
+      gch *= 1 - crack * 0.85;
+      b *= 1 - crack * 0.85;
+      // ash: soft grey drifts and white flecks on the charred parts
+      const ash = sstep(0.66, 0.85, field(fAsh, x, y)) * charK * 0.28 + (hash2(x, y) > 0.995 ? charK * 0.35 : 0);
+      r += (92 - r) * ash;
+      gch += (88 - gch) * ash;
+      b += (84 - b) * ash;
+      C[i] = r;
+      C[i + 1] = gch;
+      C[i + 2] = b;
+      C[i + 3] = 255;
+      // embers: deep in the cracks of the worst-burned patches, flickering in clusters
+      const hot = sstep(0.45, 0.75, burn) * sstep(0.38, 0.6, field(fHot, x, y));
+      const ember = charK * (1 - sstep(0.02, 0.11, edge)) * hot;
+      // the painted lines and keys keep smouldering, but only faintly where they're charred over
+      const keep = 1 - charK * 0.6;
+      G[i] = Math.min(255, G[i] * keep * 0.8 + ember * 255);
+      G[i + 1] = Math.min(255, G[i + 1] * keep * 0.8 + ember * 95);
+      G[i + 2] = Math.min(255, G[i + 2] * keep * 0.8 + ember * 18);
+      // bump: boards high, char domed and lower, cracks deep
+      const hgt = gap ? 40 : 200 - scorch * 30 - charK * 40 + charK * dome * 35 - crack * 150;
+      B[i] = B[i + 1] = B[i + 2] = Math.max(0, hgt);
+      B[i + 3] = 255;
+      // rough: scorched wood is dry and matte; the char's sheen is glossier
+      const ro = 200 + scorch * 40 - sheen * 110;
+      R[i] = R[i + 1] = R[i + 2] = Math.max(0, Math.min(255, ro));
+      R[i + 3] = 255;
+    }
+  }
+  cg.putImageData(cd, 0, 0);
+  gg.putImageData(gd, 0, 0);
+  bg.putImageData(bd, 0, 0);
+  rg.putImageData(rd, 0, 0);
+  return { map: canvasTex(col), glow: canvasTex(glo), bump: canvasTex(bump, false), rough: canvasTex(rough, false) };
 }
 
 function signTexture(txt: string): THREE.CanvasTexture {
@@ -242,7 +407,7 @@ function labelTexture(txt: string, col: string): THREE.CanvasTexture {
  * with purple skin, glowing red eyes, a gold crown, a headband and a flaming ball. Stands on the
  * origin facing +z, `h` units tall. Returns the group plus the parts that animate.
  */
-export function makeTyrant(h: number): { g: THREE.Group; ball: THREE.Object3D; armR: THREE.Object3D; eyes: THREE.MeshStandardMaterial; flame: THREE.Mesh } {
+export function makeTyrant(h: number): { g: THREE.Group; ball: THREE.Object3D; armR: THREE.Object3D; eyes: THREE.MeshStandardMaterial; flame: THREE.Mesh; rig?: Rig } {
   const g = new THREE.Group();
   const inner = new THREE.Group();
   g.add(inner);
@@ -331,6 +496,7 @@ export function makeLebron(h: number): ReturnType<typeof makeTyrant> {
   o.scale.setScalar(k);
   o.position.set(0, -box.min.y * k, 0);
   g.add(o);
+  const rig = makeRig(o, h);
   // a red glow from inside him, so he reads as evil from far up
   const aura = new THREE.PointLight('#ff2a10', 18, h * 2.2, 1.5);
   aura.position.set(0, h * 0.7, h * 0.25);
@@ -344,7 +510,7 @@ export function makeLebron(h: number): ReturnType<typeof makeTyrant> {
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.15 * k, 0.4 * k, 12, 1, true), new THREE.MeshBasicMaterial({ color: '#ff6a00', transparent: true, opacity: 0.75, depthWrite: false }));
   flame.position.set(0, 0.2 * k, 0);
   ball.add(flame);
-  return { g, ball, armR, eyes: new THREE.MeshStandardMaterial(), flame };
+  return { g, ball, armR, eyes: new THREE.MeshStandardMaterial(), flame, rig };
 }
 
 interface Hoop {
@@ -441,7 +607,8 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
   // the floating court
   const floorMat = new THREE.MeshPhysicalMaterial({ map: courtTexture(), roughness: 0.38, metalness: 0.0, color: '#efe2d2', clearcoat: 0.9, clearcoatRoughness: 0.12 });
   floorMat.userData.noDetail = true;
-  const evilMat = new THREE.MeshStandardMaterial({ map: courtTexture(true), roughness: 0.7, color: '#b0a0a0', emissive: '#ffffff', emissiveMap: courtTexture(true, true), emissiveIntensity: 1.1 });
+  const burnt = burnedCourt();
+  const evilMat = new THREE.MeshStandardMaterial({ map: burnt.map, roughness: 1, roughnessMap: burnt.rough, bumpMap: burnt.bump, bumpScale: 2.5, color: '#ffffff', emissive: '#ffffff', emissiveMap: burnt.glow, emissiveIntensity: 1.1 });
   evilMat.userData.noDetail = true;
   const floorMats = [toy('#2a1238', 0.4), toy('#2a1238', 0.4), floorMat, toy('#1b1030', 0.5), toy('#2a1238', 0.4), toy('#2a1238', 0.4)];
   const floor = mesh(new THREE.BoxGeometry(FLOOR.w, 1.2, FLOOR.h), floorMats as unknown as THREE.Material, { cast: false, receive: true });
@@ -648,6 +815,17 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
   let slammed = false;
   let leaveT = -1;
   const HOVER = new THREE.Vector3(0, 7, -4);
+  // where he lands and dances: centre court, with his magic set around him
+  const DANCE = new THREE.Vector3(0, 0, -4);
+  const party = buildDanceParty(scene, DANCE);
+  let order = danceOrder(1);
+  /** Client clock for his visit, and when the host skipped his dance (-1 while he's dancing). */
+  let visitT = 0;
+  let skipAt = -1;
+  let localBeat = 0;
+  let lastPose: Pose | null = null;
+  let landed = false;
+  let lastBeat = -1;
 
   return (s, t, dt) => {
     // flip worlds
@@ -677,7 +855,8 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
       hellLight.intensity = 26 + Math.sin(t * 9) * 6;
       evilMat.emissiveIntensity = 0.9 + Math.sin(t * 2.2) * 0.35;
     }
-    // THE VILLAIN: drops out of the sky over centre court, hovers through his reel, then dunks his victim
+    // THE VILLAIN: a magic entrance onto centre court, a dance party to his song that goes on until
+    // the host skips it, then up to hover through his reel and down on his victim
     if (s.sub === 'boss' && s.boss) {
       const v = s.players[s.boss.pick];
       if (!bossAt && v) {
@@ -685,31 +864,84 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
         bossAt = new THREE.Vector3(n.x, n.y, n.z);
         slammed = false;
         leaveT = -1;
+        visitT = 0;
+        skipAt = -1;
+        landed = false;
+        lastPose = null;
+        order = danceOrder(s.turn * 31 + s.order.indexOf(s.boss.pick) + 7);
         sfx.whistle();
-        postPulse('dramatic', 1, '#ff3b4e');
+        postPulse('dramatic', 1, '#c79bff');
       }
+      visitT += dt;
       const hitAt = BOSS_INTRO + SPIN_STOP + 0.9;
       ty.g.visible = true;
       ty.flame.scale.y = 0.8 + Math.sin(t * 25) * 0.25;
       ty.eyes.emissiveIntensity = 1.6 + Math.sin(t * 9) * 0.6;
-      if (s.t < BOSS_INTRO) {
-        // descend with a spin
-        const k = Math.min(1, s.t / 1.2);
-        const e = 1 - (1 - k) * (1 - k);
-        ty.g.position.set(HOVER.x, HOVER.y + (1 - e) * 40, HOVER.z);
-        ty.g.rotation.y = (1 - e) * Math.PI * 4;
-        ty.armR.rotation.z = -0.35;
-        if (k >= 1 && s.t - dt < 1.2) {
-          shake(0.4);
-          sfx.boom();
+      const dancing = !!s.boss.dance;
+      if (!dancing && skipAt < 0) skipAt = visitT;
+      // the beat: from where his song actually is, so the moves land on the music
+      const prog = music.current() === 'evil-lebron' ? music.progress() : null;
+      localBeat += (dt * LEBRON_BPM) / 60;
+      const beat = prog ? ((prog.t - LEBRON_BEAT0) * LEBRON_BPM) / 60 : localBeat;
+      lebronNow.beat = beat;
+      const sinceSkip = skipAt < 0 ? 0 : visitT - skipAt;
+      party.tick(t, dt, beat, visitT, dancing ? 1 : Math.max(0, 1 - sinceSkip / 0.8), s.t < BOSS_INTRO && dancing);
+      if (s.t < BOSS_INTRO || dancing) {
+        ty.armR.visible = false;
+        ty.g.rotation.y = 0;
+        if (s.t < 0.7) {
+          // the magic circle opens and the beam comes down: he's not here yet
+          ty.g.position.set(DANCE.x, DANCE.y + 60, DANCE.z);
+          ty.g.scale.setScalar(0.3);
+          if (ty.rig) applyPose(ty.rig, null, 0);
+        } else if (s.t < 2.0) {
+          // down the beam, spinning, wings beating, growing to full size
+          const k = (s.t - 0.7) / 1.3;
+          const e = 1 - Math.pow(1 - k, 3);
+          ty.g.position.set(DANCE.x, DANCE.y + (1 - e) * 34, DANCE.z);
+          ty.g.rotation.y = (1 - e) * Math.PI * 6;
+          ty.g.scale.setScalar(0.3 + e * 0.7);
+          if (ty.rig) applyPose(ty.rig, descendPose(visitT), 1);
+        } else {
+          if (!landed) {
+            landed = true;
+            shake(0.7);
+            sfx.boom();
+            sfx.bell();
+            postPulse('impact', 1.4, '#c79bff');
+            party.burst();
+          }
+          // a squash on landing, a ta-da, then straight into the dance
+          const a = s.t - 2.0;
+          const sq = Math.max(0, 1 - a * 4) * 0.25;
+          ty.g.position.copy(DANCE);
+          ty.g.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
+          const into = s.t < BOSS_INTRO ? 0 : Math.min(1, (s.t - BOSS_INTRO) / 0.5);
+          const d = dancePose(beat, order);
+          lebronNow.name = DANCES[order[Math.floor(beat / DANCE_BEATS) % order.length]]?.name ?? '';
+          lastPose = into >= 1 ? d : mixPose(TADA, d, into * into * (3 - 2 * into));
+          if (ty.rig) applyPose(ty.rig, lastPose, 1);
+          // a sparkle burst on the first beat of every bar
+          const bar = Math.floor(beat / 4);
+          if (dancing && s.t >= BOSS_INTRO && bar !== lastBeat) {
+            if (lastBeat >= 0) party.burst(0.5);
+            lastBeat = bar;
+          }
         }
       } else if (s.t < hitAt - 0.7) {
-        // hover menacingly, spinning the ball on one finger
-        ty.g.position.set(HOVER.x, HOVER.y + Math.sin(t * 2) * 0.4, HOVER.z);
-        ty.g.rotation.y = Math.sin(t * 0.9) * 0.5;
+        // hover menacingly, spinning the ball on one finger (after the dance: float up off the floor)
+        const u = Math.min(1, sinceSkip / 0.8);
+        const ue = u * u * (3 - 2 * u);
+        ty.armR.visible = u > 0.5;
+        ty.g.scale.setScalar(1);
+        ty.g.position.set(HOVER.x, HOVER.y + Math.sin(t * 2) * 0.4, HOVER.z).lerp(DANCE, 1 - ue);
+        ty.g.rotation.y = Math.sin(t * 0.9) * 0.5 * ue;
         ty.ball.rotation.y += dt * 12;
+        if (ty.rig) applyPose(ty.rig, u < 1 ? lastPose : null, 1 - ue);
       } else if (bossAt && s.t < hitAt) {
         // leap at the victim and throw it down
+        ty.armR.visible = true;
+        if (ty.rig) applyPose(ty.rig, null, 0);
         const k = Math.min(1, (s.t - (hitAt - 0.7)) / 0.7);
         const x = HOVER.x + (bossAt.x - HOVER.x) * k;
         const z = HOVER.z + (bossAt.z - 2 - HOVER.z) * k;
@@ -734,6 +966,7 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
       }
     } else if (ty.g.visible) {
       // blast off back into space
+      party.tick(t, dt, 0, 0, 0, false);
       if (leaveT < 0) {
         leaveT = 0;
         sfx.boing();

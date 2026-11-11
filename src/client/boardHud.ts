@@ -9,6 +9,7 @@ import { ITEMS, ITEM_COLS, ITEM_GRID, SHOP_PRICE } from '../shared/board/items';
 import { WEATHER_COLOR, forecast } from '../shared/board/weather';
 import { playerById, popText, richWidth, roundRect, text } from '../shared/draw';
 import { itemIcon } from './three/itemIcons';
+import { lebronNow } from './three/lebronDance';
 
 /** Moving the highlight in a board menu (items, targets, forks) ticks like the main menu. */
 let menuWas = '';
@@ -268,7 +269,19 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
       ctx.scale(0.5 + k * 0.5, 0.5 + k * 0.5);
       text(ctx, `${name}!`, 0, 0, 72, { color: '#ff3b4e' });
       ctx.restore();
-      if (b.t > 0.6) text(ctx, 'He wants someone off his court...', 640, 262, 26, { color: '#ffffff' });
+      if (b.t > 0.6) text(ctx, b.t < 1.9 ? 'He wants someone off his court...' : '...but first, he has to DANCE.', 640, 262, 26, { color: '#ffffff' });
+    } else if (b.boss.dance) {
+      // his dance party: goes on until the host skips it
+      const beat = lebronNow.beat;
+      const pop = 1 + Math.max(0, 1 - (beat - Math.floor(beat)) * 4) * 0.08;
+      ctx.save();
+      ctx.translate(640, 84);
+      ctx.scale(pop, pop);
+      ctx.rotate(Math.sin(beat * Math.PI) * 0.03);
+      text(ctx, `${name}'S DANCE PARTY`, 0, 0, 34, { color: ['#ff3b4e', '#ffd23f', '#c79bff', '#4cd97b'][Math.floor(beat) % 4] });
+      ctx.restore();
+      if (lebronNow.name) text(ctx, `Now dancing: ${lebronNow.name}`, 640, 128, 24, { color: '#ffffff', weight: 800 });
+      text(ctx, `${X()} (host): skip the dance`, 640, 598, 20, { color: '#ffffff', weight: 700 });
     } else {
       const victim = playerById(s.players, b.boss.pick);
       const boss = b.boss;

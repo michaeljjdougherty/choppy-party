@@ -4,7 +4,7 @@ import { GAMES, getGame } from './games';
 import { CHARACTERS, PLAYER_COLORS, DEFAULT_NAMES } from './players';
 import { shuffle, type Rng } from './rng';
 import { BOARDS, getBoard, recommendedBoard } from './board/boards';
-import { DUEL_GAMES, STEW_GAMES, awardMinigame, boardRanking, createBoard, endTour, finishEvent, stepBoard, winnerGoesFirst } from './board/engine';
+import { DUEL_GAMES, STEW_GAMES, awardMinigame, boardRanking, createBoard, endBossDance, endTour, finishEvent, BOSS_INTRO, stepBoard, winnerGoesFirst } from './board/engine';
 import type { BoardState } from './board/types';
 import { addBotInputs, type BotLevel } from './bots';
 import type { BotMem } from './botkit';
@@ -468,6 +468,8 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
       const b = s.board!;
       // the host can skip Square Brian's tour with X
       if (b.sub === 'tour' && hostIn.xPressed) endTour(b);
+      // and Evil LeBron's dance party (with nobody human to skip it, the CPUs give him 16 seconds)
+      if (b.sub === 'boss' && b.boss?.dance && (hostIn.xPressed || (b.t > BOSS_INTRO + 16 && s.players.every((p) => p.bot)))) endBossDance(b);
       stepBoard(b, inputs, dt);
       if (b.sub === 'event' && b.event) {
         // a Duel or Stew Battle space: play that minigame with just those players, then come back

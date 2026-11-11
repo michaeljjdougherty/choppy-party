@@ -88,7 +88,8 @@ export const CHUNK_EVENTS: Record<ChunkKind, { name: string; line: string; weigh
 export const PIT_ESCAPE = 7;
 export const PIT_TURNS = 3;
 /** The villain hovers in and glares before his reel starts, then slams his victim after it stops. */
-export const BOSS_INTRO = 2.2;
+/** Evil LeBron's magic entrance; then he dances (until the host skips), then spins his reel. */
+export const BOSS_INTRO = 3;
 export const BOSS_SLAM = 1.6;
 /** Rounds until the villain next strikes (0 = this round), or null when he can't come (the Fucci Verse). */
 export function bossIn(s: BoardState, def: BoardDef): number | null {
@@ -1480,15 +1481,27 @@ function startBoss(s: BoardState, def: BoardDef): boolean {
   const reel: string[] = [];
   for (let i = 0; i < SPIN_LEN + 4; i++) reel.push(s.order[Math.floor(rand(s.rng) * s.order.length)]);
   reel[SPIN_LEN] = pick;
-  s.boss = { reel, at: SPIN_LEN, pick };
+  s.boss = { reel, at: SPIN_LEN, pick, dance: true };
   say(s, `${def.boss.name.toUpperCase()} IS HERE!`, '#ff3b4e');
   set(s, 'boss');
   return true;
 }
 
+/**
+ * The host skips Evil LeBron's dance party: his reel spins next. (He dances for as long as the host
+ * lets him, so the song can play right through.)
+ */
+export function endBossDance(s: BoardState): void {
+  if (s.sub !== 'boss' || !s.boss?.dance) return;
+  s.boss.dance = false;
+  s.t = Math.min(s.t, BOSS_INTRO);
+}
+
 function stepBoss(s: BoardState, def: BoardDef): void {
   const b = s.boss;
   if (!b) return roundEnd(s, def);
+  // the dance party: he keeps going until the host skips (the clock keeps running for his moves)
+  if (b.dance) return;
   const hitAt = BOSS_INTRO + SPIN_TIME;
   if (s.t >= hitAt && !b.hit) {
     // the slam: a straight knockout (a Knight Shield still blocks it)

@@ -2058,7 +2058,12 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         if (!bossNode) bossNode = b.players[b.boss.pick]?.node ?? null;
         const n = bossNode ? def.nodes[bossNode] : null;
         const k = def.spread ?? 1;
-        if (b.t < BOSS_INTRO + SPIN_STOP + 0.2 || !n) {
+        if (b.boss.dance) {
+          // his entrance and dance party: in close on centre court, where he dances
+          goalLook = new THREE.Vector3(0, 4.6 * k, -4 * k);
+          goalPos = new THREE.Vector3(0, 8.5 * k, 13 * k);
+          follow = 2;
+        } else if (b.t < BOSS_INTRO + SPIN_STOP + 0.2 || !n) {
           goalLook = new THREE.Vector3(0, 6 * k, -4 * k);
           goalPos = new THREE.Vector3(0, 22 * k, 26 * k);
           follow = 2;

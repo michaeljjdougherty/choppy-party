@@ -22,6 +22,7 @@ export function setMapLook(f: typeof mapLook): void {
 }
 import type { Tag, View } from '../stage';
 import { sandMap, sandMaterial } from '../nature';
+import { buildWeather } from '../weatherView';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
   key: '#2f7dff',
@@ -1058,7 +1059,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const tourLights: THREE.Group[] = [];
   const tourRingMat = new THREE.MeshBasicMaterial({ color: '#ffe14d', transparent: true, opacity: 0.9, depthWrite: false });
   const beamMat = new THREE.MeshBasicMaterial({ color: '#fff3a0', transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 36; i++) {
     const g = new THREE.Group();
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.09, 8, 40), tourRingMat);
     ring.rotation.x = -Math.PI / 2;
@@ -1091,6 +1092,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const lastCoins = new Map<string, number>();
   const lastCrowns = new Map<string, number>();
   const fx = new Fx(scene);
+  const weather = buildWeather(scene, def, fx);
   const kick = (nodeId: string, v: number) => {
     const sp = springs.get(nodeId);
     if (sp) sp.v -= v;
@@ -1147,7 +1149,10 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
 
       // crowns
       crownPool.forEach((c) => (c.visible = false));
-      b.crowns.forEach((nodeId, i) => {
+      weather.update(b, t, dt);
+      // sandblind players can't see the chests on their own turn
+      const blind = weather.chestsHidden(b, currentPlayer(b));
+      if (!blind) b.crowns.forEach((nodeId, i) => {
         while (crownPool.length <= i) {
           const g = new THREE.Group();
           const c = makeCrown();
@@ -1211,6 +1216,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         const n = def.nodes[e.node];
         if (!n) continue;
         const at = new THREE.Vector3(n.x, n.y + 1.4, n.z);
+        if (weather.onFx(e.kind, at, b, e.amount)) continue;
         switch (e.kind) {
           case 'hit':
           case 'spikes':
@@ -1347,7 +1353,12 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           d.scale.setScalar(sc);
           return;
         }
-        if (done) {
+        if (done && b.weather?.hiddenRoll) {
+          // hidden in the fog: the dice never settle on a face
+          tumble.set(t * 3 + i * 2, t * 3.8 + i, t * 2.2);
+          d.quaternion.setFromEuler(tumble);
+          y = cp.y + 3.1;
+        } else if (done) {
           // landed: face the camera with its number, a pop when it first hits
           faceQ(b.rolls[i], camYaw, tmpQ);
           d.quaternion.slerp(tmpQ, Math.min(1, dt * 14));
@@ -1417,7 +1428,23 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           (l.children[1] as THREE.Mesh).rotation.y = t * 0.8;
         });
         const n = def.nodes[step.node];
-        if (n) {
+        const spread = ids.map((id) => def.nodes[id]).filter(Boolean);
+        if (n && spread.length > 4) {
+          // a whole area (weather zone, hazard lane): pull back and look down on all of it
+          const lo = new THREE.Vector3(Infinity, 0, Infinity), hi = new THREE.Vector3(-Infinity, 0, -Infinity);
+          let y = 0;
+          for (const q of spread) {
+            lo.set(Math.min(lo.x, q.x), 0, Math.min(lo.z, q.z));
+            hi.set(Math.max(hi.x, q.x), 0, Math.max(hi.z, q.z));
+            y = Math.max(y, q.y);
+          }
+          const c = lo.clone().add(hi).multiplyScalar(0.5);
+          const ext = Math.max(hi.x - lo.x, hi.z - lo.z);
+          const d = Math.max(11, ext * 0.85);
+          goalLook = new THREE.Vector3(c.x, y + 0.4, c.z);
+          goalPos = new THREE.Vector3(c.x, Math.max(y + d * 1.05, gy(c.x, c.z + d * 0.55) + 8), c.z + d * 0.55);
+          follow = 2.2;
+        } else if (n) {
           goalLook = new THREE.Vector3(n.x, n.y + 0.4, n.z);
           // a little higher than the follow camera, and never inside a hill
           const cx = n.x, cz = n.z + 10;
@@ -1456,7 +1483,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         if (!v) continue;
         const isCur = p.id === cur;
         let sub: string | undefined;
-        if (isCur && b.sub === 'rolled') sub = String(b.roll);
+        if (isCur && b.weather?.hiddenRoll) sub = b.sub === 'rolled' || b.sub === 'move' || b.sub === 'branch' ? '?' : undefined;
+        else if (isCur && b.sub === 'rolled') sub = String(b.roll);
         else if (isCur && (b.sub === 'move' || b.sub === 'branch' || b.sub === 'prompt') && b.stepsLeft > 0) sub = String(b.stepsLeft);
         if (!isCur) continue; // keep the screen calm: only the mover is labelled
         out.push({

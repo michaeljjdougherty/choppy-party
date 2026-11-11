@@ -1,4 +1,5 @@
 import type { BoardDef, BoardState, SpaceType } from './types';
+import { WEATHER_TOUR } from './weather';
 
 /**
  * Square Brian's board tour before the first roll: the camera flies to each feature, it glows,
@@ -63,6 +64,11 @@ export function buildTour(def: BoardDef, s: BoardState): TourStep[] {
   if (def.theme === 'gulch') {
     const lane = Object.values(def.nodes).filter((n) => n.canyon === s.hazards.boulderLane).map((n) => n.id);
     if (lane.length) steps.push({ title: 'Boulders', text: 'Every round a boulder rolls down one canyon. The top-left panel tells you which.', node: lane[Math.floor(lane.length / 2)], also: lane });
+  }
+  // weather zones, each lit up end to end
+  for (const z of def.weather ?? []) {
+    const mid = z.nodes[Math.floor(z.nodes.length / 2)];
+    if (mid) steps.push({ title: z.name, text: WEATHER_TOUR[z.kind], node: mid, also: z.nodes });
   }
   steps.push({ title: "Let's play!", text: 'That is everything. First, everyone rolls to see who goes first.', node: null });
   return steps;

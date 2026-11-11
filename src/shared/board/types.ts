@@ -123,6 +123,8 @@ export interface BoardDef {
   preset: BoardPreset;
   /** Hills and mountains under the board. Spaces on terrain boards sit on this ground. */
   hills?: Hill[];
+  /** Weather zones (see weather.ts). */
+  weather?: import('./weather').WeatherZone[];
 }
 
 /** A smooth hill: flat top out to `top` (fraction of r), easing down to nothing at radius r. */
@@ -267,6 +269,7 @@ export interface BoardState {
   /** After an event or hazards, where the board picks up again. */
   resume: BoardSub | null;
   night: boolean;
+  weather: import('./weather').WeatherState;
   counter: number;
   banner: { text: string; color: string; t: number } | null;
   /** Short-lived effects for the 3D view: hits, heals, knockouts, item use. */

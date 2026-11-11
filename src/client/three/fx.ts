@@ -103,6 +103,8 @@ export interface Burst {
   drag?: number;
   additive?: boolean;
   jitter?: number; // spawn position randomness
+  /** Extra velocity every particle starts with (wind, rain). */
+  vel?: [number, number, number];
 }
 
 export class Fx {
@@ -132,6 +134,7 @@ export class Fx {
       const el = (Math.random() * 2 - 1) * (o.spread ?? 0.3) * (Math.PI / 2);
       const sp = (o.speed?.[0] ?? 1) + Math.random() * ((o.speed?.[1] ?? 3) - (o.speed?.[0] ?? 1));
       p.vel.set(Math.cos(a) * Math.cos(el) * sp, Math.sin(el) * sp + (o.up ?? 0) * (0.6 + Math.random() * 0.6), Math.sin(a) * Math.cos(el) * sp);
+      if (o.vel) p.vel.add(new THREE.Vector3(o.vel[0], o.vel[1], o.vel[2]));
       const j = o.jitter ?? 0.1;
       p.sprite.position.set(at.x + (Math.random() - 0.5) * j, at.y + Math.random() * j * 0.5, at.z + (Math.random() - 0.5) * j);
       p.max = p.life = (o.life?.[0] ?? 0.4) + Math.random() * ((o.life?.[1] ?? 0.8) - (o.life?.[0] ?? 0.4));

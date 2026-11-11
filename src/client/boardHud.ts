@@ -6,6 +6,7 @@ import { getBoard } from '../shared/board/boards';
 import { DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, currentPlayer } from '../shared/board/engine';
 import { TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
 import { ITEMS } from '../shared/board/items';
+import { WEATHER_COLOR, forecast } from '../shared/board/weather';
 import { playerById, popText, roundRect, text } from '../shared/draw';
 
 /** Moving the highlight in a board menu (items, targets, forks) ticks like the main menu. */
@@ -28,6 +29,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   const cur = currentPlayer(b);
   const me = playerById(s.players, cur);
   const mine = b.players[cur];
+  const fog = !!b.weather?.hiddenRoll;
 
   // top-left: board, turn and what the map is up to
   ctx.fillStyle = 'rgba(20,12,40,0.6)';
@@ -48,6 +50,31 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
           : 'Ring the bell for night'
         : `Boulder in the ${b.hazards.boulderLane ? 'east' : 'west'} canyon`;
   text(ctx, late ? 'Final turns: Key and Heart Spaces pay double!' : warn, 32, 88, 15, { align: 'left', weight: 600, color: late ? '#ffd23f' : '#ffb3a8' });
+
+  // weather forecast under it: each zone, what it's doing now and next round
+  const zones = def.weather ?? [];
+  if (zones.length && b.sub !== 'tour' && b.sub !== 'orderRoll' && b.sub !== 'orderShow') {
+    const h = 30 + zones.length * 46;
+    ctx.fillStyle = 'rgba(20,12,40,0.72)';
+    roundRect(ctx, 16, 112, 330, h, 16);
+    ctx.fill();
+    text(ctx, 'Weather', 32, 130, 15, { align: 'left', color: '#c9bdf5', weight: 700 });
+    zones.forEach((z, i) => {
+      const f = forecast(b, z);
+      const y = 154 + i * 46;
+      ctx.fillStyle = WEATHER_COLOR[z.kind];
+      ctx.beginPath();
+      ctx.arc(38, y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      const pulse = f.warn ? 0.75 + Math.sin(t * 6) * 0.25 : 1;
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      text(ctx, z.name, 52, y, 16, { align: 'left', color: WEATHER_COLOR[z.kind] });
+      ctx.restore();
+      if (f.next) text(ctx, f.next, 334, y, 13, { align: 'right', color: '#ffffff', weight: 600 });
+      text(ctx, f.now, 52, y + 20, 12, { align: 'left', color: f.warn ? '#ffd9a0' : '#d8d2ee', weight: 600 });
+    });
+  }
 
   // bottom: player cards in turn order: crowns, keys, HP and items
   const n = b.order.length;
@@ -136,12 +163,12 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     if (first) {
       const bonus = [mine.dice > 2 && !mine.rollCap ? '3 dice!' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `snared: 1 die, max ${mine.rollCap}` : ''].filter(Boolean).join('  ');
       text(ctx, bonus || `Doubles pay +${DOUBLES_KEYS} keys`, 640, 150, 24, { color: '#ffd23f' });
-    } else text(ctx, `${b.rolls.map((r, i) => `Die ${i + 1}: ${r}`).join('   ')}`, 640, 150, 24, { color: '#ffd23f' });
+    } else text(ctx, `${b.rolls.map((r, i) => `Die ${i + 1}: ${fog ? '?' : r}`).join('   ')}`, 640, 150, 24, { color: '#ffd23f' });
   } else if (b.sub === 'rolling') {
     text(ctx, `${name} is rolling...`, 640, 110, 32, { color: '#ffffff' });
   } else if (b.sub === 'rolled') {
     const final = b.rolls.length === 0 || b.rolls.length >= b.diceN;
-    const big = final ? b.roll : b.rolls[b.rolls.length - 1];
+    const big = fog ? '?' : final ? b.roll : b.rolls[b.rolls.length - 1];
     const col = b.doubles && final ? '#7cf3ff' : '#ffd23f';
     // the number slams in big, with a sunburst behind it
     sunburst(ctx, 640, 190, final ? 260 : 180, b.t * 3, final && b.doubles ? '#7cf3ff' : me?.color ?? '#ffd23f', 0.45 * Math.max(0, 1 - b.t / 1.6), 16);
@@ -151,8 +178,9 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     slam(ctx, String(big), 640, 190, final ? 170 : 120, b.t, col);
     ctx.restore();
     if (final) {
-      if (b.rolls.length > 1 && b.t > 0.2) text(ctx, b.rolls.join('  +  ') + (b.roll !== b.rolls.reduce((x, y) => x + y, 0) ? '  + bonus' : ''), 640, 290, 26, { color: '#ffffff' });
-      if (b.doubles && b.t > 0.35) {
+      if (fog && b.t > 0.2) text(ctx, 'Hidden in the Fog Marsh!', 640, 290, 26, { color: '#c9d6e8' });
+      else if (b.rolls.length > 1 && b.t > 0.2) text(ctx, b.rolls.join('  +  ') + (b.roll !== b.rolls.reduce((x, y) => x + y, 0) ? '  + bonus' : ''), 640, 290, 26, { color: '#ffffff' });
+      if (b.doubles && !fog && b.t > 0.35) {
         const p = Math.min(1, (b.t - 0.35) / 0.25);
         ctx.save();
         ctx.translate(640, 350);
@@ -161,7 +189,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
         text(ctx, `DOUBLES!  +${DOUBLES_KEYS} keys`, 0, 0, 44, { color: '#7cf3ff' });
         ctx.restore();
       }
-      if (b.t > 0.35) text(ctx, `${name} moves ${b.roll} space${b.roll === 1 ? '' : 's'}!`, 640, b.doubles ? 404 : 330, 28, { color: me?.color ?? '#fff' });
+      if (b.t > 0.35) text(ctx, fog ? `${name} moves ? spaces...` : `${name} moves ${b.roll} space${b.roll === 1 ? '' : 's'}!`, 640, b.doubles && !fog ? 404 : 330, 28, { color: me?.color ?? '#fff' });
     } else if (b.t > 0.25) text(ctx, `Die ${b.rolls.length}: ${big}`, 640, 290, 26, { color: '#ffffff' });
   } else if (b.sub === 'branch') {
     text(ctx, `Pick a path: ${STICK()} to aim, ${A()} to go`, 640, 110, 32, { color: '#ffffff' });

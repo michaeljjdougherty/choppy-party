@@ -593,7 +593,7 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
     if (mem.n < 0) {
       // smart bots head for the nearest Crown Chest; others pick at random
       let best = Math.floor(rand(r) * b.branch.options.length);
-      if (smart() && b.crowns.length) {
+      if (smart() && b.crowns.length && !b.weather?.blind.includes(id)) {
         let bd = Infinity;
         b.branch.options.forEach((o, i) => {
           const fd = forwardDist(def, b, o, 60);

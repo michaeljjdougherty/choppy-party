@@ -3,6 +3,7 @@ import { NO_INPUT } from '../types';
 import { rand, randInt, shuffle } from '../rng';
 import { getBoard } from './boards';
 import { buildTour } from './tour';
+import { WEATHER, flareThisRound, inZone, newWeather, stormThisRound } from './weather';
 import { ITEMS, ITEM_IDS } from './items';
 import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt } from './types';
 import { COUNTER_START, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
@@ -26,8 +27,14 @@ export const DOUBLES_EXTRA = 1.1;
 export const DOUBLES_KEYS = 5;
 
 /** Last die is down: add it up, pay out doubles, clear the one-roll boosts. */
-function finishRoll(s: BoardState, me: BoardPlayer): void {
+function finishRoll(s: BoardState, def: BoardDef, me: BoardPlayer): void {
   const sum = s.rolls.reduce((a, b) => a + b, 0);
+  // Low Gravity: rolls from the Command Core float a little further
+  if (inZone(def, me.node, 'lowgrav')) {
+    me.rollBonus += WEATHER.lowGravBonus;
+    say(s, `Low gravity! +${WEATHER.lowGravBonus} to your roll`, '#b48cff');
+  }
+
   if (sum === 7) me.stats.sevens++;
   s.doubles = s.rolls.length >= 2 && new Set(s.rolls).size < s.rolls.length;
   if (s.doubles) {
@@ -78,6 +85,7 @@ export function createBoard(boardId: string, playerIds: string[], maxTurns: numb
     event: null,
     resume: null,
     night: false,
+    weather: newWeather(),
     counter: COUNTER_START,
     banner: null,
     fx: [],
@@ -106,6 +114,11 @@ export function createBoard(boardId: string, playerIds: string[], maxTurns: numb
   }
   while (s.crowns.length < pr.chests) placeChest(s, def);
   planHazards(s, def);
+  const w = s.weather;
+  w.wind = rand(rng) < 0.5 ? 1 : -1;
+  w.windNext = rand(rng) < 0.5 ? 1 : -1;
+  w.heatNext = rand(rng) < WEATHER.heatChance;
+  w.rainNext = !w.heatNext && rand(rng) < WEATHER.rainChance;
   if (tour) {
     s.tour = { steps: buildTour(def, s), i: 0 };
     s.sub = 'tour';
@@ -373,6 +386,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       s.rolls = [];
       s.diceN = 0;
       s.doubles = false;
+      s.weather.hiddenRoll = false;
       if (me.ko) {
         // knocked out last time: rest at camp this turn
         if (s.t < dt * 1.5) say(s, 'Resting at the Respawn Camp', '#ffb347');
@@ -393,10 +407,14 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       }
       if ((inp.aPressed && s.t > 0.3) || s.t > AUTO_ROLL) {
         // dice come out one at a time: A for the first die, A again for the next
-        if (s.rolls.length === 0) s.diceN = me.rollCap ? 1 : Math.max(1, me.dice);
+        if (s.rolls.length === 0) {
+          s.diceN = me.rollCap ? 1 : Math.max(1, me.dice);
+          // Fog Marsh at night: nobody sees the roll until the move is over
+          s.weather.hiddenRoll = s.night && inZone(def, me.node, 'fog');
+        }
         // Sticky Cube and Root Snare: a single die that only shows 1 to 3
         s.rolls.push(randInt(s.rng, 1, me.rollCap || 6));
-        if (s.rolls.length >= s.diceN) finishRoll(s, me);
+        if (s.rolls.length >= s.diceN) finishRoll(s, def, me);
         set(s, 'rolling');
       }
       break;
@@ -445,7 +463,11 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         break;
       }
       const ex = exits(def, s, me.node);
-      if (ex.length > 1) {
+      if (ex.length > 1 && inZone(def, me.node, 'lowgrav')) {
+        // Low Gravity: no steering at forks, you float off down any path
+        s.hop = { from: me.node, to: ex[Math.floor(rand(s.rng) * ex.length)], t: 0 };
+        say(s, 'Low gravity! Drifting down a random path', '#b48cff');
+      } else if (ex.length > 1) {
         s.branch = { options: ex, sel: 0 };
         set(s, 'branch');
       } else {
@@ -598,14 +620,25 @@ function targetsFor(s: BoardState, id: string): string[] {
   return s.order.filter((o) => o !== id);
 }
 
+/** Item targets: anyone except players hidden in the Fog Marsh at night. */
+function fogged(s: BoardState, def: BoardDef, id: string): boolean {
+  return s.night && inZone(def, s.players[id].node, 'fog');
+}
+function itemTargets(s: BoardState, def: BoardDef, id: string): string[] {
+  return targetsFor(s, id).filter((o) => !fogged(s, def, o));
+}
+
 function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
   const me = s.players[id];
   const item = me.items[slot];
   if (!item) return;
   const info = ITEMS[item];
   if (info.target) {
-    const options = targetsFor(s, id);
-    if (!options.length) return;
+    const options = itemTargets(s, def, id);
+    if (!options.length) {
+      if (targetsFor(s, id).length) say(s, 'Everyone is hidden in the fog!', '#c9d6e8');
+      return;
+    }
     s.prompt = { kind: 'target', purpose: 'item', item, options, sel: 0 };
     s.t = 0;
     return;
@@ -638,7 +671,7 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
       let hit: string | null = null;
       let best = 99;
       for (const o of s.order) {
-        if (o === id) continue;
+        if (o === id || fogged(s, def, o)) continue;
         const k = d.get(s.players[o].node);
         if (k !== undefined && k > 0 && k < best) {
           best = k;
@@ -657,7 +690,7 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
       let got = 0;
       for (const o of s.order) {
         const p = s.players[o];
-        if (o === id || !near.has(p.node)) continue;
+        if (o === id || !near.has(p.node) || fogged(s, def, o)) continue;
         if (p.shield) {
           p.shield = false;
           fx(s, 'block', p.node, o);
@@ -772,6 +805,18 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
   const me = s.players[id];
   const node = def.nodes[me.node];
   const passing = s.stepsLeft > 0;
+  // keys a flash flood washed out are free to grab
+  const loose = s.weather.loose[me.node];
+  if (loose) {
+    delete s.weather.loose[me.node];
+    me.keys += loose;
+    fx(s, 'keys', me.node, id, loose);
+    say(s, `Picked up ${loose} washed-up keys!`, '#3fa9f5');
+  }
+  // Heatwave: every step on the salt flats costs HP
+  if (s.weather.heat && inZone(def, me.node, 'heat')) {
+    if (hurt(s, def, id, WEATHER.heatDamage)) return;
+  }
   if (s.crowns.includes(me.node)) {
     if (me.keys >= s.preset.crownPrice) ask(s, { kind: 'crown', node: me.node });
     else say(s, `Need ${s.preset.crownPrice} keys for the crown`, '#ffd23f');
@@ -822,6 +867,8 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
 
 function onLand(s: BoardState, def: BoardDef, id: string): void {
   const me = s.players[id];
+  s.weather.hiddenRoll = false;
+  clearBlind(s, def);
   const node = def.nodes[me.node];
   const pr = s.preset;
   const dbl = lateGame(s) ? 2 : 1;
@@ -846,6 +893,10 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
       break;
     }
     case 'heart': {
+      if (s.weather.heat && inZone(def, me.node, 'heat')) {
+        say(s, 'Heatwave! This heart is all dried up', '#ff6a3d');
+        break;
+      }
       const h = heal(s, me, pr.heartSpace * dbl);
       say(s, h ? `+${h} HP` : 'Already at full HP', '#4cd97b');
       break;
@@ -1159,8 +1210,81 @@ function roundEnd(s: BoardState, def: BoardDef): void {
       }
     }
   }
+  weatherRoundEnd(s, def, lines);
   planHazards(s, def);
   if (lines.length) say(s, lines.join('  ·  '), '#ff9f1c');
   else s.t = 2.2; // nothing happened: move on quickly
 }
 
+
+// ---- weather ------------------------------------------------------------------------------------
+
+/** Slide a player n spaces along the path (dir 1) or back down it (dir -1). */
+function push(s: BoardState, def: BoardDef, id: string, n: number, dir: number): void {
+  const p = s.players[id];
+  for (let i = 0; i < n; i++) {
+    const to = dir > 0 ? exits(def, s, p.node)[0] : prevs(def)[p.node]?.[0];
+    if (!to) break;
+    p.node = to;
+  }
+}
+
+/** Sandstorm blindness lasts until you're out of the dunes. */
+function clearBlind(s: BoardState, def: BoardDef): void {
+  s.weather.blind = s.weather.blind.filter((o) => s.players[o] && inZone(def, s.players[o].node, 'sandstorm'));
+}
+
+function weatherRoundEnd(s: BoardState, def: BoardDef, lines: string[]): void {
+  const w = s.weather;
+  for (const z of def.weather ?? []) {
+    const here = s.order.filter((o) => !s.players[o].ko && z.nodes.includes(s.players[o].node));
+    switch (z.kind) {
+      case 'wind':
+        for (const o of here) {
+          fx(s, 'gust', s.players[o].node, o, w.wind);
+          push(s, def, o, WEATHER.windPush, w.wind);
+        }
+        if (here.length) lines.push(`Will-o'-Wind blew ${here.length} ${w.wind > 0 ? 'ahead' : 'back'}`);
+        break;
+      case 'flare':
+        if (!flareThisRound(s)) break;
+        fx(s, 'flare', z.nodes[0]);
+        for (const o of here) hurt(s, def, o, WEATHER.flareDamage);
+        lines.push(here.length ? `SOLAR FLARE scorched ${here.length}!` : 'A solar flare lit up the ring');
+        break;
+      case 'sandstorm':
+        if (!stormThisRound(s)) break;
+        fx(s, 'sandstorm', z.nodes[Math.floor(z.nodes.length / 2)]);
+        for (const o of here) {
+          if (hurt(s, def, o, WEATHER.stormDamage)) continue;
+          push(s, def, o, WEATHER.stormPush, 1);
+          if (!w.blind.includes(o)) w.blind.push(o);
+        }
+        lines.push(here.length ? `SANDSTORM caught ${here.length}!` : 'A sandstorm swept the dunes');
+        break;
+      case 'flood':
+        if (!w.rain) break;
+        fx(s, 'flood', z.nodes[Math.floor(z.nodes.length / 2)]);
+        for (const o of here) {
+          const p = s.players[o];
+          const drop = Math.min(WEATHER.floodDrop, p.keys);
+          if (drop) {
+            p.keys -= drop;
+            w.loose[p.node] = (w.loose[p.node] ?? 0) + drop;
+            fx(s, 'keys', p.node, o, -drop);
+          }
+          push(s, def, o, WEATHER.floodPush, 1);
+          fx(s, 'gust', p.node, o, 1);
+        }
+        lines.push(here.length ? `FLASH FLOOD washed ${here.length} downstream!` : 'The riverbed flooded');
+        break;
+    }
+  }
+  // tomorrow's weather becomes today's, and a new forecast rolls in
+  w.wind = w.windNext;
+  w.windNext = rand(s.rng) < 0.5 ? 1 : -1;
+  w.rain = w.rainNext;
+  w.heat = w.heatNext;
+  w.heatNext = rand(s.rng) < WEATHER.heatChance;
+  w.rainNext = !w.heatNext && rand(s.rng) < WEATHER.rainChance;
+}

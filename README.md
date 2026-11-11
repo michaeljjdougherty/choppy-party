@@ -66,6 +66,8 @@ Sound effects are synthesized with WebAudio (`src/client/sfx.ts`); `src/client/j
 
 Water and sand use two CC BY 4.0 models (credits in `public/tex/CREDITS-sea-and-sand.txt`): the sea animation is baked from "Sea part" by Ayberk Tosunoglu, and the sand ripples come from "Desert Landscape" by Šimon Ustal.
 
+The board dice are "Dice" by Geug (CC BY 4.0, https://sketchfab.com/3d-models/dice-4091e2ef8de54644a5ab68a646d8d9ca), simplified and recoloured (credit in `public/models/misc/CREDITS-dice.txt`).
+
 3D models are from Kenney's CC0 kits (Platformer, Mini Characters, Pirate, Mini Forest, Prototype) in `public/models`, with their license files. The 10 playable characters are listed in `src/shared/players.ts`.
 
 ## Online

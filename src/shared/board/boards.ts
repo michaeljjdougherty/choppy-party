@@ -3,6 +3,7 @@ import { DEFAULT_PRESET } from './types';
 import { Builder, between, ellipse, roundedRect, trail, type Pt, type Pt3 } from './layout';
 import { groundAt } from './terrain';
 import type { Hill } from './types';
+import type { WeatherZone } from './weather';
 
 function nearest(b: Builder, ids: string[], x: number, z: number): string {
   let best = ids[0];
@@ -116,6 +117,10 @@ function lanternHollow(): BoardDef {
     crownSpots,
     pines,
     hills,
+    weather: [
+      { kind: 'fog', name: 'Fog Marsh', area: 'the low lane by the pond', nodes: loop.filter((id) => b.nodes[id].z > 6.5 && id !== start) },
+      { kind: 'wind', name: "Will-o'-Wind", area: 'the hilltop Chapel Path', nodes: chapel },
+    ] satisfies WeatherZone[],
     preset: { ...DEFAULT_PRESET, chests: 1 },
   };
 }
@@ -157,6 +162,12 @@ function cosmoJunction(): BoardDef {
   sprinkle(b, ring, 'spring', [0.05, 0.6]);
   b.set(lane[5], 'stew');
   const crownSpots = chestSpots(b, [...ring, ...lane, ...hub, ...upW, ...downE, ...sky, ...dock], 22, [left, right, start]);
+  // glass domes along the ring keep you safe from solar flares
+  const domes = [0.125, 0.375, 0.625, 0.875].flatMap((f) => {
+    const i = Math.round(f * ring.length);
+    return [ring[(i - 1 + ring.length) % ring.length], ring[i % ring.length], ring[(i + 1) % ring.length]];
+  });
+  const shelters = [...new Set([...domes, start])];
   return {
     id: 'cosmo-junction',
     name: 'Cosmo Junction',
@@ -168,6 +179,10 @@ function cosmoJunction(): BoardDef {
     start,
     camp: start,
     crownSpots,
+    weather: [
+      { kind: 'flare', name: 'Solar Flare', area: 'the open outer ring', nodes: ring.filter((id) => !shelters.includes(id)), shelters },
+      { kind: 'lowgrav', name: 'Low Gravity', area: 'the Command Core', nodes: hub },
+    ] satisfies WeatherZone[],
     preset: { ...DEFAULT_PRESET, chests: 1 },
   };
 }
@@ -245,6 +260,11 @@ function goldRushGulch(): BoardDef {
     crownSpots,
     stations,
     hills,
+    weather: [
+      { kind: 'sandstorm', name: 'Sandstorm', area: 'the west dunes', nodes: loop.filter((id) => b.nodes[id].x < -16.5 && id !== start) },
+      { kind: 'flood', name: 'Flash Flood', area: 'the east riverbed', nodes: loop.filter((id) => b.nodes[id].x > 16.5 && id !== start) },
+      { kind: 'heat', name: 'Heatwave', area: 'the south salt flats', nodes: loop.filter((id) => b.nodes[id].z > 11 && Math.abs(b.nodes[id].x) < 16.5 && !mesa.includes(id) && id !== start) },
+    ] satisfies WeatherZone[],
     preset: { ...DEFAULT_PRESET, chests: 2 },
   };
 }

@@ -119,8 +119,10 @@ describe('board layer', () => {
     stepParty(p, { p0: A }, DT);
     const b = p.board!;
     const def = getBoard(b.boardId);
-    const duel = Object.values(def.nodes).find((n) => n.type === 'duel')!;
-    const before = Object.values(def.nodes).find((n) => n.next.includes(duel.id))!;
+    // a duel space reached from a plain stretch of path (no fork to pick)
+    const plain = (id: string) => Object.values(def.nodes).find((n) => n.next.length === 1 && !n.gate && n.next[0] === id);
+    const duel = Object.values(def.nodes).find((n) => n.type === 'duel' && plain(n.id))!;
+    const before = plain(duel.id)!;
     const first = b.order[0];
     b.players[first].node = before.id;
     b.sub = 'rolled';

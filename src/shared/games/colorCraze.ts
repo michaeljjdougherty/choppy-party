@@ -51,7 +51,8 @@ export const tileAt = (x: number, y: number) => {
 export const tileCenter = (i: number): [number, number] => [FX0 + ((i % COLS) + 0.5) * TILE, FY0 + (Math.floor(i / COLS) + 0.5) * TILE];
 
 function deal(s: CrazeState): void {
-  const n = Math.min(PALETTE.length, 3 + Math.floor(s.round / 2));
+  // a big crowd gets more colours sooner, so it thins out in about the same time as a small one
+  const n = Math.min(PALETTE.length, 3 + Math.floor(s.round / 2) + Math.floor(s.hoppers.length / 4));
   s.tiles = s.tiles.map(() => randInt(s.rng, 0, n - 1));
 }
 

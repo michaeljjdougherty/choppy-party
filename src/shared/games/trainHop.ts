@@ -17,7 +17,7 @@ export const WARN = 1.3;
 const R = 22;
 const SPEED = 310;
 const TRAIN_SPEED = 950;
-const DURATION = 45;
+const DURATION = 55;
 const MAX_COINS = 7;
 
 export interface Train {

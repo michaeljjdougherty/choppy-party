@@ -4,7 +4,7 @@ import { drawTimer, playerById, popText } from '../draw';
 import { rand, randRange, type Rng } from '../rng';
 import { bump, jump, newBody, steer, stepVertical, type Body } from '../physics';
 
-const DURATION = 35;
+const DURATION = 55;
 const SPEED = 300;
 const R = 22;
 export const FALL_TIME = 1.1;

@@ -20,7 +20,7 @@ const CHEF_SPEED = 0.96;
 const POUNCE = 760;
 const POUNCE_CD = 2.2;
 const STUN = 1.2;
-const MAX_T = 45;
+const MAX_T = 55;
 const MAX_SNACKS = 6;
 export const SNACKS = ['food/apple', 'food/banana', 'food/cupcake', 'food/donut-sprinkles', 'food/croissant', 'food/cherries', 'food/pie', 'food/waffle'];
 

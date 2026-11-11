@@ -17,7 +17,7 @@ const HOLDER_BOOST = 1.1;
 const DASH = 700;
 const DASH_CD = 1.1;
 const PASS_CD = 0.6;
-const MAX_T = 80;
+const MAX_T = 95;
 
 export interface Sailor extends Body {
   id: string;
@@ -47,8 +47,10 @@ function newBomb(s: PotatoState): void {
   const l = live(s);
   if (l.length < 2) return;
   s.holder = l[Math.floor(rand(s.rng) * l.length)].id;
-  // fuses get shorter as the deck empties, so the end game stays tense
-  s.fuseMax = randRange(s.rng, 7, 12) * (0.6 + 0.4 * Math.min(1, l.length / 6));
+  // fuses are sized so the whole game lasts about a minute, whatever the crowd:
+  // a duel gets one long fuse, a full deck lots of short ones
+  const rounds = Math.max(1, s.sailors.length - 1);
+  s.fuseMax = Math.max(6, Math.min(22, 52 / rounds)) * randRange(s.rng, 0.85, 1.15);
   s.fuse = s.fuseMax;
   s.passCd = 1;
 }

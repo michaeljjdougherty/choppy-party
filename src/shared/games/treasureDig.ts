@@ -14,7 +14,7 @@ export const DX0 = 120, DX1 = 1160, DY0 = 160, DY1 = 660;
 const R = 22;
 const SPEED = 290;
 const READY = 3;
-const TIME = 45;
+const TIME = 55;
 const DIG = 9; // A presses to dig a mound out
 const MOUNDS = 9;
 const MOUND_R = 34;

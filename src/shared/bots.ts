@@ -262,7 +262,9 @@ function graveBot(g: GraveyardState, id: string, sk: Skill, mem: BotMem, r: Rng)
   look(me, sk, mem, r, (x, y) => {
     if (outside(x, y, GX0, GX1, GY0, GY1)) return 1e6;
     let c = goal ? Math.hypot(goal.x - x, goal.y - y) : 0;
-    if (me.safe <= 0) for (const h of ghosts) c += Math.max(0, 120 - Math.hypot(h.x - x, h.y - y)) * 8 * sk.sense;
+    // ghost touches cost half your candles, so the more you carry, the wider the berth (empty-handed: barely care)
+    const stake = 0.25 + Math.min(1, me.candles / 6);
+    if (me.safe <= 0) for (const h of ghosts) c += Math.max(0, 110 - Math.hypot(h.x - x, h.y - y)) * 6 * sk.sense * stake;
     return c;
   });
   if (goal && Math.hypot(goal.x - me.x, goal.y - me.y) < 60) toward(me, goal.x, goal.y, mem);

@@ -13,8 +13,13 @@ const SCALE = 0.82; // drawn a little larger than the collision radius, cartoon 
 export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerInfo[]): View {
   const scene = makeScene(env, { sky: 'day', skyTop: '#5ec8ff', skyBottom: '#d8f3ff', fog: ['#bfe8ff', 30, 70] });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
-  camera.position.set(0, 12.5, 14.5);
-  camera.lookAt(0, 0, 0.9);
+  // the camera frames the rink: closer for a small crowd, and it creeps in as the ice shrinks
+  let zoom = Math.max(0.62, (state.start ?? 300) / 300);
+  const frame = () => {
+    camera.position.set(0, 12.5 * zoom, 14.5 * zoom);
+    camera.lookAt(0, 0, 0.9);
+  };
+  frame();
 
   const water = toonWater('#1273d6', 22);
   const sea = mesh(new THREE.CircleGeometry(80, 64), water.material, { cast: false, receive: true });
@@ -92,6 +97,9 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
         o.rotation.x = Math.sin(t * 1.1 + i) * 0.15;
       });
       last = s;
+      const want = Math.max(0.6, Math.min(1, (s.rink + 110) / 410));
+      zoom += (want - zoom) * Math.min(1, dt * 1.5);
+      frame();
       const r = s.rink * PX;
       ice.scale.set(r, 1, r);
       rim.scale.set(r + 0.18, 1, r + 0.18);

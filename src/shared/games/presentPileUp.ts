@@ -10,7 +10,7 @@ import { drawTimer, playerById, popText } from '../draw';
 export const GIFT_W = 70; // gift width in arena px
 export const GIFT_H = 34;
 export const SWING = 80; // swing amplitude
-const DURATION = 30;
+const DURATION = 45;
 export const DROP_TIME = 0.32;
 const COOLDOWN = 0.25;
 const READY = 2;

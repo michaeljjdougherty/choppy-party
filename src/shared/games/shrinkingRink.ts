@@ -1,15 +1,16 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
-import { drawTimer, text } from '../draw';
+import { text } from '../draw';
 import { stepVertical, type Body } from '../physics';
 
 const CX = 640;
 const CY = 390;
 const R = 24; // player radius
-const START_RINK = 300;
+// the rink is sized for the crowd: roomier with more skaters, snug for a duel
+const startRink = (n: number) => Math.min(320, 240 + n * 8);
 const END_RINK = 70;
-const SHRINK_TIME = 40;
-const TIME_LIMIT = 50;
+const SHRINK_TIME = 50; // reaches END_RINK by here...
+const CRUSH_TIME = 14; // ...then keeps closing to nothing, so there is always a winner (no timer)
 const ACCEL = 950;
 const MAX_SPEED = 360;
 const DASH_SPEED = 620;
@@ -31,6 +32,7 @@ interface Skater extends Body {
 export interface RinkState {
   t: number;
   rink: number;
+  start?: number;
   skaters: Skater[];
 }
 
@@ -48,7 +50,8 @@ export const shrinkingRink: Minigame<RinkState> = {
     const spawnR = n === 1 ? 0 : Math.min(200, 90 + n * 14);
     return {
       t: 0,
-      rink: START_RINK,
+      rink: startRink(n),
+      start: startRink(n),
       skaters: players.map((p, i) => {
         const ang = (i / n) * Math.PI * 2 - Math.PI / 2;
         return {
@@ -73,7 +76,8 @@ export const shrinkingRink: Minigame<RinkState> = {
 
   step(s: RinkState, inputs: Inputs, dt: number): void {
     s.t += dt;
-    s.rink = START_RINK - (START_RINK - END_RINK) * Math.min(1, s.t / SHRINK_TIME);
+    const st = s.start ?? 300;
+    s.rink = s.t < SHRINK_TIME ? st - (st - END_RINK) * (s.t / SHRINK_TIME) : END_RINK * Math.max(0, 1 - (s.t - SHRINK_TIME) / CRUSH_TIME);
 
     for (const k of s.skaters) {
       if (!k.alive) {
@@ -161,7 +165,7 @@ export const shrinkingRink: Minigame<RinkState> = {
   isOver(s: RinkState): boolean {
     const alive = s.skaters.filter((k) => k.alive).length;
     const needed = s.skaters.length > 1 ? 1 : 0;
-    return alive <= needed || s.t >= TIME_LIMIT;
+    return alive <= needed || s.t >= SHRINK_TIME + CRUSH_TIME + 2;
   },
 
   results(s: RinkState): ResultRow[] {
@@ -177,7 +181,6 @@ export const shrinkingRink: Minigame<RinkState> = {
 
   /** HUD drawn over the 3D view. */
   draw(ctx, s) {
-    drawTimer(ctx, TIME_LIMIT - s.t);
     const alive = s.skaters.filter((k) => k.alive).length;
     text(ctx, `${alive} left`, 1240, 37, 26, { align: 'right' });
   },

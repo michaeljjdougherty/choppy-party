@@ -14,7 +14,7 @@ export const BLAST = 54;
 const SPEED = 290;
 const R = 22;
 const HEARTS = 1;
-const MAX_T = 60;
+const MAX_T = 85;
 const CRATER_LIFE = 7;
 const CRATER_R = 42;
 
@@ -87,13 +87,14 @@ export const meteorShower: Minigame<MeteorState> = {
   step(s: MeteorState, inputs: Inputs, dt: number): void {
     s.t += dt;
     s.booms = [];
-    const k = Math.min(1, s.t / 45);
+    const k = Math.min(1, s.t / 50);
     const live = alive(s);
 
     // spawn: most meteors aim near a random player, so nobody can hide in a corner
     s.spawn -= dt;
     if (s.spawn <= 0) {
-      s.spawn = (0.75 - 0.45 * k) / Math.max(0.7, Math.sqrt(live.length / 4));
+      // fewer astronauts, fewer meteors, so each one faces the same danger in a duel as in a crowd
+      s.spawn = (0.75 - 0.45 * k) * Math.max(0.55, Math.min(2.4, 4 / Math.max(1, live.length)));
       let x: number, y: number;
       if (live.length && rand(s.rng) < 0.7) {
         const target = live[Math.floor(rand(s.rng) * live.length)];

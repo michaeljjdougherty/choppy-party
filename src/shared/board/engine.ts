@@ -612,7 +612,8 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
   const age = s.promptAge ?? 1;
   const yes = inp.aPressed && age > PROMPT_LOCK;
   const no = inp.bPressed && s.t > 0.3;
-  const auto = s.t > AUTO_CHOICE;
+  // s.t restarts on every cursor move, so promptAge is the hard cap (stick drift can't hold a turn forever)
+  const auto = s.t > AUTO_CHOICE || age > AUTO_CHOICE * 3;
   const stick = s.t > 0.2 && Math.abs(inp.x) > 0.6 ? Math.sign(inp.x) : 0;
   const stickY = s.t > 0.2 && Math.abs(inp.y) > 0.6 ? Math.sign(inp.y) : 0;
 

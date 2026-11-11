@@ -55,7 +55,7 @@ export function pancakeView(env: THREE.Texture, state: PancakeState, players: Pl
     place(scene, name, x, 0, z, { s: name === 'food/bottle-ketchup' ? 1.3 : F, ry });
   }
   const n = state.ids.length;
-  const gap = 2.3;
+  const gap = Math.min(2.3, 17 / Math.max(1, n));
   const plateMat = toy('#ffffff', 0.15);
   const cakeGeo = new THREE.CylinderGeometry(0.72, 0.76, 0.16, 36);
   const cakeMat = toy('#e9a24a', 0.55);
@@ -113,7 +113,7 @@ export function pancakeView(env: THREE.Texture, state: PancakeState, players: Pl
       const unit = Math.min(0.16, 5.5 / Math.max(30, best));
       unitSmooth += (unit - unitSmooth) * Math.min(1, dt * 4);
       const top = Math.min(best, MAX_CAKES) * unitSmooth;
-      const dist = Math.max(9, n * 1.25 + 5);
+      const dist = Math.max(9, n * gap * 0.62 + 6.5);
       camera.position.set(0, 3.2 + top * 0.45, dist);
       camera.lookAt(0, 1.2 + top * 0.45, 0);
       for (const id of s.ids) {

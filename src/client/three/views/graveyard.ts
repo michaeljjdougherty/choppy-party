@@ -3,7 +3,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import { GRAVES, GX0, GX1, GY0, GY1, type GraveyardState } from '../../../shared/games/graveyardShift';
 import { place, texture } from '../assets';
 import { Fx } from '../fx';
-import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
+import { PX, makeScene, mesh, toy, wx, wz, frameRect } from '../kit';
 import type { View } from '../stage';
 import { crew, fitProp, pool } from './crew';
 
@@ -23,8 +23,7 @@ export function graveyardView(env: THREE.Texture, state: GraveyardState, players
   });
   scene.environmentIntensity = 0.25;
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
-  camera.position.set(0, 17.5, 17);
-  camera.lookAt(0, 0, 2);
+  frameRect(camera, GX0, GX1, GY0, GY1, 0.82);
 
   const fw = (GX1 - GX0) * PX;
   const fd = (GY1 - GY0) * PX;

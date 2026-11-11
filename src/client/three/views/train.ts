@@ -3,7 +3,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import { CAR_LEN, TRACKS, TRACK_HALF, TX0, TX1, TY0, TY1, type TrainState } from '../../../shared/games/trainHop';
 import { place, prop } from '../assets';
 import { Fx, shake } from '../fx';
-import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
+import { PX, makeScene, mesh, toy, wx, wz, frameRect } from '../kit';
 import type { View } from '../stage';
 import { crew, pool } from './crew';
 import { sandMaterial } from '../nature';
@@ -32,8 +32,7 @@ function car(name: string): THREE.Object3D {
 export function trainView(env: THREE.Texture, state: TrainState, players: PlayerInfo[]): View {
   const scene = makeScene(env, { sky: 'day', skyTop: '#7cc8ff', skyBottom: '#ffe9c4', fog: ['#f2dcb4', 40, 100], shadowSize: 22 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
-  camera.position.set(0, 17, 14.5);
-  camera.lookAt(0, 0, 1.6);
+  frameRect(camera, TX0, TX1, TY0, TY1, 0.88);
 
   const fw = (TX1 - TX0) * PX;
   const fd = (TY1 - TY0) * PX;

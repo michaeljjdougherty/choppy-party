@@ -5,7 +5,7 @@ import { BALL_R, PADDLE_H, PX0, PX1, PY0, PY1, type PaddleState } from '../../..
 import { ChoppyModel } from '../choppy';
 import { place, texture } from '../assets';
 import { Fx, shake } from '../fx';
-import { PX, makeScene, mesh, toonWater, toy, wx, wz } from '../kit';
+import { PX, makeScene, mesh, toonWater, toy, wx, wz, frameRect } from '../kit';
 import type { Tag, View } from '../stage';
 import { fitProp } from './crew';
 import { sandMaterial } from '../nature';
@@ -88,8 +88,7 @@ export function fuseView(env: THREE.Texture, state: FuseState, players: PlayerIn
 export function paddleView(env: THREE.Texture, state: PaddleState, players: PlayerInfo[]): View {
   const scene = makeScene(env, { sky: 'day', skyTop: '#6ccaff', skyBottom: '#e6f7ff', fog: ['#cdeeff', 40, 110], shadowSize: 18 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 300);
-  camera.position.set(0, 17, 12);
-  camera.lookAt(0, 0, 0.9);
+  frameRect(camera, PX0 - 40, PX1 + 40, PY0, PY1, 0.98);
   const water = toonWater('#1273d6', 22);
   const sea = mesh(new THREE.CircleGeometry(90, 64), water.material, { cast: false, receive: true });
   sea.rotation.x = -Math.PI / 2;

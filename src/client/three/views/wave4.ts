@@ -9,7 +9,7 @@ import { MID, SX0, SX1, SY0, SY1, type RepairState } from '../../../shared/games
 import { place, texture } from '../assets';
 import { ChoppyModel } from '../choppy';
 import { Fx, shake } from '../fx';
-import { PX, makeScene, mesh, toonWater, toy, wx, wz } from '../kit';
+import { PX, makeScene, mesh, toonWater, toy, wx, wz, frameRect } from '../kit';
 import { sandMaterial } from '../nature';
 import type { Tag, View } from '../stage';
 import { sfx } from '../../sfx';
@@ -120,8 +120,7 @@ export function cannonView(env: THREE.Texture, state: CannonState, players: Play
   const scene = makeScene(env, { sky: 'day', skyTop: '#73c3ff', skyBottom: '#ffeccf', fog: ['#cfe8ff', 40, 120], shadowSize: 22 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
   // framed to take in the captain at the cannon on the left as well as the whole deck
-  camera.position.set(-0.6, 18.2, 15.4);
-  camera.lookAt(-0.6, 0, 1.4);
+  frameRect(camera, KX0 - 190, KX1 + 20, KY0 - 30, KY1 + 30, 0.86);
   const water = toonWater('#1574c9', 20);
   const sea = mesh(new THREE.CircleGeometry(120, 64), water.material, { cast: false, receive: true });
   sea.rotation.x = -Math.PI / 2;

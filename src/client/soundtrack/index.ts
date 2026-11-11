@@ -38,6 +38,7 @@ const RECORDED: Record<string, string> = {
   'mr-chop': 'music/mr-chop.mp3',
   'duel-space': 'music/duel-space.mp3',
   'stew-space': 'music/stew-space.mp3',
+  results: 'music/results.mp3',
 };
 /** The composer, as the OST screen credits him. */
 export const COMPOSER = 'DJ Tuna (on the beat)';
@@ -63,34 +64,12 @@ const RECORDED_TRACKS: OstTrack[] = [
   { id: 'mr-chop', title: 'A Seat at the Infinite Table', where: 'Mister Chop' },
   { id: 'duel-space', title: 'Six Seconds to Draw', where: 'Duel Space' },
   { id: 'stew-space', title: 'Clash of the Cast Iron', where: 'Stew Battle Space' },
+  { id: 'results', title: 'Confetti Parade', where: 'Minigame Winner' },
 ];
 
-/** Generated screen songs and where they play ('title' and 'lobby' only stand in for the menu mp3). */
-const SCREEN_WHERE: Record<string, string> = {
-  results: 'Minigame Results',
-  finale: 'Final Results',
-  'bonus-reel': 'Bonus Chobglobs',
-  'duel-intro': 'Duels and Stew Battles',
-};
-
-/**
- * Every track on the OST screen: the recorded ones first, then the generated screen songs, then
- * one per minigame that's in the game (in the order the games are listed).
- */
-export function ostTracks(games: { id: string; name: string }[]): OstTrack[] {
-  const out = [...RECORDED_TRACKS];
-  for (const [id, where] of Object.entries(SCREEN_WHERE)) {
-    const s = byId.get(id);
-    if (s) out.push({ id, title: s.title, where });
-  }
-  const seen = new Set(out.map((x) => x.id));
-  for (const g of games) {
-    const s = songForGame(g.id, g.name);
-    if (seen.has(s.id)) continue;
-    seen.add(s.id);
-    out.push({ id: s.id, title: s.title, where: g.name });
-  }
-  return out;
+/** Every track on the OST screen: Michael's recorded songs, in album order (generated songs aren't listed). */
+export function ostTracks(): OstTrack[] {
+  return RECORDED_TRACKS.filter((x) => !brokenFiles.has(x.id));
 }
 
 /** Where a song with no working file and no spec of its own falls back to (followed until one plays). */

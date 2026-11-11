@@ -3,13 +3,13 @@ import { roundRect, text } from '../shared/draw';
 import { button, clicked, inside, pointerAt, takeStrayClick } from './ui';
 import { A, B, STICK, isTouch, promptKind } from './prompts';
 import { COMPOSER, music, ostTracks, type OstTrack } from './soundtrack';
-import { GAMES } from '../shared/games';
 import { sfx } from './sfx';
 import { sunburst } from './showtime';
 
 /**
- * "Choppy Party - OST": a soundtrack player opened from the main menu. Every song in the game is
- * listed, Michael's recorded tracks first. Like Settings, it takes every controller, keyboard and
+ * "Choppy Party - OST": DJ Tuna's jukebox, opened from the main menu. Only Michael's recorded
+ * songs are listed. The cover thumps on the bass, the glow behind it flares on each beat and
+ * confetti flies, so the screen dances to whatever is on. Like Settings, it takes every controller, keyboard and
  * touch button while open (input.grab); mouse and touch click rows and buttons directly.
  *
  *   up / down   pick a track        A   play it (A on the one playing pauses / carries on)
@@ -20,7 +20,20 @@ const CARD = { x: 60, y: 130, w: 460, h: 520 };
 /** Michael's album cover (DJ Tuna at the decks). */
 const cover = new Image();
 cover.src = 'ost-cover.jpg';
+const NEON = ['#ff3ea5', '#ffe14d', '#3ef0ff', '#9a5bff', '#5dff6a', '#ff8a1f'];
 const COLORS = ['#ff4d5a', '#ff8a1f', '#ffd23f', '#21c45a', '#2f8cff', '#9a5bff'];
+
+interface Bit {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rot: number;
+  vr: number;
+  life: number;
+  color: string;
+  note: boolean;
+}
 
 export class OstScreen {
   open = false;
@@ -35,6 +48,18 @@ export class OstScreen {
   private lastT = 0;
   private onClose: (() => void) | null = null;
   private freq: Uint8Array<ArrayBuffer> | null = null;
+  /** Smoothed loudness of the bass, the mids and everything (0..1). */
+  private bass = 0;
+  private mid = 0;
+  private level = 0;
+  /** Running average of the bass, so a beat is a jump above it. */
+  private bassAvg = 0;
+  /** 1 on a beat, fading to 0. */
+  private kick = 0;
+  private sinceKick = 0;
+  /** Beats so far: the glow changes colour on each one. */
+  private beats = 0;
+  private bits: Bit[] = [];
 
   constructor(private input: InputManager) {
     window.addEventListener(
@@ -49,7 +74,8 @@ export class OstScreen {
 
   show(onClose?: () => void): void {
     if (this.open) return;
-    this.tracks = ostTracks(GAMES);
+    this.tracks = ostTracks();
+    this.bits = [];
     this.open = true;
     this.openedAt = performance.now();
     this.onClose = onClose ?? null;
@@ -95,6 +121,7 @@ export class OstScreen {
     this.playing = i;
     this.elapsed = 0;
     music.override(this.tracks[i].id);
+    this.burst(CARD.x + CARD.w / 2, CARD.y + 140, 40);
     sfx.move();
   }
 
@@ -118,15 +145,95 @@ export class OstScreen {
     if (this.sel >= this.top + LIST.rows) this.top = this.sel - LIST.rows + 1;
   }
 
+  /** Read the music: bass, mids, overall level, and whether a beat just hit. */
+  private listen(dt: number, paused: boolean): void {
+    const an = paused ? null : music.analyser();
+    let bass = 0;
+    let mid = 0;
+    let all = 0;
+    if (an) {
+      if (!this.freq || this.freq.length !== an.frequencyBinCount) this.freq = new Uint8Array(new ArrayBuffer(an.frequencyBinCount));
+      an.getByteFrequencyData(this.freq);
+      const f = this.freq;
+      const avg = (a: number, b: number) => {
+        let s = 0;
+        for (let i = a; i < b; i++) s += f[i];
+        return s / ((b - a) * 255);
+      };
+      bass = avg(1, 6);
+      mid = avg(8, 40);
+      all = avg(1, 80);
+    }
+    const ease = (cur: number, want: number, up: number, down: number) => cur + (want - cur) * Math.min(1, dt * (want > cur ? up : down));
+    this.bass = ease(this.bass, bass, 30, 8);
+    this.mid = ease(this.mid, mid, 20, 6);
+    this.level = ease(this.level, all, 20, 4);
+    this.bassAvg += (bass - this.bassAvg) * Math.min(1, dt * 1.5);
+    this.sinceKick += dt;
+    this.kick = Math.max(0, this.kick - dt * 3.5);
+    if (bass > 0.3 && bass > this.bassAvg * 1.18 && this.sinceKick > 0.28) {
+      this.kick = 1;
+      this.sinceKick = 0;
+      this.beats++;
+      if (this.beats % 2 === 0) this.burst(CARD.x + CARD.w / 2, CARD.y + 140, 10);
+    }
+  }
+
+  /** Throw confetti and music notes out from a point. */
+  private burst(x: number, y: number, n: number): void {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 150 + Math.random() * 380;
+      this.bits.push({
+        x,
+        y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 160,
+        rot: Math.random() * 6,
+        vr: (Math.random() - 0.5) * 12,
+        life: 1.4 + Math.random() * 0.8,
+        color: NEON[i % NEON.length],
+        note: Math.random() < 0.25,
+      });
+    }
+    if (this.bits.length > 260) this.bits.splice(0, this.bits.length - 260);
+  }
+
+  private confetti(ctx: CanvasRenderingContext2D, dt: number): void {
+    for (const b of this.bits) {
+      b.vy += 520 * dt;
+      b.vx *= 1 - dt * 0.8;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.rot += b.vr * dt;
+      b.life -= dt;
+    }
+    this.bits = this.bits.filter((b) => b.life > 0 && b.y < 760);
+    for (const b of this.bits) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, b.life * 1.5);
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.rot);
+      if (b.note) {
+        text(ctx, '♪', 0, 0, 26, { color: b.color, outline: false, weight: 900 });
+      } else {
+        ctx.fillStyle = b.color;
+        ctx.fillRect(-6, -3, 12, 6);
+      }
+      ctx.restore();
+    }
+  }
+
   /** Draw the screen and handle mouse / touch. Call last, so it sits over everything. */
   draw(ctx: CanvasRenderingContext2D, t: number): void {
     if (!this.open) return;
     const dt = Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
     const paused = music.paused();
+    this.listen(dt, paused);
     if (!paused) {
       this.elapsed += dt;
-      this.spin += dt * 2.2;
+      this.spin += dt * (2 + this.level * 3);
     }
     const fresh = performance.now() - this.openedAt < 150;
 
@@ -136,7 +243,15 @@ export class OstScreen {
     g.addColorStop(1, '#120a2e');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 1280, 720);
-    sunburst(ctx, CARD.x + CARD.w / 2, 300, 420, t, '#9a5bff', 0.16, 16);
+    // a glow behind the card that swells with the bass and changes colour on each beat
+    const hue = NEON[this.beats % NEON.length];
+    const gr = 360 + this.bass * 140 + this.kick * 60;
+    const rg = ctx.createRadialGradient(CARD.x + CARD.w / 2, 300, 20, CARD.x + CARD.w / 2, 300, gr);
+    rg.addColorStop(0, withAlpha(hue, 0.35 + this.kick * 0.3));
+    rg.addColorStop(1, withAlpha(hue, 0));
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, 0, 1280, 720);
+    sunburst(ctx, CARD.x + CARD.w / 2, 300, 420 + this.bass * 80, t, '#9a5bff', 0.16 + this.kick * 0.12, 16);
 
     // title
     text(ctx, 'CHOPPY PARTY - OST', 640, 52, 44, { color: '#ffe14d' });
@@ -145,6 +260,7 @@ export class OstScreen {
 
     this.nowPlaying(ctx, t, paused);
     this.list(ctx, t, paused, fresh);
+    this.confetti(ctx, dt);
 
     const k = promptKind();
     const hint =
@@ -177,6 +293,13 @@ export class OstScreen {
     const sy = c.y + 30;
     const col = COLORS[this.playing % COLORS.length];
     this.record(ctx, sx + S - 10 + (paused ? -30 : 0), sy + S / 2, S * 0.46, col);
+    // the cover thumps on the bass
+    const thump = 1 + this.bass * 0.04 + this.kick * 0.04;
+    ctx.save();
+    ctx.translate(sx + S / 2, sy + S / 2);
+    ctx.rotate(paused ? 0 : Math.sin(t * 2.2) * 0.02);
+    ctx.scale(thump, thump);
+    ctx.translate(-(sx + S / 2), -(sy + S / 2));
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     roundRect(ctx, sx + 4, sy + 8, S, S, 14);
     ctx.fill();
@@ -189,10 +312,14 @@ export class OstScreen {
       ctx.fillRect(sx, sy, S, S);
     }
     ctx.restore();
+    ctx.fillStyle = `rgba(255,255,255,${this.kick * 0.15})`;
+    roundRect(ctx, sx, sy, S, S, 14);
+    ctx.fill();
     ctx.strokeStyle = '#2a1b5e';
     ctx.lineWidth = 3;
     roundRect(ctx, sx, sy, S, S, 14);
     ctx.stroke();
+    ctx.restore();
 
     text(ctx, fit(ctx, tr.title, 26, c.w - 50), cx, c.y + 284, 26, { color: '#2a1b5e', outline: false, weight: 900 });
     text(ctx, tr.where, cx, c.y + 318, 18, { color: '#8a7fb8', outline: false, weight: 800 });
@@ -337,7 +464,7 @@ export class OstScreen {
     ctx.fillStyle = '#ffd23f';
     roundRect(ctx, sx + 12, L.y + 50 + ((trackH - thumbH) * this.top) / max, 10, thumbH, 5);
     ctx.fill();
-    text(ctx, `${this.tracks.length} tracks`, L.x + (L.w - 40) / 2, L.y + h + 26, 15, { color: '#bfb3ec', weight: 700 });
+    text(ctx, `${this.tracks.length} tracks  ·  all by ${COMPOSER}`, L.x + (L.w - 40) / 2, L.y + h + 26, 15, { color: '#bfb3ec', weight: 700 });
   }
 }
 
@@ -354,4 +481,10 @@ function fit(ctx: CanvasRenderingContext2D, s: string, size: number, w: number):
   let out = s;
   while (out.length > 1 && ctx.measureText(out + '…').width > w) out = out.slice(0, -1);
   return out + '…';
+}
+
+/** '#rrggbb' with an alpha. */
+function withAlpha(hex: string, a: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.max(0, Math.min(1, a))})`;
 }

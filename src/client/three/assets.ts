@@ -62,6 +62,11 @@ export const PROPS = [
   'holiday/snow-bunker', 'holiday/snow-pile', 'holiday/snowman', 'holiday/tree-snow-a', 'holiday/tree-snow-b', 'holiday/cabin-wall', 'holiday/lantern',
   'holiday/bench', 'holiday/sled', 'furniture/kitchenBar', 'furniture/kitchenFridgeLarge', 'furniture/rugRectangle', 'furniture/table', 'furniture/chair',
   'modspace/cables',
+  // wave 4 minigames
+  'pirate/patch-sand', 'pirate/hole', 'pirate/mast-ropes', 'pirate/tool-paddle', 'pirate/boat-row-large', 'pirate/rocks-sand-c', 'pirate/tower-watch',
+  'food/meat-patty', 'food/cheese-cut', 'food/tomato-slice', 'food/burger', 'food/bacon', 'food/onion-half', 'food/cabbage',
+  'station/computer-screen', 'station/computer-system', 'station/floor-panel', 'station/wall-window', 'station/structure-panel', 'station/pipe',
+  'station/table-display-planet',
   // board dice (Geug, CC BY 4.0, simplified)
   'misc/dice',
   // turn-order die (CdR, CC BY 4.0)

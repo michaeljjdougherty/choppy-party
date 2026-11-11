@@ -17,9 +17,15 @@ import { lanternHunt } from './lanternHunt';
 import { hauntedMemory } from './hauntedMemory';
 import { snowballScramble } from './snowballScramble';
 import { laserLimbo } from './laserLimbo';
+import { treasureDig } from './treasureDig';
+import { cannonKing } from './cannonKing';
+import { raftRowing } from './raftRowing';
+import { burgerBuilder } from './burgerBuilder';
+import { colorCraze } from './colorCraze';
+import { stationRepair } from './stationRepair';
 
 /** Every playable minigame. Add new games here. */
-export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab, hotPotato, kitchenRaid, lanternHunt, hauntedMemory, snowballScramble, laserLimbo];
+export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab, hotPotato, kitchenRaid, lanternHunt, hauntedMemory, snowballScramble, laserLimbo, treasureDig, cannonKing, raftRowing, burgerBuilder, colorCraze, stationRepair];
 
 export function getGame(id: string): Minigame {
   const g = GAMES.find((x) => x.id === id);

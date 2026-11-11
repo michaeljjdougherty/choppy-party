@@ -1,3 +1,4 @@
+import type { BotCtx } from './botkit';
 /** Logical arena size. The canvas is scaled to fit the window. */
 export const VIEW_W = 1280;
 export const VIEW_H = 720;
@@ -88,6 +89,8 @@ export interface Minigame<S = any> {
   results(state: S): ResultRow[];
   /** 2D HUD (timer, scores, callouts) drawn on top of the 3D view. The 3D scene lives in src/client/three/views. */
   draw(ctx: CanvasRenderingContext2D, state: S, players: PlayerInfo[]): void;
+  /** Computer player for this game (games without one fall back to the shared bots in bots.ts). */
+  bot?(state: S, id: string, k: BotCtx): TickInput;
 }
 
 export function toTickInput(raw: RawInput, prev: RawInput | undefined): TickInput {

@@ -4,9 +4,10 @@ import { GAMES, getGame } from './games';
 import { CHARACTERS, PLAYER_COLORS, DEFAULT_NAMES } from './players';
 import { shuffle, type Rng } from './rng';
 import { BOARDS, getBoard, recommendedBoard } from './board/boards';
-import { awardMinigame, boardRanking, createBoard, endTour, finishEvent, stepBoard, winnerGoesFirst } from './board/engine';
+import { STEW_GAMES, awardMinigame, boardRanking, createBoard, endTour, finishEvent, stepBoard, winnerGoesFirst } from './board/engine';
 import type { BoardState } from './board/types';
-import { addBotInputs, type BotLevel, type BotMem } from './bots';
+import { addBotInputs, type BotLevel } from './bots';
+import type { BotMem } from './botkit';
 
 export const MAX_PLAYERS = 10;
 /** Seconds of holding A that ready you up for a minigame. */
@@ -280,7 +281,7 @@ export function selectionLabel(s: PartyState): string {
 }
 
 function eligibleGames(n: number): string[] {
-  return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && (g.mode === 'Free-for-all' || g.mode === '1-vs-many')).map((g) => g.id);
+  return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && g.mode !== 'Duel' && !STEW_GAMES.includes(g.id)).map((g) => g.id);
 }
 
 export function totalRounds(s: PartyState): number {

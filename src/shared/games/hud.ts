@@ -28,3 +28,24 @@ export function playerChips(
 }
 
 export const hearts = (n: number) => '♥'.repeat(Math.max(0, n));
+
+export const TEAM_HEX = ['#ff5a5f', '#3fa9f5'];
+export const TEAM_NAME = ['Red', 'Blue'];
+
+/** Two big team scores at the top centre. */
+export function teamScores(ctx: CanvasRenderingContext2D, a: string, b: string, y = 96): void {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
+  roundRect(ctx, 470, y - 26, 340, 52, 26);
+  ctx.fill();
+  ctx.restore();
+  text(ctx, a, 580, y, 30, { color: TEAM_HEX[0] });
+  text(ctx, 'vs', 640, y, 18, { color: '#ffffff' });
+  text(ctx, b, 700, y, 30, { color: TEAM_HEX[1] });
+}
+
+/** Pick the 1-vs-many "one" player from the seed (same on every machine). */
+export function pickOne(n: number, seed: number): number {
+  const x = Math.sin(seed * 9.137 + 1.7) * 43758.5453;
+  return Math.floor((x - Math.floor(x)) * n) % n;
+}

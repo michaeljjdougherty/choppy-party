@@ -18,9 +18,13 @@ export function setCharacters(players: { color: string; char?: number; slot: num
 
 /** Colours of the players this screen controls; their models get a thin outline so you never lose yourself. */
 export const OUTLINED = new Set<string>();
+/** Ids of the human players on this screen (for games with secrets, like Mimic Chest). */
+export const LOCAL = new Set<string>();
 export function setOutlined(players: { id: string; color: string; bot?: unknown }[], local: Set<string>): void {
   OUTLINED.clear();
+  LOCAL.clear();
   const mine = players.filter((p) => !p.bot && local.has(p.id));
+  for (const p of mine) LOCAL.add(p.id);
   // if everyone in the game is on this screen, outlining all of them would mark nobody
   if (mine.length < players.length) for (const p of mine) OUTLINED.add(p.color);
 }

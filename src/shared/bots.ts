@@ -45,7 +45,7 @@ export type BotLevel = 'easy' | 'normal' | 'hard';
 export const BOT_LEVELS: BotLevel[] = ['easy', 'normal', 'hard'];
 export const BOT_LABEL: Record<BotLevel, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
 
-const SKILL: Record<BotLevel, Skill> = {
+export const SKILL: Record<BotLevel, Skill> = {
   easy: { think: 0.42, wobble: 0.5, mash: 4.5, react: [0.4, 0.62], early: 0.12, sense: 0.35, aim: 26, paddle: 0.55, smart: 0.3 },
   normal: { think: 0.22, wobble: 0.2, mash: 7, react: [0.27, 0.4], early: 0.04, sense: 0.7, aim: 12, paddle: 0.8, smart: 0.7 },
   hard: { think: 0.1, wobble: 0.05, mash: 10, react: [0.18, 0.26], early: 0.01, sense: 1, aim: 3, paddle: 1, smart: 1 },

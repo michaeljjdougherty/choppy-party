@@ -35,9 +35,15 @@ import { moonball } from './moonball';
 import { shantyShuffle } from './shantyShuffle';
 import { sushiBelt } from './sushiBelt';
 import { movingDay } from './movingDay';
+import { mineCart } from './mineCart';
+import { risingTide } from './risingTide';
+import { sledSlalom } from './sledSlalom';
+import { bumperSaucers } from './bumperSaucers';
+import { mimicChest } from './mimicChest';
+import { barrelBands } from './barrelBands';
 
 /** Every playable minigame. Add new games here. */
-export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab, hotPotato, kitchenRaid, lanternHunt, hauntedMemory, snowballScramble, laserLimbo, treasureDig, cannonKing, raftRowing, burgerBuilder, colorCraze, stationRepair, paintPlaza, alienCount, lightsOut, pumpkinBowling, captureCrown, lastSeat, zombieTag, chiliChallenge, moonball, shantyShuffle, sushiBelt, movingDay];
+export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab, hotPotato, kitchenRaid, lanternHunt, hauntedMemory, snowballScramble, laserLimbo, treasureDig, cannonKing, raftRowing, burgerBuilder, colorCraze, stationRepair, paintPlaza, alienCount, lightsOut, pumpkinBowling, captureCrown, lastSeat, zombieTag, chiliChallenge, moonball, shantyShuffle, sushiBelt, movingDay, mineCart, risingTide, sledSlalom, bumperSaucers, mimicChest, barrelBands];
 
 export function getGame(id: string): Minigame {
   const g = GAMES.find((x) => x.id === id);

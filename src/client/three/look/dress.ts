@@ -108,6 +108,12 @@ export const GAME_LOOKS: Record<string, Look> = {
   'shanty-shuffle': { theme: 'sea', keepOut: [{ rect: [-17, -8, 17, 8] }] },
   'sushi-belt': { theme: 'indoor' },
   'moving-day': { theme: 'meadow', keepOut: [{ rect: [-15.5, -6, 15.5, 9.5] }] },
+  'mine-cart-mayhem': { theme: 'desert', noScenery: true },
+  'rising-tide-tower': { theme: 'sea', noScenery: true },
+  'sled-slalom': { theme: 'snow', noScenery: true },
+  'bumper-saucers': { theme: 'space', noScenery: true },
+  'mimic-chest': { theme: 'spooky', noScenery: true },
+  'barrel-bands': { theme: 'beach', keepOut: [{ rect: [-22, -12, 22, 16] }] },
 };
 
 const BOARD_LOOKS: Record<BoardDef['theme'], Look> = {

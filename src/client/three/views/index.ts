@@ -16,6 +16,7 @@ import { lanternView, memoryView, snowView } from './wave3b';
 import { laserView } from './laser';
 import { alienView, bowlView, crownView, lightsView, plazaView, seatView } from './wave5';
 import { chiliView, moonView, movingView, shantyView, sushiView, zombieView } from './wave6';
+import { barrelView, mimicView, mineCartView, risingTideView, saucerView, sledView } from './wave7';
 import { burgerView, cannonView, crazeView, digView, raftView, repairView } from './wave4';
 
 type Factory = (env: THREE.Texture, state: any, players: PlayerInfo[]) => View;
@@ -58,6 +59,12 @@ export const GAME_VIEWS: Record<string, Factory> = {
   'shanty-shuffle': shantyView,
   'sushi-belt': sushiView,
   'moving-day': movingView,
+  'mine-cart-mayhem': mineCartView,
+  'rising-tide-tower': risingTideView,
+  'sled-slalom': sledView,
+  'bumper-saucers': saucerView,
+  'mimic-chest': mimicView,
+  'barrel-bands': barrelView,
 };
 
 export { menuView } from './menu';

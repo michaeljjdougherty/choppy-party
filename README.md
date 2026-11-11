@@ -68,6 +68,7 @@ Water and sand use two CC BY 4.0 models (credits in `public/tex/CREDITS-sea-and-
 
 The board dice are "Dice" by Geug (CC BY 4.0, https://sketchfab.com/3d-models/dice-4091e2ef8de54644a5ab68a646d8d9ca), simplified and recoloured (credit in `public/models/misc/CREDITS-dice.txt`).
 The turn-order die is "12 sides Dodecahedron Dice" by CdR (CC BY 4.0, https://sketchfab.com/3d-models/12-sides-dodecahedron-dice-afbcd0424fa7475d8d24141c6d88c052), simplified and recoloured (same credits file).
+Mister Chunk (the CHUNK SPACE host) is "Poop Head Horror Skunx" by Poopo192 (CC BY 4.0, https://sketchfab.com/3d-models/poop-head-horror-skunx-4c01ad110b5140c69400733f091880a6), credit in `public/models/misc/CREDITS-mister-chunk.txt`.
 
 3D models are from Kenney's CC0 kits (Platformer, Mini Characters, Pirate, Mini Forest, Prototype) in `public/models`, with their license files. The 10 playable characters are listed in `src/shared/players.ts`.
 

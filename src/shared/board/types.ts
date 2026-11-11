@@ -4,6 +4,9 @@ import type { Rng } from '../rng';
  * Board spaces. Key, Heart and Thorn are the everyday spaces (about 70% of every board).
  * The rest are special spaces from the board spec.
  */
+/** Mister Chunk's surprises on a CHUNK SPACE. */
+export type ChunkKind = 'tax' | 'smash' | 'shake' | 'crown' | 'swap' | 'toss' | 'party' | 'stomp' | 'snack';
+
 export type SpaceType =
   | 'key' // +3 Choppy Keys
   | 'heart' // +6 HP
@@ -24,7 +27,8 @@ export type SpaceType =
   | 'station' // Gulch train station
   | 'counter' // Cosmo laser gate
   | 'camp' // Respawn Camp
-  | 'shop'; // pass-by item shop: spend keys on items (doesn't use up a step)
+  | 'shop' // pass-by item shop: spend keys on items (doesn't use up a step)
+  | 'chunk'; // CHUNK SPACE: Mister Chunk shows up and spins a reel of nasty surprises
 
 export interface BoardNode {
   id: string;
@@ -219,6 +223,7 @@ export type BoardSub =
   | 'wheel'
   | 'itemSpin' // an Item Crate spins a reel of items before giving one
   | 'gamble' // Gold Strike: a reel of payouts and cave-ins
+  | 'chunk' // Mister Chunk stomps in and spins his reel
   | 'event' // waiting for the party to run a duel or Stew Battle
   | 'roundEnd' // hazards go off after everyone has moved
   | 'done';
@@ -285,6 +290,8 @@ export interface BoardState {
   spin?: { reel: ItemId[]; at: number; pick: ItemId } | null;
   /** Gold Strike reel: key amounts (negative = cave-in), ending on the result. */
   gamble?: { reel: number[]; at: number; pick: number } | null;
+  /** Mister Chunk's reel: which nasty surprise he picks. */
+  chunk?: { reel: ChunkKind[]; at: number; pick: ChunkKind; victim: string } | null;
   /** Short-lived effects for the 3D view: hits, heals, knockouts, item use. */
   fx: { n: number; kind: string; node: string; id?: string; amount?: number; t: number }[];
   fxSeq: number;

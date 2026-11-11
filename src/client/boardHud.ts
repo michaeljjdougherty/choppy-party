@@ -3,8 +3,8 @@ import { slam, sunburst } from './showtime';
 import { sfx } from './sfx';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
-import { PROMPT_LOCK, SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, currentPlayer } from '../shared/board/engine';
-import { TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
+import { PROMPT_LOCK, SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, CHUNK_EVENTS, CHUNK_INTRO, currentPlayer } from '../shared/board/engine';
+import { TRAIN_PRICE, WISP_PRICE, type ChunkKind } from '../shared/board/types';
 import { ITEMS, ITEM_COLS, ITEM_GRID, SHOP_PRICE } from '../shared/board/items';
 import { WEATHER_COLOR, forecast } from '../shared/board/weather';
 import { playerById, popText, richWidth, roundRect, text } from '../shared/draw';
@@ -239,6 +239,18 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     }
   } else if (b.sub === 'itemSpin' && b.spin) {
     drawItemReel(ctx, b.spin, b.t, t);
+  } else if (b.sub === 'chunk' && b.chunk) {
+    const who = playerById(s.players, b.chunk.victim);
+    if (b.t < CHUNK_INTRO) {
+      const k = Math.min(1, b.t / 0.35);
+      ctx.save();
+      ctx.translate(640, 200);
+      ctx.rotate(Math.sin(b.t * 30) * 0.03 * (1 - k));
+      ctx.scale(0.5 + k * 0.5, 0.5 + k * 0.5);
+      text(ctx, 'MISTER CHUNK!', 0, 0, 72, { color: '#ff3b4e' });
+      ctx.restore();
+      if (b.t > 0.6) text(ctx, `${who?.name ?? ''} landed on a CHUNK SPACE...`, 640, 262, 26, { color: '#ffffff' });
+    } else drawChunkReel(ctx, b.chunk, b.t - CHUNK_INTRO, t);
   } else if (b.sub === 'gamble' && b.gamble) {
     drawGambleReel(ctx, b.gamble, b.t, t);
   } else if (b.sub === 'roundEnd') {
@@ -630,6 +642,33 @@ function drawItemReel(ctx: CanvasRenderingContext2D, spin: { reel: (keyof typeof
 }
 
 /** Gold Strike: nuggets and cave-ins flick past; where it stops is what you get. */
+const CHUNK_SHORT: Record<ChunkKind, string> = { tax: 'Tax', smash: 'Smash', shake: 'Shake', crown: 'Crown', swap: 'Swap', toss: 'Toss', party: 'Party', stomp: 'Stomp', snack: 'Snack' };
+const CHUNK_ICON: Record<ChunkKind, string> = { tax: '−12', smash: '✊', shake: '⇣', crown: '♛', swap: '⇄', toss: '↶', party: '−6', stomp: '✸', snack: '🍩' };
+function drawChunkReel(ctx: CanvasRenderingContext2D, c: { reel: ChunkKind[]; at: number; pick: ChunkKind }, age: number, t: number): void {
+  const ev = CHUNK_EVENTS[c.pick];
+  drawReel(
+    ctx,
+    {
+      n: c.reel.length,
+      at: c.at,
+      title: "MISTER CHUNK'S SURPRISE",
+      color: '#ff3b4e',
+      result: `${ev.name}! ${ev.line}`,
+      resultColor: c.pick === 'snack' ? '#4cd97b' : '#ff6b6b',
+      cell: (i, x, y, sz) => {
+        const k = c.reel[i];
+        ctx.fillStyle = k === 'snack' ? '#2f9e5a' : k === 'crown' ? '#7a1030' : '#4a1a2e';
+        roundRect(ctx, x - sz / 2 + 4, y - sz / 2 + 4, sz - 8, sz - 8, 12);
+        ctx.fill();
+        text(ctx, CHUNK_ICON[k], x, y - sz * 0.08, Math.round(sz * 0.36), { color: '#ffd9e0', outline: false, weight: 900 });
+        text(ctx, CHUNK_SHORT[k], x, y + sz * 0.28, Math.round(sz * 0.16), { color: '#ffffff', outline: false, weight: 800 });
+      },
+    },
+    age,
+    t,
+  );
+}
+
 function drawGambleReel(ctx: CanvasRenderingContext2D, g: { reel: number[]; at: number; pick: number }, age: number, t: number): void {
   drawReel(
     ctx,

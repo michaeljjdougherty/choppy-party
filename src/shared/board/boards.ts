@@ -72,9 +72,10 @@ const MIX: [SpaceType, number][] = [
   ['heart', 0.06],
   ['crate', 0.05],
   ['lucky', 0.04],
+  ['chunk', 0.03],
 ];
 function partyMix(b: Builder, chains: string[][], crownSpots: string[], keep: string[], shopsAt: number[]): void {
-  const plain = new Set(['key', 'thorn', 'heart', 'crate', 'lucky']);
+  const plain = new Set(['key', 'thorn', 'heart', 'crate', 'lucky', 'chunk']);
   const all = chains.flat();
   // shops first, on the main loop, never next to another special space
   for (const f of shopsAt) {

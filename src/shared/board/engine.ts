@@ -5,7 +5,7 @@ import { getBoard } from './boards';
 import { buildTour } from './tour';
 import { WEATHER, flareThisRound, inZone, newWeather, stormThisRound } from './weather';
 import { ITEMS, ITEM_COLS, ITEM_GRID, ITEM_IDS, SHOP_PRICE, SHOP_STOCK } from './items';
-import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt } from './types';
+import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt, ChunkKind } from './types';
 import { COUNTER_START, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
 
 /** Keys for minigame placings on a board night (the spec says minigames pay 3 to 10 keys). */
@@ -56,6 +56,20 @@ export const SPIN_STOP = 2.8;
 export const GOLD_WINS = [5, 8, 10, 12, 20];
 export const GOLD_LOSSES = [-5, -10];
 const SPIN_TIME = SPIN_STOP + 0.9;
+/** Mister Chunk lands with a thud and glares before his reel starts. */
+export const CHUNK_INTRO = 1.6;
+/** What each of Mister Chunk's surprises is called and does, for the reel and the result line. */
+export const CHUNK_EVENTS: Record<ChunkKind, { name: string; line: string; weight: number }> = {
+  tax: { name: 'Chunk Tax', line: '-12 keys', weight: 3 },
+  smash: { name: 'Chunk Smash', line: '10 damage', weight: 3 },
+  shake: { name: 'Pocket Shake', line: 'He shakes out all your items', weight: 2 },
+  crown: { name: 'Crown Snatch', line: 'He swipes a Choppy Crown!', weight: 1 },
+  swap: { name: 'Chunk Swap', line: "Your keys swap with the poorest player's", weight: 2 },
+  toss: { name: 'Chunk Toss', line: 'Thrown 6 spaces back', weight: 2 },
+  party: { name: 'Chunk Party', line: 'Everyone loses 6 keys', weight: 2 },
+  stomp: { name: 'Ground Stomp', line: '6 damage to everyone within 3 spaces', weight: 2 },
+  snack: { name: 'Snack Break', line: 'He wanders off for a snack (+2 keys)', weight: 1 },
+};
 
 export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number, tour = false): BoardState {
   const def = getBoard(boardId);
@@ -544,6 +558,15 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
           say(s, `Cave-in! -${c} keys`, '#ff5a5f');
         }
         set(s, 'land');
+      }
+      break;
+
+    case 'chunk':
+      if (s.t > CHUNK_INTRO + SPIN_TIME && s.chunk) {
+        const c = s.chunk;
+        s.chunk = null;
+        chunkHit(s, def, c.victim, c.pick);
+        if (s.sub === 'chunk') set(s, 'land');
       }
       break;
 
@@ -1129,6 +1152,74 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
       break;
     case 'event':
       boardEvent(s, def, id);
+      break;
+    case 'chunk':
+      chunkSpace(s, id);
+      break;
+  }
+}
+
+/** CHUNK SPACE: Mister Chunk drops in and spins a reel of his surprises. */
+function chunkSpace(s: BoardState, id: string): void {
+  const me = s.players[id];
+  const kinds = (Object.keys(CHUNK_EVENTS) as ChunkKind[]).filter((k) => k !== 'crown' || me.crowns > 0).filter((k) => k !== 'shake' || me.items.length > 0);
+  const bag: ChunkKind[] = [];
+  for (const k of kinds) for (let i = 0; i < CHUNK_EVENTS[k].weight; i++) bag.push(k);
+  const pick = bag[Math.floor(rand(s.rng) * bag.length)];
+  const reel: ChunkKind[] = [];
+  for (let i = 0; i < SPIN_LEN + 4; i++) reel.push(kinds[Math.floor(rand(s.rng) * kinds.length)]);
+  reel[SPIN_LEN] = pick;
+  s.chunk = { reel, at: SPIN_LEN, pick, victim: id };
+  fx(s, 'chunk', me.node, id);
+  say(s, 'MISTER CHUNK!', '#ff3b4e');
+  set(s, 'chunk');
+}
+
+function chunkHit(s: BoardState, def: BoardDef, id: string, kind: ChunkKind): void {
+  const me = s.players[id];
+  const ev = CHUNK_EVENTS[kind];
+  const take = (p: BoardPlayer, n: number) => {
+    const c = Math.min(p.keys, n);
+    p.keys -= c;
+    if (c) fx(s, 'keys', p.node, p.id, -c);
+  };
+  say(s, `${ev.name}! ${ev.line}`, kind === 'snack' ? '#4cd97b' : '#ff5a5f');
+  switch (kind) {
+    case 'tax':
+      take(me, 12);
+      break;
+    case 'smash':
+      hurt(s, def, id, 10);
+      break;
+    case 'shake':
+      me.items = [];
+      break;
+    case 'crown':
+      if (me.crowns > 0) {
+        me.crowns--;
+        fx(s, 'crownLost', me.node, id);
+      }
+      break;
+    case 'swap': {
+      const poor = Object.values(s.players).filter((p) => p.id !== id).sort((a, b) => a.keys - b.keys)[0];
+      if (poor) [me.keys, poor.keys] = [poor.keys, me.keys];
+      break;
+    }
+    case 'toss':
+      push(s, def, id, 6, -1);
+      fx(s, 'warp', me.node, id);
+      break;
+    case 'party':
+      for (const p of Object.values(s.players)) take(p, 6);
+      break;
+    case 'stomp': {
+      const near = nearDist(def, me.node, 3);
+      for (const p of Object.values(s.players)) if (near.has(p.node)) hurt(s, def, p.id, 6);
+      break;
+    }
+    case 'snack':
+      me.keys += 2;
+      fx(s, 'keys', me.node, id, 2);
       break;
   }
 }

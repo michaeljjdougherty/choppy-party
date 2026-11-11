@@ -12,6 +12,7 @@ export const SPACE_SHAPE: Record<SpaceType, ShapeName> = {
   key: 'circle',
   heart: 'heart',
   thorn: 'spiky',
+  chunk: 'burst',
   crate: 'square',
   lucky: 'star',
   event: 'diamond',

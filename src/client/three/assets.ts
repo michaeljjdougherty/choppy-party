@@ -71,6 +71,8 @@ export const PROPS = [
   'misc/dice',
   // turn-order die (CdR, CC BY 4.0)
   'misc/d12',
+  // Mister Chunk (Poopo192, CC BY 4.0)
+  'misc/mister-chunk',
 ];
 
 /** Equirectangular skies (Kenney Skyboxes), in public/sky. */

@@ -25,11 +25,13 @@ import type { Tag, View } from '../stage';
 import { sandMap, sandMaterial } from '../nature';
 import { buildWeather } from '../weatherView';
 import { grassDetail, roadTexture, roadUVs } from '../surfaces';
+import { sfx } from '../../sfx';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
   key: '#2f7dff',
   heart: '#21c45a',
   thorn: '#ff3b4e',
+  chunk: '#4a1a2e',
   crate: '#ff9f1c',
   lucky: '#ffc21a',
   event: '#14b8a6',
@@ -52,6 +54,7 @@ const SPACE_ICON: Record<SpaceType, string> = {
   key: '+',
   heart: '♥',
   thorn: '−',
+  chunk: '☠',
   crate: '▣',
   lucky: '★',
   event: '!',
@@ -162,6 +165,23 @@ function iconTexture(icon: string, color: string): THREE.Texture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/** Mister Chunk, standing on the origin and `h` units tall, facing +z (the camera). */
+function chunkModel(h: number): THREE.Group {
+  const o = prop('misc/mister-chunk', 1);
+  const box = new THREE.Box3().setFromObject(o);
+  const size = box.getSize(new THREE.Vector3());
+  const k = h / Math.max(1e-6, size.y);
+  o.scale.multiplyScalar(k);
+  const c = box.getCenter(new THREE.Vector3()).multiplyScalar(k);
+  o.position.set(-c.x, -box.min.y * k, -c.z);
+  o.traverse((m) => {
+    if ((m as THREE.Mesh).isMesh) m.castShadow = true;
+  });
+  const g = new THREE.Group();
+  g.add(o);
+  return g;
 }
 
 function makeCrown(): THREE.Group {
@@ -1035,6 +1055,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   }
   // a Kenney model on each special space; Key and Heart pickups spin and bob
   const floaters: { o: THREE.Object3D; y: number; k: number }[] = [];
+  const chunkStatues: { o: THREE.Object3D; y: number; k: number }[] = [];
   for (const n of Object.values(def.nodes)) {
     const c0 = scene.children.length;
     const pp = SPACE_PROP[n.type];
@@ -1047,6 +1068,13 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       if (floats) floaters.push({ o, y: o.position.y + n.y, k: n.x + n.z });
     }
     if (n.type === 'shop') scene.add(shopStall(def, n));
+    if (n.type === 'chunk') {
+      // a little Mister Chunk statue glowering on his space
+      const st = chunkModel(1.05);
+      st.position.set(n.x, n.y + 0.33, n.z);
+      scene.add(st);
+      chunkStatues.push({ o: st, y: n.y + 0.33, k: n.x * 0.7 + n.z });
+    }
     if (n.type === 'event' && def.theme === 'gulch') {
       // a heap of gold nuggets with a pickaxe stuck in it, glinting
       const heap = new THREE.Group();
@@ -1173,16 +1201,64 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const seenFx = new Set<number>();
   const lastHp = new Map<string, number>();
   const ringMat = new THREE.MeshBasicMaterial({ color: '#ffe36e', transparent: true, opacity: 0.55, depthWrite: false });
-  // branch arrows
-  const arrowMat = toy('#ffffff', 0.3);
-  const arrowSel = toy('#ffd23f', 0.3);
-  const arrows: THREE.Mesh[] = [];
+  // branch arrows: a big flat arrow on the ground down each path. The picked one is gold, glowing,
+  // pulsing and pointing along a dotted trail; the others shrink to dim ghosts.
+  const arrowShape = new THREE.Shape();
+  arrowShape.moveTo(0, -0.32);
+  arrowShape.lineTo(1.0, -0.32);
+  arrowShape.lineTo(1.0, -0.72);
+  arrowShape.lineTo(1.9, 0);
+  arrowShape.lineTo(1.0, 0.72);
+  arrowShape.lineTo(1.0, 0.32);
+  arrowShape.lineTo(0, 0.32);
+  arrowShape.closePath();
+  const arrowGeo = new THREE.ExtrudeGeometry(arrowShape, { depth: 0.22, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.06, bevelSegments: 2 });
+  arrowGeo.rotateX(Math.PI / 2); // lie flat, pointing along +x
+  arrowGeo.translate(0, 0.22, 0);
+  const arrowMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, transparent: true, opacity: 0.8 });
+  const arrowSel = new THREE.MeshStandardMaterial({ color: '#ffae00', roughness: 0.3, emissive: '#ff5a00', emissiveIntensity: 0.45 });
+  const outlineMat = new THREE.MeshBasicMaterial({ color: '#3a1a00', side: THREE.BackSide });
+  const ghostRimMat = new THREE.MeshBasicMaterial({ color: '#2a2f45', side: THREE.BackSide, transparent: true, opacity: 0.6 });
+  const glowMat = new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending });
+  const dotMat = new THREE.MeshBasicMaterial({ color: '#ffe36e', transparent: true, opacity: 0.9, depthWrite: false });
+  const arrows: { g: THREE.Group; body: THREE.Mesh; rim: THREE.Mesh; glow: THREE.Mesh; dots: THREE.Mesh[] }[] = [];
   for (let i = 0; i < 3; i++) {
-    const a = mesh(new THREE.ConeGeometry(0.35, 0.9, 12), arrowMat);
-    a.visible = false;
-    scene.add(a);
-    arrows.push(a);
+    const g = new THREE.Group();
+    const body = mesh(arrowGeo, arrowMat);
+    const rim = new THREE.Mesh(arrowGeo, outlineMat);
+    rim.scale.set(1.08, 1.3, 1.14);
+    rim.position.x = -0.07;
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(1.6, 32), glowMat);
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.set(1, 0.05, 0);
+    g.add(glow, rim, body);
+    const dots: THREE.Mesh[] = [];
+    for (let d = 0; d < 5; d++) {
+      const dot = new THREE.Mesh(new THREE.CircleGeometry(0.16, 14), dotMat);
+      dot.rotation.x = -Math.PI / 2;
+      scene.add(dot);
+      dots.push(dot);
+    }
+    g.visible = false;
+    scene.add(g);
+    arrows.push({ g, body, rim, glow, dots });
   }
+  // a pulsing gold ring on the space the picked path leads to
+  const pickRing = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.25, 40), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+  pickRing.rotation.x = -Math.PI / 2;
+  pickRing.visible = false;
+  scene.add(pickRing);
+  // the big Mister Chunk who stomps in on a CHUNK SPACE
+  const bigChunk = chunkModel(4.2);
+  bigChunk.visible = false;
+  scene.add(bigChunk);
+  const chunkFace = new THREE.Mesh(new THREE.CircleGeometry(2.6, 40), new THREE.MeshBasicMaterial({ color: '#2a0010', transparent: true, opacity: 0.4, depthWrite: false }));
+  chunkFace.rotation.x = -Math.PI / 2;
+  chunkFace.visible = false;
+  scene.add(chunkFace);
+  let chunkAt: THREE.Vector3 | null = null;
+  let chunkLanded = false;
+  let chunkLeave = -1;
   // the dice: Geug's red die model, up to three of them in a row over the current player
   const dieBody = toy('#d81e2c', 0.22);
   const diePips = toy('#ffffff', 0.35);
@@ -1593,7 +1669,11 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       } else for (const d of d12s) d.g.visible = false;
 
       // branch arrows
-      arrows.forEach((a) => (a.visible = false));
+      pickRing.visible = false;
+      for (const a of arrows) {
+        a.g.visible = false;
+        for (const d of a.dots) d.visible = false;
+      }
       if (b.sub === 'branch' && b.branch) {
         const here = def.nodes[b.players[cur].node];
         b.branch.options.forEach((o, i) => {
@@ -1601,15 +1681,93 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           if (!a) return;
           const n = def.nodes[o];
           const ang = Math.atan2(n.z - here.z, n.x - here.x);
-          a.visible = true;
-          a.material = i === b.branch!.sel ? arrowSel : arrowMat;
-          const bob = i === b.branch!.sel ? Math.sin(t * 8) * 0.15 : 0;
-          a.position.set(here.x + Math.cos(ang) * (1.6 + bob), 0.9, here.z + Math.sin(ang) * (1.6 + bob));
-          a.rotation.set(0, 0, 0);
-          a.rotation.z = -Math.PI / 2;
-          a.rotation.y = -ang;
-          a.scale.setScalar(i === b.branch!.sel ? 1.25 : 0.9);
+          const sel = i === b.branch!.sel;
+          a.g.visible = true;
+          a.body.material = sel ? arrowSel : arrowMat;
+          a.rim.material = sel ? outlineMat : ghostRimMat;
+          a.glow.visible = sel;
+          const push = sel ? 1.3 + (Math.sin(t * 7) * 0.5 + 0.5) * 0.4 : 1.2;
+          const y = here.y + (sel ? 0.55 + Math.sin(t * 7) * 0.1 : 0.12);
+          a.g.position.set(here.x + Math.cos(ang) * push, y, here.z + Math.sin(ang) * push);
+          a.g.rotation.set(0, -ang, 0);
+          a.g.scale.setScalar(sel ? 1.5 + Math.sin(t * 7) * 0.08 : 0.75);
+          (glowMat as THREE.MeshBasicMaterial).opacity = 0.3 + Math.sin(t * 7) * 0.12;
+          // a dotted trail marching from the arrow to the next space on the picked path
+          if (sel) {
+            pickRing.visible = true;
+            pickRing.position.set(n.x, n.y + 0.42, n.z);
+            pickRing.scale.setScalar(1 + Math.sin(t * 7) * 0.12);
+            const sx = here.x + Math.cos(ang) * (push + 2.2), sz = here.z + Math.sin(ang) * (push + 2.2);
+            const len = Math.max(0, Math.hypot(n.x - sx, n.z - sz) - 0.9);
+            a.dots.forEach((d, k) => {
+              const f = ((k + ((t * 1.6) % 1)) / a.dots.length) * len;
+              if (len < 0.3) return;
+              d.visible = true;
+              const q = f / Math.max(0.01, len);
+              d.position.set(sx + Math.cos(ang) * f, here.y + (n.y - here.y) * q + 0.12, sz + Math.sin(ang) * f);
+            });
+          }
         });
+      }
+
+      // Mister Chunk: drops out of the sky beside the victim, slams down, glares through his reel, then leaps away
+      for (const c of chunkStatues) {
+        c.o.rotation.y = Math.sin(t * 1.3 + c.k) * 0.35;
+        c.o.position.y = c.y + Math.abs(Math.sin(t * 2.2 + c.k)) * 0.08;
+      }
+      if (b.sub === 'chunk' && b.chunk) {
+        const v = b.players[b.chunk.victim];
+        const n = v && def.nodes[v.node];
+        if (n && !chunkAt) {
+          chunkAt = new THREE.Vector3(n.x + 2.3, n.y, n.z - 0.9);
+          chunkLanded = false;
+          chunkLeave = -1;
+          sfx.whistle();
+        }
+        if (chunkAt) {
+          const DROP = 0.5;
+          const k = Math.min(1, b.t / DROP);
+          bigChunk.visible = true;
+          chunkFace.visible = true;
+          chunkFace.position.set(chunkAt.x, chunkAt.y + 0.06, chunkAt.z);
+          const air = (1 - k * k) * 14;
+          let sx = 1, sy = 1;
+          if (k >= 1) {
+            if (!chunkLanded) {
+              chunkLanded = true;
+              shake(0.7);
+              fx.dust(chunkAt.clone().setY(chunkAt.y + 0.3), 2.6);
+              fx.blast(chunkAt.clone().setY(chunkAt.y + 0.2), 0.8);
+              sfx.boom();
+            }
+            const after = b.t - DROP;
+            const squash = Math.max(0, 1 - after * 4) * 0.35;
+            sy = 1 - squash + Math.sin(after * 3.2) * 0.03;
+            sx = 1 + squash * 0.7;
+          }
+          bigChunk.position.set(chunkAt.x, chunkAt.y + air, chunkAt.z);
+          bigChunk.scale.set(sx, sy, sx);
+          // glare at the camera, with a slow menacing sway
+          bigChunk.rotation.y = Math.sin(t * 1.7) * 0.12;
+          (chunkFace.material as THREE.MeshBasicMaterial).opacity = 0.25 + 0.3 * k;
+        }
+      } else if (chunkAt) {
+        // he leaps off into the sky
+        if (chunkLeave < 0) {
+          chunkLeave = 0;
+          sfx.boing();
+        }
+        chunkLeave += dt;
+        const k = chunkLeave / 0.7;
+        bigChunk.position.set(chunkAt.x, chunkAt.y + k * k * 16, chunkAt.z - k * 3);
+        bigChunk.rotation.y += dt * 9;
+        bigChunk.scale.setScalar(1);
+        (chunkFace.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.55 * (1 - k));
+        if (k >= 1) {
+          bigChunk.visible = false;
+          chunkFace.visible = false;
+          chunkAt = null;
+        }
       }
 
       // camera: overview at the top of a turn, then follow whoever is moving
@@ -1657,6 +1815,12 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           goalPos = new THREE.Vector3(cx, Math.max(n.y + 12, gy(cx, cz) + 7, gy(n.x, n.z + 5) + 8), cz);
           follow = 2.6;
         }
+      }
+      if (b.sub === 'chunk' && chunkAt) {
+        // frame the victim and Chunk together in the lower part of the screen, under the reel
+        goalLook = new THREE.Vector3(chunkAt.x - 1.2, chunkAt.y + 3.6, chunkAt.z + 0.5);
+        goalPos = new THREE.Vector3(chunkAt.x - 1.2, Math.max(chunkAt.y + 6, gy(chunkAt.x, chunkAt.z + 11) + 4), chunkAt.z + 11.5);
+        follow = 3;
       }
       if (mapCam.on) {
         // map view: a free orbit camera over the board

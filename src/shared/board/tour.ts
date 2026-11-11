@@ -17,6 +17,7 @@ export interface TourStep {
 const TYPE_STEPS: [SpaceType, string, (d: BoardDef, s: BoardState) => string][] = [
   ['duel', 'Duel Shields', () => 'Shield spaces start a duel. Pick a rival; the winner jumps right behind a Crown Chest.'],
   ['stew', 'Stew Battles', () => 'The other shield is a Stew Battle: everyone splits into two teams and the winners share the pot.'],
+  ['chunk', 'CHUNK SPACE', () => "Stay off the dark skull spaces. Land on one and Mister Chunk stomps in to spin his reel of nasty surprises: taxes, smashes, stolen items, even a stolen crown."],
   ['cannon', 'Cannons', (_d, s) => `Octagon cannons let you fire at anyone within ${s.preset.cannonRange} spaces for ${s.preset.cannonDamage} damage.`],
   ['wisp', 'The Wisp', () => 'The Wisp, in the teardrop space, will rob the leader for you, for a price.'],
   ['snare', 'Root Snares', () => 'Down in the cellar the roots wake up at night. Get caught and your next roll is 1 to 3.'],

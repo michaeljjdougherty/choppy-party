@@ -7,6 +7,7 @@ export type ClientMsg =
   | { t: 'join'; code: string; clientId?: string }
   | { t: 'add'; deviceKey: string; name?: string }
   | { t: 'remove'; deviceKey: string }
+  | { t: 'name'; deviceKey: string; name: string }
   | { t: 'bot'; level: 'easy' | 'normal' | 'hard' }
   | { t: 'unbot' }
   | { t: 'input'; raws: Record<string, RawInput> };

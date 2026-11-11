@@ -257,7 +257,7 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
     text(ctx, 'Controllers: A   ·   Keyboard: Space or Enter', 640, 408, 20, { weight: 600 });
   } else {
     const bots = s.players.filter((p) => p.bot).length;
-    const keysHint = k === 'pad' ? `${A()}: join  ·  ${B()}: leave  ·  X: character  ·  Y: colour` : k === 'mouse' ? 'Click ☺ for a new character, the paint drop for a new colour' : `C: character  ·  V: colour  ·  1/2/3: add CPU  ·  0: remove  ·  Tab: 2nd keyboard`;
+    const keysHint = k === 'pad' ? `${A()}: join  ·  ${B()}: leave  ·  X: character  ·  Y: colour  ·  LB/RB: your name` : k === 'mouse' ? 'Click ☺ for a new character, the paint drop for a new colour, ✎ for your name' : `C: character  ·  V: colour  ·  N: your name  ·  1/2/3: add CPU  ·  0: remove  ·  Tab: 2nd keyboard`;
     text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? ` (${bots} CPU)` : ''}   ·   ${keysHint}`, 640, 166, 20, {
       color: '#ffe9f6',
       weight: 600,

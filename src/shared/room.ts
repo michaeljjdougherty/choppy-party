@@ -1,5 +1,5 @@
 import { clamp, toTickInput, DT, type Inputs, type RawInput } from './types';
-import { addBot, addPlayer, createParty, hostId, removeBot, removePlayer, stepParty, type PartyState } from './party';
+import { addBot, addPlayer, createParty, hostId, removeBot, removePlayer, renamePlayer, stepParty, type PartyState } from './party';
 import { MAX_DEVICES_PER_CLIENT, onlinePlayerId, type ClientMsg, type ServerMsg } from './protocol';
 
 /**
@@ -122,6 +122,8 @@ export class Room {
       if (!addPlayer(this.party, onlinePlayerId(client.id, msg.deviceKey), name) && this.party.phase !== 'lobby') {
         send({ t: 'error', message: 'Wait for the lobby to join.' });
       }
+    } else if (msg.t === 'name' && DEVICE_KEY.test(msg.deviceKey) && typeof msg.name === 'string') {
+      renamePlayer(this.party, onlinePlayerId(client.id, msg.deviceKey), msg.name.slice(0, 40));
     } else if (msg.t === 'remove' && DEVICE_KEY.test(msg.deviceKey)) {
       removePlayer(this.party, onlinePlayerId(client.id, msg.deviceKey));
     } else if (msg.t === 'bot' || msg.t === 'unbot') {

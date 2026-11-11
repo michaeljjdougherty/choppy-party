@@ -207,7 +207,7 @@ export function addPlayer(s: PartyState, id: string, name?: string): PlayerInfo 
   const p: PlayerInfo = {
     id,
     slot,
-    name: (name ?? '').trim().slice(0, 12) || DEFAULT_NAMES[char],
+    name: cleanName(name ?? '') || DEFAULT_NAMES[char],
     color: PLAYER_COLORS[ci],
     char,
   };
@@ -236,6 +236,20 @@ export function addBot(s: PartyState, level: BotLevel): PlayerInfo | null {
     }
   }
   return p;
+}
+
+/** Typed names are capped so they fit on every name tag and standings row. */
+export const NAME_MAX = 8;
+/** Keep a typed name to letters, digits, spaces and a little punctuation, at most NAME_MAX long. */
+export function cleanName(name: string): string {
+  return [...String(name ?? '').replace(/[^\p{L}\p{N} '!?.\-_]/gu, '').replace(/\s+/g, ' ').trimStart()].slice(0, NAME_MAX).join('').trim();
+}
+/** Lobby: a player types their own name (empty goes back to their character's name). */
+export function renamePlayer(s: PartyState, id: string, name: string): void {
+  if (s.phase !== 'lobby') return;
+  const p = s.players.find((q) => q.id === id);
+  if (!p || p.bot) return;
+  p.name = cleanName(name) || DEFAULT_NAMES[p.char ?? p.slot];
 }
 
 /** Lobby: switch to the next character nobody else is using (the name follows if it was the default). */

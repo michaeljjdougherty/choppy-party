@@ -74,6 +74,12 @@ const BTN_Y = 3;
 const BTN_BACK = 8, BTN_START = 9;
 const BTN_UP = 12, BTN_DOWN = 13, BTN_LEFT = 14, BTN_RIGHT = 15;
 
+/** What a name-entry keyboard hears from the device that's typing. */
+export type TypeEvent =
+  | { kind: 'char'; ch: string }
+  | { kind: 'move'; x: number; y: number }
+  | { kind: 'press' | 'del' | 'case' | 'ok' | 'cancel' };
+
 export class InputManager {
   private keys = new Set<string>();
   private devices = new Map<string, Device>();
@@ -102,6 +108,14 @@ export class InputManager {
   /** Y pressed (pad Y, keyboard V / Period): the board uses it to open the map. */
   onYPress: (d: Device) => void = () => {};
   private padHeld = new Map<string, boolean>();
+  /** Name entry: the device whose buttons type on the on-screen keyboard instead of playing. */
+  typing: string | null = null;
+  onType: (e: TypeEvent) => void = () => {};
+  /** A bumper (LB / RB) press: in the lobby it opens name entry for that pad. */
+  onNamePress: (d: Device) => void = () => {};
+  private padBump = new Map<string, boolean>();
+  private typeHeld = new Map<string, number>();
+  private typeDir = { x: 0, y: 0, next: 0 };
   private nudges = new Map<string, { x: number; y: number; until: number; polls: number }>();
 
   constructor(target: Window = window) {
@@ -111,6 +125,16 @@ export class InputManager {
     const watched = new Set(KEY_PROFILES.flatMap((p) => [...p.up, ...p.down, ...p.left, ...p.right, ...p.a, ...p.b, ...p.x, ...p.y]));
     target.addEventListener('keydown', (e) => {
       if (isTyping(e)) return;
+      if (this.typing?.startsWith('kb')) {
+        // typing a name on a real keyboard: keys type letters, Enter saves, Esc cancels
+        e.preventDefault();
+        this.kind = 'keys';
+        if (e.key === 'Enter') this.onType({ kind: 'ok' });
+        else if (e.key === 'Escape') this.onType({ kind: 'cancel' });
+        else if (e.key === 'Backspace') this.onType({ kind: 'del' });
+        else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) this.onType({ kind: 'char', ch: e.key });
+        return;
+      }
       if (watched.has(e.code)) e.preventDefault();
       if (e.repeat) return;
       this.kind = 'keys';
@@ -253,6 +277,41 @@ export class InputManager {
         d.raw.a = d.raw.b = false;
         continue;
       }
+      if (this.typing === key) {
+        // this pad is typing a name: the stick walks the on-screen keyboard, A types, B deletes,
+        // Y switches case, Start saves
+        const now = performance.now();
+        const edge = (name: string, on: boolean) => {
+          const was = this.typeHeld.get(key + name) ?? 0;
+          this.typeHeld.set(key + name, on ? 1 : 0);
+          return on && !was;
+        };
+        const dx = Math.abs(x) > 0.5 ? Math.sign(x) : 0;
+        const dy = Math.abs(y) > 0.5 ? Math.sign(y) : 0;
+        if (dx !== this.typeDir.x || dy !== this.typeDir.y) {
+          this.typeDir = { x: dx, y: dy, next: now + 380 };
+          if (dx || dy) this.onType({ kind: 'move', x: dx, y: dy });
+        } else if ((dx || dy) && now > this.typeDir.next) {
+          this.typeDir.next = now + 110;
+          this.onType({ kind: 'move', x: dx, y: dy });
+        }
+        if (edge('a', pressed(BTN_A))) this.onType({ kind: 'press' });
+        if (edge('b', pressed(BTN_B))) this.onType({ kind: 'del' });
+        if (edge('y', pressed(BTN_Y))) this.onType({ kind: 'case' });
+        if (edge('x', pressed(BTN_X))) this.onType({ kind: 'char', ch: ' ' });
+        if (edge('s', pressed(BTN_START))) this.onType({ kind: 'ok' });
+        this.kind = 'pad';
+        this.padStyle = padStyleOf(gp.id);
+        // keep the game from seeing these presses: remember them as already down
+        d.raw.x = d.raw.y = 0;
+        d.raw.a = pressed(BTN_A);
+        d.raw.b = pressed(BTN_B);
+        padX.set(key, pressed(BTN_X));
+        padY.set(key, pressed(BTN_Y));
+        this.padStart.set(key, pressed(BTN_START) || pressed(BTN_BACK));
+        this.padHeld.set(key, true);
+        continue;
+      }
       this.padHeld.set(key, pressed(BTN_A) || pressed(BTN_B) || pressed(BTN_Y));
       const a = pressed(BTN_A);
       const b = pressed(BTN_B);
@@ -268,6 +327,9 @@ export class InputManager {
         d.raw.bCount++;
         this.onBPress(d);
       }
+      const bump = pressed(4) || pressed(5);
+      if (bump && !this.padBump.get(key)) this.onNamePress(d);
+      this.padBump.set(key, bump);
       const bs = pressed(BTN_START) || pressed(BTN_BACK);
       if (bs && !this.padStart.get(key)) d.raw.startCount = (d.raw.startCount ?? 0) + 1;
       this.padStart.set(key, bs);

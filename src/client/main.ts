@@ -1,7 +1,7 @@
 import { BOARDS } from '../shared/board/boards';
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
-import { CHARACTERS, PLAYER_COLORS } from '../shared/players';
+import { CHARACTERS, DEFAULT_NAMES, PLAYER_COLORS } from '../shared/players';
 import { FINISH_T, FIRST_GAME, PAUSE_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
@@ -31,6 +31,7 @@ import type { View } from './three/stage';
 import { setCharacters } from './three/choppy';
 import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
 import { clearGamePreview, gamePreview } from './three/views/gamePreview';
+import { NameEntry } from './nameEntry';
 import { attachUi, beginUi, button, clicked, endUi, pointerAt, takeStrayClick, uiSound } from './ui';
 import { A, B, START, STICK, Y, localizeControls, setPromptKind } from './prompts';
 import { closeMap, mapCam, openMap } from './mapCam';
@@ -151,6 +152,21 @@ input.onBPress = (d) => {
   if (mine) session.leave(d.key);
   else if (session.localIds().size === 0) backToMenu();
 };
+/* ---------- lobby name entry: N on the keyboard, a bumper on a pad, or the ✎ button */
+const names = new NameEntry();
+names.onChange = (dev) => (input.typing = dev);
+names.onSave = (dev, name) => session?.rename(dev, name);
+input.onType = (e) => names.handle(e);
+input.onNamePress = (d) => openNames(d.key);
+function openNames(dev: string) {
+  const s = session?.view();
+  if (!session || s?.phase !== 'lobby' || names.open) return;
+  const p = s.players.find((q) => !q.bot && deviceOf(q.id) === dev && session!.localIds().has(q.id));
+  if (!p) return;
+  // a character's own name starts blank, so you just type; a name you typed before stays to edit
+  names.start({ device: dev, playerId: p.id, color: p.color }, DEFAULT_NAMES.includes(p.name) ? '' : p.name);
+}
+
 /* ---------- map view: Y (or M, or the Map button) on the board */
 const canMap = () => {
   const s = session?.view();
@@ -173,6 +189,7 @@ setMapLook(() => {
   return l;
 });
 window.addEventListener('keydown', (e) => {
+  if (names.open) return;
   if (e.code === 'KeyM' && !e.repeat && (e.target as HTMLElement)?.tagName !== 'INPUT') setMap(!mapCam.on);
 });
 // mouse: drag to orbit and tilt, wheel to zoom
@@ -222,6 +239,7 @@ function pauseDevice(): string | null {
   return kb ? deviceOf(kb) : ids[0] ? deviceOf(ids[0]) : null;
 }
 window.addEventListener('keydown', (e) => {
+  if (names.open) return;
   if (e.repeat || (e.key !== 'Escape' && e.code !== 'KeyP') || !joinBox.classList.contains('hidden') || netDialogOpen()) return;
   if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
   const phase = session?.view()?.phase;
@@ -259,7 +277,12 @@ function lobbyBot(level: BotLevel | null) {
   (level ? sfx.join : sfx.leave)();
 }
 window.addEventListener('keydown', (e) => {
-  if (e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+  if (names.open || e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+  // N: type your name (the first keyboard player)
+  if (e.code === 'KeyN' && session?.view()?.phase === 'lobby') {
+    openNames('kb1');
+    return;
+  }
   if (BOT_KEYS[e.code]) lobbyBot(BOT_KEYS[e.code]);
   else if (e.code === 'Digit0' || e.code === 'Numpad0') lobbyBot(null);
   else if (e.code === 'Tab' && session?.view()?.phase === 'lobby') {
@@ -390,6 +413,7 @@ function lookButtons(s: PartyState, mine: Set<string>) {
     const dev = deviceOf(p.id);
     const w = 46, h = 30, y = at.y + 18;
     if (button(ctx, '☺', at.x - w - 3, y, w, h, { color: '#9a5bff', size: 18 })) (input.tap(dev, 'x'));
+    if (button(ctx, '✎', at.x - w / 2, y + h + 6, w, h, { color: '#2f8cff', size: 18 })) openNames(dev);
     if (button(ctx, '', at.x + 3, y, w, h, { color: p.color, size: 16 })) (input.tap(dev, 'y'));
     // paint-drop icon on the colour button
     ctx.save();
@@ -575,6 +599,7 @@ function renderScreens(wallT: number, dt: number) {
     lobbyGameLive = false;
   }
   input.mouseHoldsA = s.phase === 'intro';
+  if (names.open && (s.phase !== 'lobby' || !s.players.some((p) => p.id === names.open!.playerId))) names.close(false);
   lastTags = view.tags();
   drawTags(lastTags);
   if (stage.switches !== seenSwitches) {
@@ -587,7 +612,10 @@ function renderScreens(wallT: number, dt: number) {
   switch (s.phase) {
     case 'lobby':
       drawLobby(ctx, s, sc, wallT);
-      lobbyButtons(s);
+      if (names.open) {
+        const who = s.players.find((p) => p.id === names.open!.playerId);
+        names.draw(ctx, dt, who?.name ?? '', !names.open.device.startsWith('kb'));
+      } else lobbyButtons(s);
       break;
     case 'board':
       bakeItemIcons(stage.renderer);

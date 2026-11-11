@@ -1,6 +1,6 @@
 import type { RawInput, Inputs } from '../shared/types';
 import { DT, TICK_HZ, toTickInput } from '../shared/types';
-import { addBot, addPlayer, createParty, removeBot, removePlayer, stepParty, type PartyState } from '../shared/party';
+import { addBot, addPlayer, createParty, removeBot, removePlayer, renamePlayer, stepParty, type PartyState } from '../shared/party';
 import type { BotLevel } from '../shared/bots';
 import type { ClientMsg } from '../shared/protocol';
 import { onlinePlayerId } from '../shared/protocol';
@@ -17,6 +17,8 @@ export interface Session {
   view(): PartyState | null;
   join(deviceKey: string): void;
   leave(deviceKey: string): void;
+  /** Lobby: set the name of the player on this device. */
+  rename(deviceKey: string, name: string): void;
   /** Player ids controlled from this browser. */
   localIds(): Set<string>;
   addBot(level: BotLevel): void;
@@ -25,6 +27,22 @@ export interface Session {
 }
 
 const copy = (r: RawInput): RawInput => ({ ...r });
+
+/** The name each controller last typed, so it comes back next time that controller joins. */
+function savedName(deviceKey: string): string | undefined {
+  try {
+    return localStorage.getItem(`choppy.name.${deviceKey}`) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+function saveName(deviceKey: string, name: string): void {
+  try {
+    localStorage.setItem(`choppy.name.${deviceKey}`, name);
+  } catch {
+    /* private mode: names just aren't remembered */
+  }
+}
 
 export class LocalSession implements Session {
   kind = 'local' as const;
@@ -69,7 +87,12 @@ export class LocalSession implements Session {
   join(deviceKey: string): void {
     // local player ids are just the device key; a fresh join starts with no carried-over presses
     if (this.state.players.some((p) => p.id === deviceKey)) return;
-    if (addPlayer(this.state, deviceKey)) this.prev.delete(deviceKey);
+    if (addPlayer(this.state, deviceKey, savedName(deviceKey))) this.prev.delete(deviceKey);
+  }
+
+  rename(deviceKey: string, name: string): void {
+    renamePlayer(this.state, deviceKey, name);
+    saveName(deviceKey, name);
   }
 
   leave(deviceKey: string): void {
@@ -142,7 +165,7 @@ export class OnlineSession implements Session {
         this.err = null;
         this.retrying = 0;
         rememberClientId(msg.code, msg.clientId);
-        for (const k of this.pendingJoins) this.t.send({ t: 'add', deviceKey: k });
+        for (const k of this.pendingJoins) this.t.send({ t: 'add', deviceKey: k, name: savedName(k) });
         this.pendingJoins.clear();
         history.replaceState(null, '', `?room=${msg.code}${'host' in m ? '&host=1' : ''}`);
       } else if (msg.t === 'error') {
@@ -213,7 +236,11 @@ export class OnlineSession implements Session {
   join(deviceKey: string): void {
     // pressed A before the room answered: join as soon as we're in
     if (!this.clientId) this.pendingJoins.add(deviceKey);
-    else this.send({ t: 'add', deviceKey });
+    else this.send({ t: 'add', deviceKey, name: savedName(deviceKey) });
+  }
+  rename(deviceKey: string, name: string): void {
+    this.send({ t: 'name', deviceKey, name });
+    saveName(deviceKey, name);
   }
   leave(deviceKey: string): void {
     this.send({ t: 'remove', deviceKey });

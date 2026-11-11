@@ -41,6 +41,8 @@ import { TouchControls, isTouchDevice, needsFromControls, safeInsets, type Touch
 import { PAUSE_ROW_H, PAUSE_ROW_Y, boardPointer, pauseHover, pausePointer, stepSeek } from './pointerNav';
 import { Settings, gear } from './settings';
 import { OstScreen } from './ost';
+import { DevMode } from './devMode';
+import { putClick } from './ui';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -141,6 +143,36 @@ function act(action: ReturnType<MainMenu['update']>) {
 
 const settings = new Settings(input);
 const ost = new OstScreen(input);
+/** Developer mode: Settings → Developer mode (behind a code), then ` opens it any time. */
+const devMode = new DevMode(input, {
+  session: () => session,
+  enter: (next) => {
+    customize = null;
+    pendingJoin = null;
+    resetJuice();
+    enter(next);
+  },
+  device: () => (input.kind === 'pad' ? (input.list().find((d) => d.key.startsWith('pad') && d.connected)?.key ?? 'kb1') : 'kb1'),
+  project: (v) => stage.project(v),
+});
+settings.devUnlocked = () => devMode.unlocked;
+settings.onDev = () => {
+  settings.close();
+  devMode.show(() => menu.resync());
+};
+// ` (the key under Esc) opens and closes developer mode once it's unlocked; it runs before the game's own keys
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (e.code !== 'Backquote' || e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT' || names.open || settings.open || ost.open) return;
+    if (!devMode.unlocked && !devMode.busy) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (mapCam.on && !devMode.picking) setMap(false);
+    devMode.toggle();
+  },
+  true,
+);
 canvas.style.pointerEvents = 'auto';
 attachUi(canvas, VIEW_W, VIEW_H);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -212,7 +244,7 @@ setMapLook(() => {
   return l;
 });
 window.addEventListener('keydown', (e) => {
-  if (names.open || settings.open || ost.open) return;
+  if (names.open || settings.open || ost.open || devMode.busy) return;
   if (e.code === 'KeyM' && !e.repeat && (e.target as HTMLElement)?.tagName !== 'INPUT') setMap(!mapCam.on);
 });
 // mouse: drag to orbit and tilt, wheel to zoom. touch: drag to orbit, pinch to zoom
@@ -256,6 +288,7 @@ canvas.addEventListener(
   { passive: false },
 );
 function mapLayer(s: PartyState) {
+  if (devMode.picking) return;
   if (mapCam.on && !canMap()) setMap(false);
   if (s.phase !== 'board' || s.pause) return;
   if (!mapCam.on) {
@@ -284,6 +317,7 @@ function touchNeeds(): TouchNeed {
   const s = session?.view();
   const all = { stick: true, a: true, b: true, x: true, y: true };
   if (!s) return all;
+  if (devMode.busy) return { stick: true, a: true, b: true, x: false, y: false };
   if (mapCam.on) return { stick: true, a: false, b: true, x: false, y: false };
   if (settings.open) return { stick: true, a: true, b: true, x: false, y: false };
   if (s.pause) return { stick: true, a: true, b: true, x: false, y: false };
@@ -306,7 +340,7 @@ function pauseDevice(): string | null {
   return kb ? deviceOf(kb) : ids[0] ? deviceOf(ids[0]) : null;
 }
 window.addEventListener('keydown', (e) => {
-  if (names.open || settings.open || ost.open) return;
+  if (names.open || settings.open || ost.open || devMode.busy) return;
   // O: settings, from the title or main menu
   if (e.code === 'KeyO' && !e.repeat && !session && !customize && joinBox.classList.contains('hidden') && !netDialogOpen()) {
     act('settings');
@@ -349,7 +383,7 @@ function lobbyBot(level: BotLevel | null) {
   (level ? sfx.join : sfx.leave)();
 }
 window.addEventListener('keydown', (e) => {
-  if (names.open || settings.open || ost.open || e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+  if (names.open || settings.open || ost.open || devMode.busy || e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
   // N: type your name (the first keyboard player)
   if (e.code === 'KeyN' && session?.view()?.phase === 'lobby') {
     openNames('kb1');
@@ -425,7 +459,7 @@ function frame(now: number) {
   }
   if (!session && customize) {
     if (customize.update(dt) === 'back') closeCustomize();
-  } else if (!session && (settings.open || ost.open)) {
+  } else if (!session && (settings.open || ost.open || devMode.busy)) {
     // Settings / the OST player has the controls
   } else if (!session) {
     const p = pointerAt();
@@ -453,10 +487,15 @@ function frame(now: number) {
 
 function render(wallT: number, dt: number) {
   beginUi();
+  // developer mode's panel gets the click, not the buttons drawn under it
+  const held = devMode.busy ? takeStrayClick() : null;
   renderScreens(wallT, dt);
+  if (devMode.hideHud) ctx.clearRect(0, 0, VIEW_W, VIEW_H);
   ost.draw(ctx, wallT);
   settings.draw(ctx, wallT);
-  if (!settings.open && !ost.open) mouseFallback();
+  if (devMode.busy) putClick(held);
+  devMode.draw(ctx, wallT, dt);
+  if (!settings.open && !ost.open && !devMode.busy) mouseFallback();
   endUi();
 }
 
@@ -1050,6 +1089,7 @@ Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px '
   get settings() {
     return settings;
   },
+  devMode,
   /** Test helper: where each player tag is on screen (catches things leaving the camera). */
   tagSpots() {
     return lastTags.map((t) => ({ text: t.text, ...stage.project(t.pos) }));

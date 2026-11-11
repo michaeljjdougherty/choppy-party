@@ -49,6 +49,9 @@ export class LocalSession implements Session {
   private state = createParty((Math.random() * 2 ** 31) | 0);
   private acc = 0;
   private prev = new Map<string, RawInput>();
+  /** Developer mode: how fast the party runs (1 = normal), and whether it's held still. */
+  speed = 1;
+  frozen = false;
 
   constructor(
     private input: InputManager,
@@ -66,7 +69,8 @@ export class LocalSession implements Session {
   }
 
   update(realDt: number): void {
-    this.acc = Math.min(this.acc + realDt, DT * 5); // don't spiral after a tab switch
+    if (this.frozen) return;
+    this.acc = Math.min(this.acc + realDt * this.speed, DT * 5 * Math.max(1, this.speed)); // don't spiral after a tab switch
     while (this.acc >= DT) {
       this.acc -= DT;
       const inputs: Inputs = {};
@@ -81,6 +85,11 @@ export class LocalSession implements Session {
   }
 
   view() {
+    return this.state;
+  }
+
+  /** The party itself, for developer mode to change. */
+  raw(): PartyState {
     return this.state;
   }
 

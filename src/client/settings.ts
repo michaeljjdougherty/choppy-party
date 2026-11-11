@@ -13,19 +13,20 @@ import { setShakeEnabled, shakeEnabled } from './three/fx';
  * While it is open it takes every controller, keyboard and touch button (input.grab), so the game
  * underneath hears nothing. Mouse and touch click the controls directly.
  */
-type Row = 'graphics' | 'music' | 'sfx' | 'shake' | 'fullscreen' | 'done';
-const ROWS: Row[] = ['graphics', 'music', 'sfx', 'shake', 'fullscreen', 'done'];
+type Row = 'graphics' | 'music' | 'sfx' | 'shake' | 'fullscreen' | 'dev' | 'done';
+const ROWS: Row[] = ['graphics', 'music', 'sfx', 'shake', 'fullscreen', 'dev', 'done'];
 const LABEL: Record<Row, string> = {
   graphics: 'Graphics',
   music: 'Music',
   sfx: 'Sound effects',
   shake: 'Screen shake',
   fullscreen: 'Full screen',
+  dev: 'Developer mode',
   done: 'Done',
 };
 const QUALITY_LABEL: Record<QualityName, string> = { low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra' };
 
-const P = { x: 300, y: 92, w: 680, h: 536 };
+const P = { x: 300, y: 56, w: 680, h: 608 };
 const ROW_Y0 = P.y + 140;
 const ROW_H = 64;
 /** Where a row's value control sits. */
@@ -37,6 +38,10 @@ export class Settings {
   private bump = 0;
   private openedAt = 0;
   private onClose: (() => void) | null = null;
+  /** The Developer mode row was pressed (main.ts closes Settings and asks for the code). */
+  onDev: (() => void) | null = null;
+  /** Whether developer mode is unlocked, for the row's label. */
+  devUnlocked: () => boolean = () => false;
 
   constructor(private input: InputManager) {}
 
@@ -96,7 +101,11 @@ export class Settings {
       else setSfxVolume(n / 10);
     } else if (row === 'shake') setShakeEnabled(!shakeEnabled());
     else if (row === 'fullscreen') toggleFullscreen();
-    else return;
+    else if (row === 'dev') {
+      // only a press opens it (not left / right)
+      if (wrap) this.onDev?.();
+      return;
+    } else return;
     sfx.move();
   }
 
@@ -139,9 +148,10 @@ export class Settings {
         ctx.stroke();
       }
       text(ctx, LABEL[row], P.x + 56, y + 1, 22, { align: 'left', color: '#2a1b5e', outline: false, weight: 800 });
-      if (row === 'graphics') this.segments(ctx, y);
+      if (row === 'dev') this.devButton(ctx, y);
+      else if (row === 'graphics') this.segments(ctx, y);
       else if (row === 'music' || row === 'sfx') this.meter(ctx, row, y);
-      else this.toggle(ctx, row, y);
+      else this.toggle(ctx, row as 'shake' | 'fullscreen', y);
     });
 
     const k = promptKind();
@@ -155,6 +165,16 @@ export class Settings {
     // a click outside the panel closes it
     const stray = takeStrayClick();
     if (stray && !fresh && !inside(stray, P.x, P.y, P.w, P.h)) this.close();
+  }
+
+  private devButton(ctx: CanvasRenderingContext2D, y: number): void {
+    const open = this.devUnlocked();
+    const w = 200;
+    if (button(ctx, open ? 'Open tools' : 'Enter code', CTRL.x + CTRL.w - w, y - 19, w, 38, { color: open ? '#21a35a' : '#6b2bd9', size: 17, sound: 'none' })) {
+      this.sel = ROWS.indexOf('dev');
+      this.onDev?.();
+    }
+    text(ctx, open ? 'Unlocked' : 'Locked', CTRL.x + 40, y + 1, 16, { color: open ? '#21a35a' : '#8a7fb8', outline: false, weight: 800 });
   }
 
   private segments(ctx: CanvasRenderingContext2D, y: number): void {

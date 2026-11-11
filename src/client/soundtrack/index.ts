@@ -12,6 +12,8 @@
  * press. Use `music.override('mr-chop')` / `music.override(null)` for scripted moments.
  */
 import type { PartyState } from '../../shared/party';
+import { getBoard } from '../../shared/board/boards';
+import type { BoardState } from '../../shared/board/types';
 import { hashString, type SongSpec } from './compose';
 import { MusicEngine } from './engine';
 import { ALL_SONGS, GAME_SONGS } from './songs';
@@ -22,16 +24,22 @@ export type { SongSpec } from './compose';
 /**
  * Recorded tracks (files in public/music) that take the place of a generated song. If a file
  * fails to load, the generated song with the same id plays instead ('title' for the menu).
- * Lantern Hollow at night has no generated song of its own: without its file it plays the board theme.
  */
 const RECORDED: Record<string, string> = {
   menu: 'music/menu.mp3',
   'board:lantern-hollow': 'music/lantern-hollow-day.mp3',
   'board:lantern-hollow-night': 'music/lantern-hollow-night.mp3',
   'board:cosmo-junction': 'music/cosmo-junction.mp3',
+  'board:stew-court': 'music/stew-court-fucci.mp3',
+  'board:stew-court-choppy': 'music/stew-court-choppy.mp3',
 };
-/** Where a song with no file and no spec of its own falls back to. */
-const FALLBACK: Record<string, string> = { menu: 'title', 'board:lantern-hollow-night': 'board:lantern-hollow' };
+/** Where a song with no working file and no spec of its own falls back to (followed until one plays). */
+const FALLBACK: Record<string, string> = {
+  menu: 'title',
+  'board:lantern-hollow-night': 'board:lantern-hollow',
+  'board:stew-court-choppy': 'board:stew-court',
+  'board:stew-court-pit': 'board:stew-court-choppy',
+};
 const VOL_KEY = 'choppy.musicVolume';
 
 const engine = new MusicEngine();
@@ -73,15 +81,23 @@ export function songForGame(id: string, name?: string): SongSpec {
   return fresh;
 }
 
+/** The id that actually plays for a song: itself if it has a working file or a spec, else its fallback. */
+function resolve(id: string): string {
+  for (let i = 0; i < 8; i++) {
+    if ((RECORDED[id] && !brokenFiles.has(id)) || byId.has(id) || !FALLBACK[id]) return id;
+    id = FALLBACK[id];
+  }
+  return id;
+}
+
 function play(id: string): void {
-  const file = RECORDED[id];
-  if (file && !brokenFiles.has(id)) {
-    engine.playFile(id, file);
+  id = resolve(id);
+  if (RECORDED[id] && !brokenFiles.has(id)) {
+    engine.playFile(id, RECORDED[id]);
     return;
   }
-  const s = byId.get(id) ?? (FALLBACK[id] ? byId.get(FALLBACK[id]) : undefined);
-  // a stand-in keeps the asked-for id, so syncMusic doesn't keep restarting it
-  if (s) engine.playSong(s.id === id ? s : { ...s, id });
+  const s = byId.get(id);
+  if (s) engine.playSong(s);
 }
 
 export const music = {
@@ -130,8 +146,7 @@ export function trackFor(s: PartyState | null | undefined): string {
   switch (s.phase) {
     case 'board':
       if (!s.board) return 'results';
-      if (s.board.boardId === 'lantern-hollow' && s.board.night) return 'board:lantern-hollow-night';
-      return `board:${s.board.boardId}`;
+      return boardTrack(s.board);
     case 'intro':
     case 'play':
       return s.gameId ? songForGame(s.gameId).id : 'results';
@@ -143,6 +158,18 @@ export function trackFor(s: PartyState | null | undefined): string {
   return 'menu';
 }
 
+/** A board's song. Boards that transform swap songs with them. */
+function boardTrack(b: BoardState): string {
+  if (b.boardId === 'lantern-hollow' && b.night) return 'board:lantern-hollow-night';
+  if (b.boardId === 'stew-court' && b.choppy) {
+    // the Chop Pit cue plays while the player taking their turn is locked in the cage
+    const me = b.players[b.order[b.cur]];
+    const pit = getBoard(b.boardId).pit;
+    return me && pit?.includes(me.node) ? 'board:stew-court-pit' : 'board:stew-court-choppy';
+  }
+  return `board:${b.boardId}`;
+}
+
 let tempo = 1;
 /**
  * Call once per frame. Picks the song for the current screen, crossfades when it changes, ducks
@@ -150,7 +177,7 @@ let tempo = 1;
  */
 export function syncMusic(s: PartyState | null | undefined, dt: number): void {
   const id = overrideId ?? trackFor(s);
-  if (engine.current() !== id) play(id);
+  if (engine.current() !== resolve(id)) play(id);
   engine.duck(s?.pause ? 0.35 : s?.phase === 'intro' && !overrideId ? 0.6 : 1);
   const want = hurry && s?.phase === 'play' ? 1.15 : 1;
   tempo += (want - tempo) * Math.min(1, dt * 2);

@@ -294,6 +294,10 @@ function branchPointer(
 
 /* ------------------------------------------------------------------ pause menu */
 
+/** Pause menu rows (main.ts pauseLayer draws them at the same spots). */
+export const PAUSE_ROW_Y = 252;
+export const PAUSE_ROW_H = 60;
+
 /** Clickable pause menu rows (drawn by main.ts pauseLayer); a click on the help page goes back. */
 export function pausePointer(s: PartyState, input: InputManager, mine: boolean): void {
   const p = s.pause;
@@ -304,7 +308,7 @@ export function pausePointer(s: PartyState, input: InputManager, mine: boolean):
     return;
   }
   PAUSE_OPTIONS.forEach((_, i) => {
-    const y = 270 + i * 62;
+    const y = PAUSE_ROW_Y + i * PAUSE_ROW_H;
     if (clicked(450, y - 24, 380, 48)) {
       seek(input, {
         dev,
@@ -323,7 +327,7 @@ export function pauseHover(ctx: CanvasRenderingContext2D, s: PartyState): void {
   if (!s.pause || s.pause.help) return;
   const ptr = pointerAt();
   PAUSE_OPTIONS.forEach((_, i) => {
-    const y = 270 + i * 62;
+    const y = PAUSE_ROW_Y + i * PAUSE_ROW_H;
     if (!inside(ptr, 450, y - 24, 380, 48)) return;
     ctx.save();
     ctx.strokeStyle = '#ffd23f';

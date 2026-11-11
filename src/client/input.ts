@@ -80,7 +80,15 @@ export type TypeEvent =
   | { kind: 'move'; x: number; y: number }
   | { kind: 'press' | 'del' | 'case' | 'ok' | 'cancel' };
 
+/** What a menu that has taken over every device (Settings) hears: one step of the stick, or a button. */
+export type GrabEvent = { kind: 'move'; x: number; y: number } | { kind: 'a' | 'b' };
+
 export class InputManager {
+  /**
+   * While set, every keyboard, pad and touch button drives this overlay menu instead of the game
+   * (Settings). The game sees no presses until it is cleared.
+   */
+  grab: ((e: GrabEvent) => void) | null = null;
   private keys = new Set<string>();
   private devices = new Map<string, Device>();
   /** Fired on the frame a device's A goes down; used for joining. */
@@ -140,6 +148,19 @@ export class InputManager {
         return;
       }
       if (watched.has(e.code)) e.preventDefault();
+      if (this.grab) {
+        // the overlay menu owns this key: no other key handler (pause, map, lobby keys) sees it
+        e.stopImmediatePropagation();
+        this.kind = 'keys';
+        const k = e.code;
+        if (SOLO.up.includes(k)) this.grab({ kind: 'move', x: 0, y: -1 });
+        else if (SOLO.down.includes(k)) this.grab({ kind: 'move', x: 0, y: 1 });
+        else if (SOLO.left.includes(k)) this.grab({ kind: 'move', x: -1, y: 0 });
+        else if (SOLO.right.includes(k)) this.grab({ kind: 'move', x: 1, y: 0 });
+        else if (!e.repeat && SOLO.a.includes(k)) this.grab({ kind: 'a' });
+        else if (!e.repeat && (SOLO.b.includes(k) || e.key === 'Escape')) this.grab({ kind: 'b' });
+        return;
+      }
       if (e.repeat) return;
       this.kind = 'keys';
       this.keys.add(e.code);
@@ -209,6 +230,11 @@ export class InputManager {
     if (btn === 'a') this.virt.a = down;
     if (btn === 'b') this.virt.b = down;
     if (!down) return;
+    if (this.grab) {
+      if (btn === 'a') this.grab({ kind: 'a' });
+      else if (btn === 'b' || btn === 'start') this.grab({ kind: 'b' });
+      return;
+    }
     if (this.capture) {
       if (btn === 'a' || btn === 'b' || btn === 'y') this.onCaptureExit();
       return;
@@ -263,6 +289,15 @@ export class InputManager {
       }
     }
 
+    if (this.grab) {
+      // the touch stick steps through the overlay menu; the game hears nothing
+      this.grabStick('touch', this.virt.x, this.virt.y);
+      for (const p of this.profiles()) {
+        const d = this.devices.get(p.key)!;
+        d.raw.x = d.raw.y = 0;
+        d.raw.a = d.raw.b = false;
+      }
+    }
     if (this.capture) {
       // keyboard map controls: WASD / arrows pan, Q / E orbit, R / F tilt, Z / X zoom
       const k = (c: string) => (this.keys.has(c) ? 1 : 0);
@@ -323,6 +358,29 @@ export class InputManager {
         this.padHeld.set(key, any);
         d.raw.x = d.raw.y = 0;
         d.raw.a = d.raw.b = false;
+        continue;
+      }
+      if (this.grab) {
+        const edge = (name: string, on: boolean) => {
+          const was = this.typeHeld.get(key + name) ?? 0;
+          this.typeHeld.set(key + name, on ? 1 : 0);
+          return on && !was;
+        };
+        if (gp.buttons.some((bt) => bt.pressed) || Math.hypot(x, y) > 0.5) {
+          this.kind = 'pad';
+          this.padStyle = padStyleOf(gp.id);
+        }
+        this.grabStick(key, x, y);
+        if (edge('ga', pressed(BTN_A))) this.grab?.({ kind: 'a' });
+        if (edge('gb', pressed(BTN_B) || pressed(BTN_START) || pressed(BTN_BACK))) this.grab?.({ kind: 'b' });
+        // remember these as already down so the game doesn't see a press when the menu closes
+        d.raw.x = d.raw.y = 0;
+        d.raw.a = pressed(BTN_A);
+        d.raw.b = pressed(BTN_B);
+        padX.set(key, pressed(BTN_X));
+        padY.set(key, pressed(BTN_Y));
+        this.padStart.set(key, pressed(BTN_START) || pressed(BTN_BACK));
+        this.padBump.set(key, pressed(4) || pressed(5));
         continue;
       }
       if (this.typing === key) {
@@ -412,6 +470,22 @@ export class InputManager {
       n.polls++;
       d.raw.x = n.x;
       d.raw.y = n.y;
+    }
+  }
+
+  /** Stick steps for the grabbing menu: one step on a push, then repeats while held. */
+  private grabSticks = new Map<string, { x: number; y: number; next: number }>();
+  private grabStick(key: string, x: number, y: number): void {
+    const dx = Math.abs(x) > 0.5 && Math.abs(x) >= Math.abs(y) ? Math.sign(x) : 0;
+    const dy = Math.abs(y) > 0.5 && Math.abs(y) > Math.abs(x) ? Math.sign(y) : 0;
+    const now = performance.now();
+    const was = this.grabSticks.get(key) ?? { x: 0, y: 0, next: 0 };
+    if (dx !== was.x || dy !== was.y) {
+      this.grabSticks.set(key, { x: dx, y: dy, next: now + 380 });
+      if (dx || dy) this.grab?.({ kind: 'move', x: dx, y: dy });
+    } else if ((dx || dy) && now > was.next) {
+      was.next = now + 140;
+      this.grab?.({ kind: 'move', x: dx, y: dy });
     }
   }
 

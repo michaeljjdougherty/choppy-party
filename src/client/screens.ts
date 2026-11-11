@@ -1,5 +1,5 @@
 import { GAMES, getGame } from '../shared/games';
-import { GRID_COLS, MAX_PLAYERS, MIX_MODES, OPTIONS, ROUND_OPTIONS, mixPool, optionsOfKind, selectionLabel, standings, type PartyOption, type PartyState } from '../shared/party';
+import { GRID_COLS, MAX_PLAYERS, MIX_MODES, OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, mixPool, optionsOfKind, standings, type PartyOption, type PartyState } from '../shared/party';
 import { getBoard, recommendedBoard } from '../shared/board/boards';
 import { crownIcon } from './boardHud';
 import { playerById, roundRect, text } from '../shared/draw';
@@ -14,21 +14,25 @@ export interface ScreenCtx {
   online?: boolean;
 }
 
-function panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, a = 0.42): void {
-  ctx.fillStyle = `rgba(20,10,50,${a})`;
-  roundRect(ctx, x, y, w, h, 22);
-  ctx.fill();
-}
+/**
+ * Lobby layout (HUD coordinates, 1280x720). The left half is the party stage with everyone's
+ * characters and the player controls; the right half is a big live preview with the picker under it.
+ */
+export const PREVIEW = { x: 624, y: 84, w: 640, h: 360 };
+/** Dark caption strip under the preview window. */
+const STRIP = 46;
+/** Left column: the stage, the title and the player controls. */
+export const LEFT = { x: 16, w: 584, cx: 336 };
+/** The picker row right under the preview: ◀ name ▶ for boards, mode tabs for the mix. */
+export const PICK = { y: 504, h: 56, prev: { x: 624, w: 60 }, next: { x: 1204, w: 60 } };
+/** Turns / rounds stepper, bottom left of the right column. */
+export const STEP = { minus: { x: 624, y: 630, w: 60, h: 56 }, plus: { x: 868, y: 630, w: 60, h: 56 }, cx: 776, cy: 658 };
+export const START_BTN = { x: 1064, y: 618, w: 200, h: 86 };
+/** Player hints and the CPU buttons, bottom of the left column. */
+export const CPU_ROW = { y: 644, h: 46 };
 
-/** Where the lobby's board flyover is drawn (HUD coordinates). */
-export const PREVIEW = { x: 724, y: 252, w: 532, h: 222 };
-
-/** Frame, name, description and player count around the board flyover. */
-function boardCard(ctx: CanvasRenderingContext2D, s: PartyState, id: string): void {
-  const b = getBoard(id);
-  const { x, y, w, h } = PREVIEW;
-  const strip = 76;
-  // white toy-like frame with a drop shadow; the 3D flyover shows through the hole
+function windowFrame(ctx: CanvasRenderingContext2D, r: { x: number; y: number; w: number; h: number }, strip: number): void {
+  const { x, y, w, h } = r;
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
   roundRect(ctx, x - 8, y - 2, w + 16, h + strip + 16, 22);
@@ -38,53 +42,58 @@ function boardCard(ctx: CanvasRenderingContext2D, s: PartyState, id: string): vo
   ctx.rect(x + w, y, -w, h); // cut the window out (reverse winding)
   ctx.fillStyle = '#ffffff';
   ctx.fill('evenodd');
-  ctx.restore();
-  // description strip
   ctx.fillStyle = '#2a1b5e';
   ctx.fillRect(x, y + h, w, strip);
-  ribbon(ctx, x + w / 2, y + 4, Math.min(w - 40, 90 + b.name.length * 15), 40, '#9a5bff', b.name, 22);
-  text(ctx, truncate(b.tagline, 58), x + w / 2, y + h + 22, 17, { color: '#ffffff', weight: 700, outline: false });
-  // recommended players chip
-  const [lo, hi] = b.players;
-  const fits = s.players.length >= lo && s.players.length <= hi;
-  const label = `Recommended: ${lo}-${hi}${hi >= 10 ? '+' : ''} players`;
-  ctx.font = '800 16px system-ui, sans-serif';
-  const cw = ctx.measureText(label).width + 40;
-  ctx.fillStyle = fits ? '#21c45a' : '#ffd23f';
-  roundRect(ctx, x + w / 2 - cw / 2, y + h + 38, cw, 28, 14);
+  ctx.restore();
+}
+
+/** One line of text, cut with an ellipsis so it fits `maxW`. */
+function fitLine(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, size: number, maxW: number, color = '#ffffff'): void {
+  ctx.save();
+  ctx.font = `700 ${size}px system-ui, sans-serif`;
+  let out = s;
+  while (out.length > 4 && ctx.measureText(out).width > maxW) out = out.slice(0, -2).trimEnd() + '…';
+  ctx.restore();
+  text(ctx, out, x, y, size, { color, weight: 700, outline: false });
+}
+
+/** A small pill in the preview's top-left corner (player counts and the like). */
+function cornerChip(ctx: CanvasRenderingContext2D, label: string, good: boolean): void {
+  const { x, y } = PREVIEW;
+  ctx.save();
+  ctx.font = '800 15px system-ui, sans-serif';
+  const w = ctx.measureText(label).width + 44;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  roundRect(ctx, x + 12, y + 15, w, 30, 15);
   ctx.fill();
-  peopleIcon(ctx, x + w / 2 - cw / 2 + 16, y + h + 52, fits ? '#ffffff' : '#2a1b5e');
-  text(ctx, label, x + w / 2 + 8, y + h + 53, 16, { color: fits ? '#ffffff' : '#2a1b5e', weight: 800, outline: false });
+  ctx.fillStyle = good ? '#21c45a' : '#ffd23f';
+  roundRect(ctx, x + 12, y + 12, w, 30, 15);
+  ctx.fill();
+  ctx.restore();
+  peopleIcon(ctx, x + 30, y + 27, good ? '#ffffff' : '#2a1b5e');
+  text(ctx, label, x + 12 + w / 2 + 9, y + 28, 15, { color: good ? '#ffffff' : '#2a1b5e', weight: 800, outline: false });
+}
+
+/** Frame, description and player count around the board flyover. */
+function boardCard(ctx: CanvasRenderingContext2D, s: PartyState, id: string): void {
+  const b = getBoard(id);
+  const { x, y, w, h } = PREVIEW;
+  windowFrame(ctx, PREVIEW, STRIP);
+  fitLine(ctx, b.tagline, x + w / 2, y + h + STRIP / 2 + 1, 17, w - 40);
+  const [lo, hi] = b.players;
+  const best = s.players.length > 0 && recommendedBoard(s.players.length).id === b.id;
+  cornerChip(ctx, best ? 'Best board for your group' : `Best for ${lo}-${hi}${hi >= 10 ? '+' : ''} players`, best);
 }
 
 /** The same frame around a live preview of the picked minigame, played by CPU stand-ins. */
 function gameCard(ctx: CanvasRenderingContext2D, s: PartyState, id: string): void {
   const g = getGame(id);
   const { x, y, w, h } = PREVIEW;
-  const strip = 76;
-  ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  roundRect(ctx, x - 8, y - 2, w + 16, h + strip + 16, 22);
-  ctx.fill();
-  ctx.beginPath();
-  roundRect(ctx, x - 8, y - 8, w + 16, h + strip + 16, 22);
-  ctx.rect(x + w, y, -w, h);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill('evenodd');
-  ctx.restore();
-  ctx.fillStyle = '#2a1b5e';
-  ctx.fillRect(x, y + h, w, strip);
-  ribbon(ctx, x + w / 2, y + 4, Math.min(w - 40, 90 + g.name.length * 15), 40, MODE_COLOR[g.mode] ?? '#9a5bff', g.name, 22);
-  text(ctx, truncate(g.blurb, 58), x + w / 2, y + h + 22, 17, { color: '#ffffff', weight: 700, outline: false });
+  windowFrame(ctx, PREVIEW, STRIP);
+  ribbon(ctx, x + w / 2, y + 2, Math.min(w - 120, 110 + g.name.length * 16), 42, MODE_COLOR[g.mode] ?? '#9a5bff', g.name, 22);
+  fitLine(ctx, g.blurb, x + w / 2, y + h + STRIP / 2 + 1, 17, w - 40);
   const fits = s.players.length >= g.minPlayers && s.players.length <= g.maxPlayers;
-  const label = `${g.mode}  ·  ${g.minPlayers === g.maxPlayers ? g.minPlayers : `${g.minPlayers}-${g.maxPlayers}`} players`;
-  ctx.font = '800 16px system-ui, sans-serif';
-  const cw = ctx.measureText(label).width + 40;
-  ctx.fillStyle = fits ? '#21c45a' : '#ffd23f';
-  roundRect(ctx, x + w / 2 - cw / 2, y + h + 38, cw, 28, 14);
-  ctx.fill();
-  peopleIcon(ctx, x + w / 2 - cw / 2 + 16, y + h + 52, fits ? '#ffffff' : '#2a1b5e');
-  text(ctx, label, x + w / 2 + 8, y + h + 53, 16, { color: fits ? '#ffffff' : '#2a1b5e', weight: 800, outline: false });
+  cornerChip(ctx, `${g.mode}  ·  ${g.minPlayers === g.maxPlayers ? g.minPlayers : `${g.minPlayers}-${g.maxPlayers}`} players`, fits);
 }
 
 function peopleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color: string): void {
@@ -118,7 +127,7 @@ export function lobbyKind(s: PartyState, online: boolean): LobbyKind {
 }
 
 /** Free Play's tile grid (HUD coordinates): only two rows show at a time and it scrolls with the pick. */
-export const GRID = { x: 228, y: 572, w: 824, tileH: 50, gap: 8 };
+export const GRID = { x: 652, y: 500, w: 612, tileH: 50, gap: 8 };
 export function gridTiles(s: PartyState): { opt: number; x: number; y: number; w: number; h: number }[] {
   const list = optionsOfKind('game');
   const pos = Math.max(0, list.indexOf(s.selection));
@@ -135,6 +144,11 @@ export function gridTiles(s: PartyState): { opt: number; x: number; y: number; w
     }
   return out;
 }
+
+/** Online lobby mode tabs (main.ts makes them clickable). */
+export const ONLINE_TABS: { kind: PartyOption['kind']; label: string; x: number; y: number; w: number; h: number }[] = (
+  [['board', 'Boards'], ['mix', 'Mix'], ['game', 'Free Play']] as const
+).map(([kind, label], i) => ({ kind, label, x: LEFT.cx - 175 + i * 120, y: 146, w: 110, h: 36 }));
 
 /** Tinted bands top and bottom with the lobby's own pattern drifting through them. */
 function backdrop(ctx: CanvasRenderingContext2D, kind: LobbyKind, t: number): void {
@@ -196,9 +210,9 @@ function hexA(hex: string, a: number): string {
 }
 
 /** The Minigame Mix card: a slot-machine reel of game names and what's in the pot. */
+/** The Minigame Mix card: a slot-machine reel of game names and what's in the pot. */
 function mixCard(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
   const { x, y, w, h } = PREVIEW;
-  windowFrame(ctx, PREVIEW, 76);
   const g = ctx.createLinearGradient(0, y, 0, y + h);
   g.addColorStop(0, '#173a8a');
   g.addColorStop(1, '#2f8cff');
@@ -208,151 +222,150 @@ function mixCard(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void 
   const mode = s.mixMode ?? 0;
   const ids = mixPool(mode, Math.max(2, s.players.length));
   const pool = GAMES.filter((q) => ids.includes(q.id));
+  const mid = y + h / 2 + 14;
+  const rowH = 70;
   ctx.save();
   ctx.beginPath();
-  ctx.rect(x, y + 50, w, h - 60);
+  ctx.rect(x, y + 52, w, h - 52);
   ctx.clip();
-  for (let r = 0; r < 3; r++) {
-    const cx = x + w * (0.2 + r * 0.3);
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(x, mid - rowH / 2, w, rowH);
+  for (let r = 0; r < 3 && pool.length; r++) {
+    const cx = x + w * (0.18 + r * 0.32);
     const speed = 1.6 + r * 0.5;
     const f = t * speed + r * 3.3;
-    for (let k = -1; k <= 2; k++) {
+    for (let k = -3; k <= 3; k++) {
       const idx = (((Math.floor(f) + k + r * 7) % pool.length) + pool.length) % pool.length;
-      const yy = y + 130 + (k - (f % 1)) * 60;
+      const yy = mid + (k - (f % 1)) * rowH;
       const q = pool[idx];
       ctx.fillStyle = MODE_COLOR[q.mode] ?? '#9a5bff';
-      roundRect(ctx, cx - 78, yy - 22, 156, 44, 12);
+      roundRect(ctx, cx - 92, yy - 26, 184, 52, 14);
       ctx.fill();
-      text(ctx, truncate(q.name, 19), cx, yy, 14, { color: '#fff', weight: 800 });
+      text(ctx, truncate(q.name, 20), cx, yy, 16, { color: '#fff', weight: 800 });
     }
   }
   ctx.restore();
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.fillRect(x, y + 108, w, 44);
-  ribbon(ctx, x + w / 2, y + 4, 300, 40, MIX_COLOR[mode], mode ? `Mix: ${MIX_MODES[mode]}` : 'Minigame Mix', 22);
+  windowFrame(ctx, PREVIEW, STRIP);
+  ribbon(ctx, x + w / 2, y + 2, 300, 42, MIX_COLOR[mode], `Mix: ${MIX_MODES[mode]}`, 22);
   const count = (m: string) => pool.filter((q) => q.mode === m).length;
-  text(ctx, `${pool.length} minigames shuffled in, never the same twice in a row`, x + w / 2, y + h + 22, 16, { color: '#ffffff', weight: 700, outline: false });
   const label =
     mode === 1
       ? 'Two players face off each round, taking turns so everyone duels'
       : mode === 2
         ? 'Two even teams every round (odd numbers take turns sitting out)'
-        : `${count('Free-for-all')} free-for-all  ·  ${count('Team')} team  ·  ${count('1-vs-many')} 1-vs-many`;
-  text(ctx, label, x + w / 2, y + h + 52, 15, { color: '#bfe0ff', weight: 700, outline: false });
+        : `${count('Free-for-all')} free-for-all  ·  ${count('Team')} team  ·  ${count('1-vs-many')} 1-vs-many, never the same twice in a row`;
+  fitLine(ctx, label, x + w / 2, y + h + STRIP / 2 + 1, 16, w - 40, '#bfe0ff');
+  cornerChip(ctx, `${pool.length} minigames`, pool.length > 0);
 }
 
 export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: ScreenCtx, t = 0): void {
   const lk = lobbyKind(s, !!sc.online);
   const th = LOBBY_THEME[lk];
+  const cx = LEFT.cx;
   backdrop(ctx, lk, t);
-  ribbon(ctx, 640, 64, Math.max(360, th.title.length * 30), 70, th.color, th.title, 46);
-  if (sc.roomCode) {
-    // the room code is the star of the online lobby
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, 1010, 22, 250, 84, 18);
-    ctx.fill();
-    ctx.strokeStyle = th.color;
-    ctx.lineWidth = 5;
-    ctx.stroke();
-    text(ctx, 'ROOM CODE', 1135, 42, 15, { color: '#6b4bb8', weight: 800, outline: false });
-    text(ctx, sc.roomCode, 1135, 78, 46, { color: '#2a1b5e', outline: false });
-  }
-  text(ctx, lk === 'online' && !sc.roomCode ? sc.status : th.sub, 640, 128, 22, { color: '#ffffff', weight: 700 });
+  ribbon(ctx, cx + 30, 44, Math.max(300, th.title.length * 24), 56, th.color, th.title, 34);
   const k = promptKind();
+  const o = OPTIONS[s.selection];
+  if (lk === 'online') {
+    // the room code is the star of the online lobby
+    if (sc.roomCode) {
+      ctx.fillStyle = '#ffffff';
+      roundRect(ctx, cx - 120, 84, 240, 50, 16);
+      ctx.fill();
+      ctx.strokeStyle = th.color;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      text(ctx, 'CODE', cx - 78, 110, 15, { color: '#6b4bb8', weight: 800, outline: false });
+      text(ctx, sc.roomCode, cx + 30, 110, 36, { color: '#2a1b5e', outline: false });
+    } else text(ctx, sc.status, cx, 108, 18, { color: '#ffffff', weight: 700 });
+    // mode tabs: the room can play any mode, Start (or a click) switches between them
+    for (const tab of ONLINE_TABS) {
+      const on = o.kind === tab.kind;
+      ctx.fillStyle = on ? '#ffffff' : 'rgba(20,10,50,0.5)';
+      roundRect(ctx, tab.x, tab.y, tab.w, tab.h, 14);
+      ctx.fill();
+      text(ctx, tab.label, tab.x + tab.w / 2, tab.y + tab.h / 2 + 1, 16, { color: on ? '#6b2bd9' : '#ffffff', weight: 800, outline: false });
+    }
+  } else text(ctx, th.sub, cx, 98, 18, { color: '#ffffff', weight: 700 });
+
   if (s.players.length === 0) {
-    text(ctx, k === 'mouse' ? `${tapWord()} Join, or press A on a controller` : `Press ${A()} to join!`, 640, 360, 40, { color: '#fff' });
-    text(ctx, 'Controllers: A   ·   Keyboard: Space or Enter', 640, 408, 20, { weight: 600 });
+    text(ctx, k === 'mouse' ? `${tapWord()} Join to play` : `Press ${A()} to join!`, cx, 340, 36, { color: '#fff' });
+    text(ctx, 'Controllers: A   ·   Keyboard: Space or Enter', cx, 386, 18, { weight: 600 });
   } else {
     const bots = s.players.filter((p) => p.bot).length;
-    const keysHint = k === 'pad' ? `${A()}: join  ·  ${B()}: leave  ·  X: character  ·  Y: colour  ·  LB/RB: your name` : k === 'mouse' ? `${tapWord()} ☺ for a new character, the paint drop for a new colour, ✎ for your name` : `C: character  ·  V: colour  ·  N: your name  ·  1/2/3: add CPU  ·  0: remove  ·  Tab: 2nd keyboard`;
-    text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? ` (${bots} CPU)` : ''}   ·   ${keysHint}`, 640, 166, 20, {
-      color: '#ffe9f6',
-      weight: 600,
-    });
+    text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? `  ·  ${bots} CPU` : ''}`, cx, lk === 'online' ? 202 : 132, 18, { color: '#ffe9f6', weight: 700 });
+    // keyboard and controller players get one short line of buttons; mouse and touch just use the buttons
+    const keysHint =
+      k === 'pad'
+        ? `${A()} join  ·  ${B()} leave  ·  X character  ·  Y colour  ·  LB/RB name`
+        : k === 'keys'
+          ? 'C character  ·  V colour  ·  N name  ·  1/2/3 add CPU  ·  0 remove  ·  Tab 2nd keyboard'
+          : '';
+    if (keysHint) text(ctx, keysHint, cx, CPU_ROW.y - 22, 15, { color: '#ffffff', weight: 600 });
   }
 
-  const o = OPTIONS[s.selection];
-  const hostHint = (pick: string) =>
-    s.players.length ? (k === 'mouse' ? `Host: ${pick.replace('{keys}', tapWord(true))}, then START` : `Host: ${pick.replace('{keys}', k === 'pad' ? 'stick' : 'arrows')}, ${A()} to start`) : '';
-  if (lk === 'online') {
-    // mode tabs: the room can play any mode, Start switches between them
-    const tabs: [PartyOption['kind'], string][] = [['board', 'Boards'], ['mix', 'Mix'], ['game', 'Free Play']];
-    tabs.forEach(([kind, label], i) => {
-      const on = o.kind === kind;
-      const ty = 80 + i * 46;
-      ctx.fillStyle = on ? '#ffffff' : 'rgba(20,10,50,0.5)';
-      roundRect(ctx, 16, ty, 150, 40, 14);
-      ctx.fill();
-      text(ctx, (on ? '▸ ' : '') + label, 91, ty + 21, 18, { color: on ? '#6b2bd9' : '#ffffff', weight: 800, outline: false });
-    });
-    if (k !== 'mouse') text(ctx, k === 'pad' ? 'Start: switch mode' : 'P: switch mode', 91, 276, 15, { color: '#ffe14d', weight: 700 });
-  }
+  const stick = k === 'pad' ? 'Stick' : 'Arrows';
+  const hostLine = (what: string) => (k !== 'mouse' && s.players.length ? `Host: ${what}  ·  ${A()} start` : '');
   if (o.kind === 'board') {
     boardCard(ctx, s, o.id);
-    panel(ctx, 220, 556, 840, 130);
-    text(ctx, selectionLabel(s), 640, 598, 36, { color: '#fff' });
     const b = getBoard(o.id);
-    const best = s.players.length > 0 && recommendedBoard(s.players.length).id === b.id;
-    const sub = `Best for ${b.players[0]}-${b.players[1]}${b.players[1] >= 10 ? '+' : ''} players${best ? '  ★ Recommended for your group' : ''}`;
-    text(ctx, truncate(sub, 92), 640, 634, 17, { color: '#ffe0e2', weight: 500, outline: false });
-    // one pip per board
+    text(ctx, b.name, PREVIEW.x + PREVIEW.w / 2, PICK.y + 24, 30, { color: '#fff' });
     const boards = optionsOfKind('board');
     boards.forEach((bi, i) => {
-      ctx.fillStyle = bi === s.selection ? '#ffe14d' : 'rgba(255,255,255,0.4)';
+      ctx.fillStyle = bi === s.selection ? '#ffe14d' : 'rgba(255,255,255,0.5)';
       ctx.beginPath();
-      ctx.arc(640 + (i - (boards.length - 1) / 2) * 22, 566, bi === s.selection ? 6 : 4.5, 0, Math.PI * 2);
+      ctx.arc(PREVIEW.x + PREVIEW.w / 2 + (i - (boards.length - 1) / 2) * 20, PICK.y + 52, bi === s.selection ? 5.5 : 4, 0, Math.PI * 2);
       ctx.fill();
     });
-    text(ctx, hostHint('{keys} left/right for a board, up/down for turns'), 640, 664, 17, { color: '#ffd23f', weight: 700, outline: false });
+    stepper(ctx, `${TURN_OPTIONS[s.turnsIdx]}`, 'turns', s.turnsIdx > 0, s.turnsIdx < TURN_OPTIONS.length - 1);
+    const hl = hostLine(`${stick} ◀▶ board, ▲▼ turns`);
+    if (hl) text(ctx, hl, START_BTN.x - 132, 708, 14, { color: '#ffd23f', weight: 700, outline: true });
   } else if (o.kind === 'mix') {
     mixCard(ctx, s, t);
-    panel(ctx, 220, 540, 840, 150);
     // the mode switch: Classic, Duel or Stew Battle
     MIX_MODES.forEach((m, i) => {
       const on = i === (s.mixMode ?? 0);
       const r = MIX_TABS[i];
-      ctx.fillStyle = on ? MIX_COLOR[i] : 'rgba(255,255,255,0.14)';
-      roundRect(ctx, r.x, r.y, r.w, r.h, 14);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      roundRect(ctx, r.x + 2, r.y + 5, r.w, r.h, 16);
+      ctx.fill();
+      ctx.fillStyle = on ? MIX_COLOR[i] : 'rgba(20,10,50,0.55)';
+      roundRect(ctx, r.x, r.y, r.w, r.h, 16);
       ctx.fill();
       ctx.lineWidth = on ? 4 : 2;
       ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.45)';
       ctx.stroke();
-      text(ctx, m, r.x + r.w / 2, r.y + r.h / 2 + 1, on ? 20 : 17, { color: '#fff', weight: 900 });
+      text(ctx, m, r.x + r.w / 2, r.y + r.h / 2 + 1, 20, { color: '#fff', weight: 900 });
     });
-    ROUND_OPTIONS.forEach((n, i) => {
-      const on = i === s.roundsIdx;
-      const cx = 640 + (i - 1) * 150;
-      const sz = on ? 1.06 + Math.sin(t * 6) * 0.03 : 0.9;
-      ctx.save();
-      ctx.translate(cx, 632);
-      ctx.scale(sz, sz);
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      roundRect(ctx, -58 + 3, -24 + 6, 116, 48, 16);
-      ctx.fill();
-      ctx.fillStyle = on ? '#2f8cff' : 'rgba(255,255,255,0.18)';
-      roundRect(ctx, -58, -24, 116, 48, 16);
-      ctx.fill();
-      ctx.lineWidth = on ? 5 : 2;
-      ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.5)';
-      ctx.stroke();
-      ctx.restore();
-      text(ctx, `${n}`, cx - 22, 632, 28, { color: '#fff' });
-      text(ctx, 'rounds', cx + 26, 634, 14, { color: '#fff', weight: 800, outline: false });
-    });
-    text(ctx, hostHint('{keys} up/down for the mode, left/right for rounds'), 640, 676, 16, { color: '#ffd23f', weight: 700, outline: false });
+    stepper(ctx, `${ROUND_OPTIONS[s.roundsIdx]}`, 'rounds', s.roundsIdx > 0, s.roundsIdx < ROUND_OPTIONS.length - 1);
+    const hl = hostLine(`${stick} ▲▼ mode, ◀▶ rounds`);
+    if (hl) text(ctx, hl, START_BTN.x - 132, 708, 14, { color: '#ffd23f', weight: 700, outline: true });
   } else {
     gameCard(ctx, s, o.id);
     freeGrid(ctx, s, t);
-    text(ctx, hostHint('{keys} to pick a game'), 640, 706, 15, { color: '#ffd23f', weight: 700 });
+    const hl = hostLine(`${stick} to pick a game`);
+    if (hl) text(ctx, hl, (PREVIEW.x + START_BTN.x - 12) / 2, 664, 15, { color: '#ffd23f', weight: 700 });
   }
+}
+
+/** The turns / rounds count between its − and + buttons (main.ts draws the buttons). */
+function stepper(ctx: CanvasRenderingContext2D, n: string, unit: string, _less: boolean, _more: boolean): void {
+  const { minus, plus, cx, cy } = STEP;
+  ctx.fillStyle = 'rgba(20,10,50,0.55)';
+  roundRect(ctx, minus.x + minus.w / 2, minus.y + 4, plus.x + plus.w / 2 - (minus.x + minus.w / 2), minus.h - 8, 18);
+  ctx.fill();
+  text(ctx, n, cx - 30, cy, 34, { color: '#fff' });
+  text(ctx, unit, cx + 22, cy + 3, 18, { color: '#fff', weight: 800, align: 'left' });
 }
 
 /** Free Play: every minigame as a coloured tile. Two rows show; it scrolls as you move. */
 function freeGrid(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
-  panel(ctx, GRID.x - 10, GRID.y - 14, GRID.w + 20, 2 * GRID.tileH + GRID.gap + 26, 0.5);
   const list = optionsOfKind('game');
   const rows = Math.ceil(list.length / GRID_COLS);
   const pos = list.indexOf(s.selection);
+  ctx.fillStyle = 'rgba(20,10,50,0.5)';
+  roundRect(ctx, PREVIEW.x - 8, GRID.y - 12, PREVIEW.w + 16, 2 * GRID.tileH + GRID.gap + 24, 18);
+  ctx.fill();
   for (const tile of gridTiles(s)) {
     const o = OPTIONS[tile.opt];
     if (o.kind !== 'game') continue;
@@ -379,17 +392,39 @@ function freeGrid(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void
     ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.7)';
     ctx.stroke();
     ctx.restore();
-    text(ctx, truncate(g.name, 18), tile.x + tile.w / 2, tile.y + tile.h / 2 + 1, 14, { color: '#fff', weight: 800 });
+    // names wrap onto two lines so nothing is cut off
+    const lines = twoLines(ctx, g.name, tile.w - 10, 13);
+    lines.forEach((l, i) => text(ctx, l, tile.x + tile.w / 2, tile.y + tile.h / 2 + 1 + (i - (lines.length - 1) / 2) * 15, 13, { color: '#fff', weight: 800 }));
   }
   // scroll pips down the side
   const row = Math.floor(Math.max(0, pos) / GRID_COLS);
   for (let r = 0; r < rows; r++) {
     ctx.fillStyle = r === row ? '#ffe14d' : 'rgba(255,255,255,0.35)';
     ctx.beginPath();
-    ctx.arc(GRID.x - 30, GRID.y + 6 + (r * (2 * GRID.tileH)) / Math.max(1, rows - 1), r === row ? 5 : 3.5, 0, Math.PI * 2);
+    ctx.arc(PREVIEW.x + 12, GRID.y + 4 + (r * (2 * GRID.tileH)) / Math.max(1, rows - 1), r === row ? 4.5 : 3, 0, Math.PI * 2);
     ctx.fill();
   }
-  text(ctx, `${pos + 1}/${list.length}`, GRID.x - 76, GRID.y + GRID.tileH + 2, 15, { color: '#fff', weight: 800 });
+}
+
+function twoLines(ctx: CanvasRenderingContext2D, s: string, maxW: number, size: number): string[] {
+  ctx.save();
+  ctx.font = `800 ${size}px system-ui, sans-serif`;
+  const fits = (x: string) => ctx.measureText(x).width <= maxW;
+  let out = [s];
+  if (!fits(s)) {
+    const words = s.split(' ');
+    let best: string[] | null = null;
+    for (let i = 1; i < words.length; i++) {
+      const a = words.slice(0, i).join(' '), b = words.slice(i).join(' ');
+      if (fits(a) && fits(b)) {
+        best = [a, b];
+        break;
+      }
+    }
+    out = best ?? [truncate(s, 16)];
+  }
+  ctx.restore();
+  return out;
 }
 
 function shadeHex(hex: string, amt: number): string {
@@ -399,36 +434,22 @@ function shadeHex(hex: string, amt: number): string {
 }
 
 const MIX_COLOR = ['#2f8cff', '#ff4d5a', '#ff9f1c'];
-/** Where the Mix mode tabs sit (main.ts makes them clickable). */
-export const MIX_TABS = [0, 1, 2].map((i) => ({ x: 640 - 330 + i * 225, y: 554, w: 210, h: 44 }));
+/** Where the Mix mode tabs sit, right under the preview (main.ts makes them clickable). */
+export const MIX_TABS = [0, 1, 2].map((i) => ({ x: PREVIEW.x + i * ((PREVIEW.w + 12) / 3), y: PICK.y, w: (PREVIEW.w - 24) / 3, h: PICK.h - 4 }));
 const MODE_COLOR: Record<string, string> = { 'Free-for-all': '#ff8a1f', Team: '#3fa9f5', '1-vs-many': '#b06cff', Duel: '#ff4d5a' };
 
-/** Where the minigame intro's live preview is drawn (HUD coordinates). */
-export const INTRO_PREVIEW = { x: 700, y: 196, w: 552, h: 288 };
-
-/** White toy frame around a 3D window, with a dark strip of `strip` px under it. */
-function windowFrame(ctx: CanvasRenderingContext2D, r: { x: number; y: number; w: number; h: number }, strip: number): void {
-  const { x, y, w, h } = r;
-  ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  roundRect(ctx, x - 8, y - 2, w + 16, h + strip + 16, 22);
-  ctx.fill();
-  ctx.beginPath();
-  roundRect(ctx, x - 8, y - 8, w + 16, h + strip + 16, 22);
-  ctx.rect(x + w, y, -w, h);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill('evenodd');
-  ctx.fillStyle = '#2a1b5e';
-  ctx.fillRect(x, y + h, w, strip);
-  ctx.restore();
-}
+/** Where the minigame intro's live preview is drawn (HUD coordinates): big, on the right. */
+export const INTRO_PREVIEW = { x: 548, y: 158, w: 716, h: 402 };
+/** The intro's ready pill and the host's Start now button, under the preview. */
+export const INTRO_READY = { cx: 880, y: 658 };
+export const INTRO_START = { x: 1132, y: 634, w: 132, h: 48 };
 
 export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
   const g = getGame(s.gameId!);
   const age = s.phaseT;
   const color = s.boardEvent === 'duel' ? '#ff4d5a' : s.boardEvent === 'stew' ? '#3fa9f5' : MODE_COLOR[g.mode] ?? '#ff8a1f';
   vignette(ctx, 0.45);
-  sunburst(ctx, 640, 100, 560, t, color, 0.28);
+  sunburst(ctx, 640, 90, 520, t, color, 0.28);
   const head =
     s.boardEvent === 'duel'
       ? `DUEL!  ${s.gamePlayers?.map((p) => p.name).join('  vs  ')}`
@@ -440,26 +461,27 @@ export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
   const rib = easeOut(age / 0.4);
   ctx.save();
   ctx.translate(0, (1 - rib) * -90);
-  ribbon(ctx, 640, 40, Math.min(700, 120 + head.length * 13), 46, color, head, 21);
+  ribbon(ctx, 640, 34, Math.min(700, 120 + head.length * 12), 42, color, head, 19);
   ctx.restore();
-  slam(ctx, g.name, 640, 118, 80, age, '#ffd23f', 0.15);
+  slam(ctx, g.name, 640, 104, 68, age, '#ffd23f', 0.15);
 
   // the live preview, with the controls underneath
   const r = INTRO_PREVIEW;
+  const strip = 64;
   const k = springIn(clamp01((age - 0.2) / 0.5));
   ctx.save();
   ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
   ctx.scale(k, k);
   ctx.translate(-(r.x + r.w / 2), -(r.y + r.h / 2));
-  windowFrame(ctx, r, 64);
-  ribbon(ctx, r.x + 96, r.y + 6, 160, 34, color, 'PREVIEW', 16);
-  controlChips(ctx, g.controls, r.x + r.w / 2, r.y + r.h + 32);
+  windowFrame(ctx, r, strip);
+  ribbon(ctx, r.x + 96, r.y + 4, 160, 34, color, 'PREVIEW', 16);
+  controlChips(ctx, g.controls, r.x + r.w / 2, r.y + r.h + strip / 2);
   ctx.restore();
 
   if (s.boardEvent === 'stew' && s.gamePlayers) {
     for (const team of [0, 1]) {
       const names = s.gamePlayers.filter((p) => p.team === team).map((p) => p.name).join(', ');
-      ribbon(ctx, 340, 190 + team * 50, 600, 40, team ? '#3fa9f5' : '#ff5a5f', `${team ? 'Blue' : 'Red'}: ${names}`, 18);
+      ribbon(ctx, 272, 186 + team * 48, 470, 38, team ? '#3fa9f5' : '#ff5a5f', truncate(`${team ? 'Blue' : 'Red'}: ${names}`, 46), 17);
     }
   }
 
@@ -468,17 +490,18 @@ export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
   const ready = who.filter((p) => s.ready.includes(p.id)).length;
   const all = ready === who.length;
   const pulse = all ? 1 : 1 + Math.sin(t * 5) * 0.03;
-  const how = promptKind() === 'mouse' ? isTouch() ? 'Hold your finger on the screen to ready up' : 'Hold the mouse button to ready up' : `Hold ${A()} for 1 second to ready up`;
+  const how = promptKind() === 'mouse' ? (isTouch() ? 'Hold your finger down to ready up' : 'Hold the mouse button to ready up') : `Hold ${A()} to ready up`;
   ctx.save();
-  ctx.translate(r.x + r.w / 2, 622);
+  ctx.translate(INTRO_READY.cx, INTRO_READY.y);
   ctx.scale(pulse, pulse);
-  ctx.fillStyle = all ? 'rgba(33,196,90,0.85)' : 'rgba(20,10,50,0.7)';
-  roundRect(ctx, -260, -26, 520, 52, 26);
+  ctx.fillStyle = all ? 'rgba(33,196,90,0.9)' : 'rgba(20,10,50,0.75)';
+  roundRect(ctx, -236, -25, 472, 50, 25);
   ctx.fill();
-  text(ctx, all ? "Everyone's ready!" : `${how}  ·  ${ready}/${who.length}`, 0, 1, 21, { color: '#fff', weight: 800 });
+  text(ctx, all ? "Everyone's ready!" : `${how}  ·  ${ready}/${who.length}`, 0, 1, 19, { color: '#fff', weight: 800 });
   ctx.restore();
-  text(ctx, `Host: ${X()} to start right away`, r.x + r.w / 2, 668, 17, { color: '#ffd23f', weight: 700 });
+  if (promptKind() !== 'mouse') text(ctx, `Host: ${X()} to start right away`, INTRO_READY.cx, 702, 15, { color: '#ffd23f', weight: 700 });
 }
+
 
 const MEDAL = ['#ffcf3a', '#d5dbe6', '#e09a5a'];
 

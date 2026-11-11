@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
-import { BOT_LABEL } from '../../../shared/bots';
-import { hostId, OPTIONS, READY_HOLD, standings, type PartyState } from '../../../shared/party';
+import { hostId, READY_HOLD, standings, type PartyState } from '../../../shared/party';
 import { ChoppyModel } from '../choppy';
 import { checkerTexture, makeScene, mesh, toy } from '../kit';
 import { place } from '../assets';
@@ -129,17 +128,27 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
           : null;
     podium.visible = !!sorted;
     if (!sorted) {
-      // with a board picked, the right side of the stage shows its flyover, so everyone shuffles left
-      // with a board picked (or a minigame preview showing), the right side has a window, so everyone shuffles left
-      const board = (s.phase === 'lobby' && OPTIONS[s.selection]?.kind === 'board') || s.phase === 'intro';
-      const gap = board ? Math.min(1.5, 6.2 / Math.max(1, n - 1)) : Math.min(1.9, 16 / Math.max(1, n));
-      const cx = board ? -3.0 : 0;
-      [...s.players]
-        .sort((a, b) => a.slot - b.slot)
-        .forEach((p, i) => {
-          const e = models.get(p.id);
-          if (e) e.target.set(cx + (i - (n - 1) / 2) * gap, 0, 1);
-        });
+      // the lobby and the minigame intro have a big preview window on the right, so everyone stands on
+      // the left half; more than five players stand in two staggered rows so nobody hides behind a window
+      const windowed = s.phase === 'lobby' || s.phase === 'intro';
+      const sorted = [...s.players].sort((a, b) => a.slot - b.slot);
+      if (!windowed) {
+        const gap = Math.min(1.9, 16 / Math.max(1, n));
+        sorted.forEach((p, i) => models.get(p.id)?.target.set((i - (n - 1) / 2) * gap, 0, 1));
+        return;
+      }
+      const cx = s.phase === 'intro' ? -4.45 : -3.9;
+      const span = s.phase === 'intro' ? 5.4 : 5.8;
+      const front = n > 5 ? Math.ceil(n / 2) : n;
+      sorted.forEach((p, i) => {
+        const e = models.get(p.id);
+        if (!e) return;
+        const back = i >= front;
+        const row = back ? n - front : front;
+        const k = back ? i - front : i;
+        const gap = Math.min(1.35, span / Math.max(1, row - 1));
+        e.target.set(cx + (k - (row - 1) / 2) * gap + (back && row < front ? 0 : back ? gap * 0.5 : 0), 0, back ? -2.4 : 1.2);
+      });
       return;
     }
     const rest = sorted.slice(3);
@@ -274,7 +283,7 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
           sub,
           subColor,
           bar,
-          badge: p.away ? 'AWAY · CPU PLAYING' : p.id === host ? 'HOST' : p.bot ? `${BOT_LABEL[p.bot].toUpperCase()} CPU` : isOnline() && mine.has(p.id) ? 'YOU' : undefined,
+          badge: p.away ? 'AWAY · CPU PLAYING' : p.id === host ? 'HOST' : p.bot ? 'CPU' : isOnline() && mine.has(p.id) ? 'YOU' : undefined,
         };
       });
     },

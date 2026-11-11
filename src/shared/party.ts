@@ -93,14 +93,15 @@ export interface PartyState {
   botMem: Record<string, BotMem>;
   botRng: Rng;
   /** Pause menu: who opened it and which option is picked. The whole party waits while it's up. */
-  pause: { by: string; sel: number; cool: number; help: boolean } | null;
+  /** `settings` counts picks of the Settings row; the pauser's screen opens its own Settings panel. */
+  pause: { by: string; sel: number; cool: number; help: boolean; settings?: number } | null;
   /** Last "quit to main menu" from the pause menu; the quitter's screen leaves the room. */
   quit: { id: string; n: number } | null;
   /** Local lobbies stay on the mode picked in the main menu; an online room can switch modes with Start. */
   lockMode?: boolean;
 }
 
-export const PAUSE_OPTIONS = ['Resume', 'How to play', 'End party (back to lobby)', 'Quit to main menu'] as const;
+export const PAUSE_OPTIONS = ['Resume', 'How to play', 'Settings', 'End party (back to lobby)', 'Quit to main menu'] as const;
 
 /** Back to the lobby with everyone still in it. */
 export function endParty(s: PartyState): void {
@@ -150,6 +151,7 @@ function stepPause(s: PartyState, inputs: Inputs, dt: number): boolean {
     const opt = PAUSE_OPTIONS[p.sel];
     if (opt === 'Resume') s.pause = null;
     else if (opt === 'How to play') p.help = true;
+    else if (opt === 'Settings') p.settings = (p.settings ?? 0) + 1;
     else if (opt.startsWith('End party')) {
       if (hostId(s) === p.by) endParty(s);
     } else {

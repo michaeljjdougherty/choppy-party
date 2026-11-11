@@ -2,7 +2,7 @@ import { BOARDS } from '../shared/board/boards';
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
 import { CHARACTERS, DEFAULT_NAMES, PLAYER_COLORS } from '../shared/players';
-import { addBot, FINISH_T, FIRST_GAME, PAUSE_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
+import { addBot, FINISH_T, FIRST_GAME, PAUSE_OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { loadHosted } from './net';
@@ -10,7 +10,7 @@ import { netDialogOpen, openNetDialog } from './netDialog';
 
 /** ?server uses the optional Node room server instead of peer-to-peer. */
 const SERVER_MODE = new URLSearchParams(location.search).has('server');
-import { INTRO_PREVIEW, MIX_TABS, PREVIEW, drawFinal, drawIntro, drawLobby, drawResults, gridTiles } from './screens';
+import { CPU_ROW, INTRO_PREVIEW, INTRO_START, LEFT, MIX_TABS, ONLINE_TABS, PICK, PREVIEW, START_BTN, STEP, drawFinal, drawIntro, drawLobby, drawResults, gridTiles } from './screens';
 import { loadSamples, sfx, unlockAudio } from './sfx';
 import { music, syncMusic } from './soundtrack';
 import { playSplash, splashActive } from './splash';
@@ -33,12 +33,13 @@ import { setCharacters, setOutlined } from './three/choppy';
 import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
 import { clearGamePreview, gamePreview } from './three/views/gamePreview';
 import { NameEntry } from './nameEntry';
-import { attachUi, beginUi, button, clicked, endUi, pointerAt, takeStrayClick, uiSound } from './ui';
+import { attachUi, beginUi, button, clicked, endUi, inside, pointerAt, takeStrayClick, uiSound } from './ui';
 import { A, B, START, STICK, Y, localizeControls, setPromptKind } from './prompts';
 import { closeMap, mapCam, openMap } from './mapCam';
 import { setMapLook } from './three/views/board';
 import { TouchControls, isTouchDevice, needsFromControls, safeInsets, type TouchNeed } from './touch';
-import { boardPointer, pauseHover, pausePointer, stepSeek } from './pointerNav';
+import { PAUSE_ROW_H, PAUSE_ROW_Y, boardPointer, pauseHover, pausePointer, stepSeek } from './pointerNav';
+import { Settings, gear } from './settings';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -116,6 +117,10 @@ document.getElementById('menuBtn')!.addEventListener('click', () => {
 
 function act(action: ReturnType<MainMenu['update']>) {
   if (!action) return;
+  if (action === 'settings') {
+    settings.show(() => menu.resync());
+    return;
+  }
   if (action === 'customize') {
     customize = new CustomizeScreen(input);
     return;
@@ -129,6 +134,7 @@ function act(action: ReturnType<MainMenu['update']>) {
   else if (action === 'netcfg') openNetDialog();
 }
 
+const settings = new Settings(input);
 canvas.style.pointerEvents = 'auto';
 attachUi(canvas, VIEW_W, VIEW_H);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -200,7 +206,7 @@ setMapLook(() => {
   return l;
 });
 window.addEventListener('keydown', (e) => {
-  if (names.open) return;
+  if (names.open || settings.open) return;
   if (e.code === 'KeyM' && !e.repeat && (e.target as HTMLElement)?.tagName !== 'INPUT') setMap(!mapCam.on);
 });
 // mouse: drag to orbit and tilt, wheel to zoom. touch: drag to orbit, pinch to zoom
@@ -273,6 +279,7 @@ function touchNeeds(): TouchNeed {
   const all = { stick: true, a: true, b: true, x: true, y: true };
   if (!s) return all;
   if (mapCam.on) return { stick: true, a: false, b: true, x: false, y: false };
+  if (settings.open) return { stick: true, a: true, b: true, x: false, y: false };
   if (s.pause) return { stick: true, a: true, b: true, x: false, y: false };
   const finishing = s.phase === 'results' && s.phaseT < FINISH_T;
   if (s.phase === 'play' && s.gameId) return needsFromControls(getGame(s.gameId).controls);
@@ -293,7 +300,12 @@ function pauseDevice(): string | null {
   return kb ? deviceOf(kb) : ids[0] ? deviceOf(ids[0]) : null;
 }
 window.addEventListener('keydown', (e) => {
-  if (names.open) return;
+  if (names.open || settings.open) return;
+  // O: settings, from the title or main menu
+  if (e.code === 'KeyO' && !e.repeat && !session && !customize && joinBox.classList.contains('hidden') && !netDialogOpen()) {
+    act('settings');
+    return;
+  }
   if (e.repeat || (e.key !== 'Escape' && e.code !== 'KeyP') || !joinBox.classList.contains('hidden') || netDialogOpen()) return;
   if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
   const phase = session?.view()?.phase;
@@ -331,7 +343,7 @@ function lobbyBot(level: BotLevel | null) {
   (level ? sfx.join : sfx.leave)();
 }
 window.addEventListener('keydown', (e) => {
-  if (names.open || e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+  if (names.open || settings.open || e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
   // N: type your name (the first keyboard player)
   if (e.code === 'KeyN' && session?.view()?.phase === 'lobby') {
     openNames('kb1');
@@ -407,6 +419,8 @@ function frame(now: number) {
   }
   if (!session && customize) {
     if (customize.update(dt) === 'back') closeCustomize();
+  } else if (!session && settings.open) {
+    // Settings has the controls
   } else if (!session) {
     const p = pointerAt();
     if (p && input.kind === 'mouse') menu.hover(p.x, p.y);
@@ -434,7 +448,8 @@ function frame(now: number) {
 function render(wallT: number, dt: number) {
   beginUi();
   renderScreens(wallT, dt);
-  mouseFallback();
+  settings.draw(ctx, wallT);
+  if (!settings.open) mouseFallback();
   endUi();
 }
 
@@ -509,54 +524,67 @@ function lightness(hex: string): number {
 let gridPick: { opt: number; until: number } | null = null;
 let gridNudgeAt = 0;
 
+/** Which CPU level the + CPU button adds (cycled by the level button next to it). */
+const CPU_LEVELS: [BotLevel, string, string][] = [['easy', 'Easy', '#21c45a'], ['normal', 'Normal', '#e0a800'], ['hard', 'Hard', '#ff4d5a']];
+let cpuLevel = 1;
+/** Online lobby: the mode tab that was clicked; Start is pressed until the room gets there. */
+let tabPick: { kind: string; until: number; next: number } | null = null;
+
 function lobbyButtons(s: PartyState) {
   if (!session) return;
-  if (button(ctx, '◀  Back', 16, 16, 150, 50, { color: '#6b6f86', size: 20, sound: 'none' })) {
+  if (button(ctx, '◀  Back', 16, 16, 140, 46, { color: '#6b6f86', size: 19, sound: 'none' })) {
     backToMenu();
     return;
   }
   const mine = session.localIds();
   const humans = [...mine];
   lookButtons(s, mine);
-  // the CPU row
+  // players: add / remove CPUs (one button picks the level), a second keyboard, or Join
   const full = s.players.length >= MAX_PLAYERS;
   const bots = s.players.filter((p) => p.bot).length;
-  const row: [string, string, () => void, boolean][] = [
-    ['+ Easy CPU', '#21c45a', () => lobbyBot('easy'), full],
-    ['+ Normal CPU', '#e0a800', () => lobbyBot('normal'), full],
-    ['+ Hard CPU', '#ff4d5a', () => lobbyBot('hard'), full],
-    ['− Remove CPU', '#6b6f86', () => lobbyBot(null), bots === 0],
-  ];
-  if (!humans.length) row.unshift(['Join', '#2f8cff', () => (session!.join('kb1'), sfx.join()), full]);
-  else if (!hasLocal('kb2') && !input.touchSeen) row.push(['+ 2nd keyboard', '#9a5bff', addSecondKeyboard, full]);
-  const w = 170;
-  const gap = 12;
-  let x = 640 - (row.length * w + (row.length - 1) * gap) / 2;
-  for (const [label, color, fn, disabled] of row) {
-    if (button(ctx, label, x, 196, w, 46, { color, size: 18, disabled, sound: 'none' })) fn();
-    x += w + gap;
+  const [lvl, lvlName, lvlColor] = CPU_LEVELS[cpuLevel];
+  const row: { label: string; color: string; fn: () => void; off: boolean; w: number; sound?: 'select' }[] = [];
+  if (!humans.length) row.push({ label: 'Join', color: '#2f8cff', fn: () => (session!.join('kb1'), sfx.join()), off: full, w: 110 });
+  row.push({ label: '+ CPU', color: lvlColor, fn: () => lobbyBot(lvl), off: full, w: 104 });
+  row.push({ label: `${lvlName} ▾`, color: 'rgba(20,10,50,0.6)', fn: () => (cpuLevel = (cpuLevel + 1) % CPU_LEVELS.length), off: false, w: 112, sound: 'select' });
+  row.push({ label: '− CPU', color: '#6b6f86', fn: () => lobbyBot(null), off: bots === 0, w: 104 });
+  if (humans.length && !hasLocal('kb2') && !input.touchSeen) row.push({ label: '+ Keyboard 2', color: '#9a5bff', fn: addSecondKeyboard, off: full, w: 136 });
+  const gap = 10;
+  let x = LEFT.cx - (row.reduce((a, r) => a + r.w, 0) + (row.length - 1) * gap) / 2;
+  for (const r of row) {
+    if (button(ctx, r.label, x, CPU_ROW.y, r.w, CPU_ROW.h, { color: r.color, size: 17, disabled: r.off, sound: r.sound ?? 'none' })) r.fn();
+    x += r.w + gap;
   }
   // host controls
   const h = hostId(s);
   if (!h || !mine.has(h)) return;
   const dev = deviceOf(h);
   const kind = OPTIONS[s.selection].kind;
-  if (kind !== 'game') {
-    if (button(ctx, '◀', 236, 572, 64, 52, { color: '#9a5bff', size: 26 })) input.nudge(dev, -1, 0);
-    if (button(ctx, '▶', 980, 572, 64, 52, { color: '#9a5bff', size: 26 })) input.nudge(dev, 1, 0);
+  if (kind === 'board') {
+    if (button(ctx, '◀', PICK.prev.x, PICK.y, PICK.prev.w, PICK.h, { color: '#9a5bff', size: 24 })) input.nudge(dev, -1, 0);
+    if (button(ctx, '▶', PICK.next.x, PICK.y, PICK.next.w, PICK.h, { color: '#9a5bff', size: 24 })) input.nudge(dev, 1, 0);
+    if (button(ctx, '−', STEP.minus.x, STEP.minus.y, STEP.minus.w, STEP.minus.h, { color: '#2f8cff', size: 30, disabled: s.turnsIdx === 0 })) input.nudge(dev, 0, 1);
+    if (button(ctx, '+', STEP.plus.x, STEP.plus.y, STEP.plus.w, STEP.plus.h, { color: '#2f8cff', size: 30, disabled: s.turnsIdx === TURN_OPTIONS.length - 1 })) input.nudge(dev, 0, -1);
   }
   if (kind === 'mix') {
     // click a mode tab: up/down steps toward it (so it works online too)
     MIX_TABS.forEach((r, i) => {
       if (i !== (s.mixMode ?? 0) && clicked(r.x, r.y, r.w, r.h)) input.nudge(dev, 0, ((i - (s.mixMode ?? 0) + 3) % 3) === 1 ? 1 : -1);
     });
+    if (button(ctx, '−', STEP.minus.x, STEP.minus.y, STEP.minus.w, STEP.minus.h, { color: '#2f8cff', size: 30, disabled: s.roundsIdx === 0 })) input.nudge(dev, -1, 0);
+    if (button(ctx, '+', STEP.plus.x, STEP.plus.y, STEP.plus.w, STEP.plus.h, { color: '#2f8cff', size: 30, disabled: s.roundsIdx === ROUND_OPTIONS.length - 1 })) input.nudge(dev, 1, 0);
   }
-  if (kind === 'board') {
-    text(ctx, 'Turns', 160, 698, 18, { weight: 800 });
-    if (button(ctx, '+', 130, 566, 60, 50, { color: '#2f8cff', size: 30 })) input.nudge(dev, 0, -1);
-    if (button(ctx, '−', 130, 626, 60, 50, { color: '#2f8cff', size: 30 })) input.nudge(dev, 0, 1);
+  if (session.kind === 'online') {
+    for (const tab of ONLINE_TABS) if (tab.kind !== kind && clicked(tab.x, tab.y, tab.w, tab.h)) tabPick = { kind: tab.kind, until: performance.now() + 3000, next: 0 };
+    if (tabPick) {
+      if (tabPick.kind === kind || performance.now() > tabPick.until) tabPick = null;
+      else if (performance.now() > tabPick.next) {
+        input.start(dev);
+        sfx.move();
+        tabPick.next = performance.now() + 300;
+      }
+    }
   }
-  if (session.kind === 'online' && button(ctx, 'Switch mode ▸', 16, 220, 150, 40, { color: '#9a5bff', size: 16 })) input.start(dev);
   // Free Play: click a tile to pick it (the stick walks there a step at a time, so it works online too)
   if (kind === 'game') {
     for (const tile of gridTiles(s)) if (tile.opt !== s.selection && clicked(tile.x, tile.y, tile.w, tile.h)) gridPick = { opt: tile.opt, until: performance.now() + 4000 };
@@ -572,7 +600,7 @@ function lobbyButtons(s: PartyState) {
       gridNudgeAt = performance.now() + 140;
     }
   }
-  if (button(ctx, 'START!', 1080, 566, 184, 110, { color: '#21c45a', size: 34, disabled: !s.players.length })) input.tap(dev, 'a');
+  if (button(ctx, 'START!', START_BTN.x, START_BTN.y, START_BTN.w, START_BTN.h, { color: '#21c45a', size: 34, disabled: !s.players.length })) input.tap(dev, 'a');
 }
 
 function renderScreens(wallT: number, dt: number) {
@@ -597,6 +625,7 @@ function renderScreens(wallT: number, dt: number) {
     view.update(null, [], wallT, dt);
     stage.render(dt, wallT);
     menu.draw(ctx, wallT);
+    settingsButton(wallT);
     if (stage.switches !== seenSwitches) {
       if (seenSwitches > 0) wipeT = 0;
       seenSwitches = stage.switches;
@@ -710,7 +739,7 @@ function renderScreens(wallT: number, dt: number) {
       drawIntro(ctx, s, wallT);
       // mouse: the host gets a Start now button (same as X)
       const h = hostId(s);
-      if (h && session.localIds().has(h) && button(ctx, 'Start now', 1120, 650, 132, 38, { color: '#ff8a1f', size: 16 })) input.tap(deviceOf(h), 'x');
+      if (h && session.localIds().has(h) && button(ctx, 'Start now', INTRO_START.x, INTRO_START.y, INTRO_START.w, INTRO_START.h, { color: '#ff8a1f', size: 17 })) input.tap(deviceOf(h), 'x');
       break;
     }
     case 'play': {
@@ -738,8 +767,19 @@ function renderScreens(wallT: number, dt: number) {
   drawWipe(dt);
 }
 
+/** Round cog button in the main menu's top-right corner: opens Settings. */
+function settingsButton(t: number) {
+  if (settings.open || !joinBox.classList.contains('hidden') || netDialogOpen()) return;
+  const x = 1196, y = 16, w = 68, h = 60;
+  if (button(ctx, '', x, y, w, h, { color: '#6b6f86', sound: 'none' })) act('settings');
+  const over = inside(pointerAt(), x, y, w, h);
+  gear(ctx, x + w / 2, y + h / 2 + (over ? -2 : 1), 17, t * (over ? 1.4 : 0.3));
+}
+
 /* ---------- pause menu (Start / Esc / P), shared by everyone in the room */
 let seenQuit = -1;
+/** How many times the pause menu's Settings row was picked (so this screen opens the panel once each). */
+let seenPauseSettings = 0;
 let pauseWas = '';
 /** Pause menu sounds: open = select, close = back, moving the highlight = move. */
 function pauseSounds(s: PartyState) {
@@ -770,6 +810,7 @@ function pauseLayer(s: PartyState) {
   if (s.phase === 'lobby') return;
   const p = s.pause;
   if (!p) {
+    seenPauseSettings = 0;
     // small pause button for mouse players
     const dev = pauseDevice();
     if (dev && s.phase !== 'intro' && !touch.visible && button(ctx, 'II', 1220, 668, 44, 40, { color: '#6b6f86', size: 18, sound: 'none' })) input.start(dev);
@@ -777,29 +818,35 @@ function pauseLayer(s: PartyState) {
   }
   const who = s.players.find((x) => x.id === p.by);
   const mine = !!session?.localIds().has(p.by);
+  // the pauser picked Settings: open the panel on their screen (it is local; the pause stays up)
+  if ((p.settings ?? 0) > seenPauseSettings) {
+    seenPauseSettings = p.settings ?? 0;
+    if (mine) settings.show();
+  }
   ctx.fillStyle = 'rgba(14,8,32,0.62)';
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   ctx.fillStyle = 'rgba(255,255,255,0.97)';
-  roundRect(ctx, 400, 130, 480, 440, 30);
+  roundRect(ctx, 400, 112, 480, 496, 30);
   ctx.fill();
   ctx.strokeStyle = '#ffd23f';
   ctx.lineWidth = 6;
   ctx.stroke();
-  text(ctx, 'PAUSED', 640, 180, 48, { color: '#2a1b5e', outline: false });
-  text(ctx, `${who?.name ?? 'Someone'} paused the game`, 640, 222, 18, { color: who?.color ?? '#6b5aa8', outline: false, weight: 700 });
+  text(ctx, 'PAUSED', 640, 160, 48, { color: '#2a1b5e', outline: false });
+  text(ctx, `${who?.name ?? 'Someone'} paused the game`, 640, 202, 18, { color: who?.color ?? '#6b5aa8', outline: false, weight: 700 });
+  if (settings.open) return;
   pausePointer(s, input, mine);
   if (p.help) {
     const g = s.phase === 'board' ? null : s.gameId ? getGame(s.gameId) : null;
     const lines = g
       ? [g.name, ...wrap(g.blurb, 40), '', localizeControls(g.controls)]
       : ['Board game', 'Roll the dice with A. B opens your item bag.', 'Pick a path at forks with the stick.', 'Buy Choppy Crowns at the Crown Chest', 'for 40 Choppy Keys. Most crowns wins!'];
-    lines.forEach((l, i) => text(ctx, l, 640, 270 + i * 30, i === 0 ? 24 : 18, { color: i === 0 ? '#ff4d5a' : '#2a1b5e', outline: false, weight: i === 0 ? 900 : 600 }));
-    text(ctx, mine ? `${A()} or ${B()}: back` : `Waiting for ${who?.name ?? 'them'}`, 640, 540, 18, { color: '#6b5aa8', outline: false, weight: 700 });
+    lines.forEach((l, i) => text(ctx, l, 640, PAUSE_ROW_Y + i * 30, i === 0 ? 24 : 18, { color: i === 0 ? '#ff4d5a' : '#2a1b5e', outline: false, weight: i === 0 ? 900 : 600 }));
+    text(ctx, mine ? `${A()} or ${B()}: back` : `Waiting for ${who?.name ?? 'them'}`, 640, 576, 18, { color: '#6b5aa8', outline: false, weight: 700 });
     return;
   }
   const host = hostId(s) === p.by;
   PAUSE_OPTIONS.forEach((label, i) => {
-    const y = 270 + i * 62;
+    const y = PAUSE_ROW_Y + i * PAUSE_ROW_H;
     const sel = i === p.sel;
     const off = label.startsWith('End party') && !host;
     ctx.fillStyle = sel ? '#ffd23f' : '#efeaff';
@@ -807,7 +854,7 @@ function pauseLayer(s: PartyState) {
     ctx.fill();
     text(ctx, off ? 'End party (host only)' : label, 640, y, 22, { color: off ? '#a99fcf' : '#2a1b5e', outline: false, weight: 800 });
   });
-  text(ctx, mine ? `${STICK()} choose   ${A()} pick   ${B()} / ${START()} resume` : `Only ${who?.name ?? 'they'} can use this menu`, 640, 540, 17, { color: '#6b5aa8', outline: false, weight: 700 });
+  text(ctx, mine ? `${STICK()} choose   ${A()} pick   ${B()} / ${START()} resume` : `Only ${who?.name ?? 'they'} can use this menu`, 640, 576, 17, { color: '#6b5aa8', outline: false, weight: 700 });
   // mouse / touch: click a row to pick it, Resume to close
   pauseHover(ctx, s);
   if (mine && !touch.visible && button(ctx, 'Resume', 1110, 668, 150, 40, { color: '#4cd97b', size: 18, sound: 'none' })) input.start(deviceOf(p.by));
@@ -888,7 +935,7 @@ function hostFor(s: PartyState, view: View, t: number, dt: number) {
 
 /** Brian speaks from a corner bust, clear of each screen's main panel. */
 function drawHostBubble(_view: View, screen: string, t = 0) {
-  if (screen === 'results' || screen === 'final' || screen === 'intro') hostCorner(ctx, hostLine, t, 'bl', screen === 'intro' ? 560 : 500);
+  if (screen === 'results' || screen === 'final' || screen === 'intro') hostCorner(ctx, hostLine, t, 'bl', screen === 'intro' ? 400 : 500);
 }
 
 let lastCount = 99;
@@ -993,6 +1040,9 @@ Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px '
   input,
   menu,
   stage,
+  get settings() {
+    return settings;
+  },
   /** Test helper: where each player tag is on screen (catches things leaving the camera). */
   tagSpots() {
     return lastTags.map((t) => ({ text: t.text, ...stage.project(t.pos) }));
@@ -1010,6 +1060,12 @@ Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px '
     const st = (session as any).state;
     for (let i = 0; i < n; i++) addBot(st, level);
     startParty(st);
+  },
+  /** Test helper: open a local lobby on option `sel` with `n` CPUs, without starting. */
+  lobby(sel: number, n = 0, level: BotLevel = 'normal') {
+    enter(new LocalSession(input, sel));
+    const st = (session as any).state;
+    for (let i = 0; i < n; i++) addBot(st, level);
   },
   /** Test helper: start whatever is selected in a local lobby. */
   start() {

@@ -1,9 +1,9 @@
 import type { InputManager } from './input';
 import { roundRect, text } from '../shared/draw';
 import { sunburst } from './showtime';
-import { A, B, STICK, isTouch, promptKind, tapWord } from './prompts';
+import { A, B, STICK, Y, promptKind, tapWord } from './prompts';
 
-export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | 'netcfg' | 'customize' | null;
+export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | 'netcfg' | 'customize' | 'settings' | null;
 
 interface Item {
   key: Exclude<MenuAction, null> | 'online' | 'back';
@@ -34,7 +34,7 @@ export class MainMenu {
   /** Device that made the last pick ('mouse' for a click), so it can join the lobby straight away. */
   picker = 'kb1';
   private bump = 0;
-  private prev = new Map<string, { a: number; b: number; y: number }>();
+  private prev = new Map<string, { a: number; b: number; y: number; opt: number }>();
   private navCd = 0;
 
   constructor(private input: InputManager) {}
@@ -50,8 +50,12 @@ export class MainMenu {
     let a = false;
     let b = false;
     let dy = 0;
+    let opt = false;
     for (const d of this.input.list()) {
       const p = this.prev.get(d.key);
+      // a pad's Y or Start opens Settings
+      const optN = d.key.startsWith('pad') ? (d.raw.yCount ?? 0) + (d.raw.startCount ?? 0) : 0;
+      if (p && optN > p.opt) opt = true;
       if (p) {
         if (d.raw.aCount > p.a) {
           a = true;
@@ -60,8 +64,9 @@ export class MainMenu {
         if (d.raw.bCount > p.b) b = true;
       }
       if (Math.abs(d.raw.y) > 0.6 && (!p || Math.abs(p.y) <= 0.6 || this.navCd === 0)) dy = Math.sign(d.raw.y);
-      this.prev.set(d.key, { a: d.raw.aCount, b: d.raw.bCount, y: d.raw.y });
+      this.prev.set(d.key, { a: d.raw.aCount, b: d.raw.bCount, y: d.raw.y, opt: optN });
     }
+    if (opt) return 'settings';
     if (this.screen === 'title') {
       if (a) {
         this.screen = 'main';
@@ -101,7 +106,8 @@ export class MainMenu {
 
   /** Forget presses made while another screen (Customize) had the controls, so they don't replay here. */
   resync(): void {
-    for (const d of this.input.list()) this.prev.set(d.key, { a: d.raw.aCount, b: d.raw.bCount, y: d.raw.y });
+    for (const d of this.input.list())
+      this.prev.set(d.key, { a: d.raw.aCount, b: d.raw.bCount, y: d.raw.y, opt: d.key.startsWith('pad') ? (d.raw.yCount ?? 0) + (d.raw.startCount ?? 0) : 0 });
     this.navCd = 0.25;
   }
 
@@ -253,10 +259,10 @@ export class MainMenu {
     const k = promptKind();
     const hint =
       k === 'pad'
-        ? `${STICK()} move   ·   ${A()} choose   ·   ${B()} back`
+        ? `${STICK()} move   ·   ${A()} choose   ·   ${B()} back   ·   ${Y()} settings`
         : k === 'mouse'
-          ? isTouch() ? 'Tap to choose' : 'Click to choose   ·   Esc: back'
-          : `W/S or Arrows: move   ·   ${A()} or Enter: choose   ·   Esc or ${B()}: back`;
+          ? `${tapWord()} to choose`
+          : `W/S or Arrows: move   ·   ${A()} or Enter: choose   ·   Esc: back   ·   O: settings`;
     text(ctx, hint, 960, 694, 18, { weight: 600 });
   }
 }

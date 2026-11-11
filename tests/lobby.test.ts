@@ -82,15 +82,28 @@ describe('pause menu', () => {
     expect(s.phaseT).toBeGreaterThan(t);
   });
 
+  it('picking Settings keeps the pause up and counts the pick', () => {
+    const s = boardParty();
+    stepParty(s, { g: start }, DT);
+    for (const _ of [0, 1]) {
+      for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
+      stepParty(s, { g: down }, DT);
+    }
+    for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
+    stepParty(s, { g: a }, DT);
+    expect(s.pause?.settings).toBe(1);
+    expect(s.pause?.by).toBe('g');
+  });
+
   it('only the host can end the party; anyone can quit to the menu', () => {
     const s = boardParty();
     stepParty(s, { g: start }, DT);
     for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
-    stepParty(s, { g: down }, DT);
-    for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
-    stepParty(s, { g: down }, DT);
-    for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
-    expect(s.pause?.sel).toBe(2);
+    for (const _ of [0, 1, 2]) {
+      stepParty(s, { g: down }, DT);
+      for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
+    }
+    expect(s.pause?.sel).toBe(3); // Resume, How to play, Settings, End party
     stepParty(s, { g: a }, DT);
     expect(s.phase).toBe('board'); // the guest can't end it
     stepParty(s, { g: down }, DT);
@@ -100,7 +113,7 @@ describe('pause menu', () => {
     expect(s.pause).toBeNull();
     stepParty(s, { h: start }, DT);
     for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
-    for (const _ of [0, 1]) {
+    for (const _ of [0, 1, 2]) {
       stepParty(s, { h: down }, DT);
       for (let i = 0; i < 10; i++) stepParty(s, {}, DT);
     }

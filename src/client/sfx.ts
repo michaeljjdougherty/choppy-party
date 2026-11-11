@@ -10,13 +10,35 @@ function ctx(): AudioContext | null {
     try {
       ac = new AudioContext();
       master = ac.createGain();
-      master.gain.value = 0.35;
+      master.gain.value = 0.35 * sfxVol;
       master.connect(ac.destination);
     } catch {
       return null;
     }
   }
   return ac;
+}
+
+const SFX_KEY = 'choppy.sfxVolume';
+let sfxVol = 1;
+try {
+  const v = localStorage.getItem(SFX_KEY);
+  if (v !== null) sfxVol = Math.max(0, Math.min(1, Number(v)));
+} catch {
+  /* private mode */
+}
+/** Sound effects volume, 0..1 (remembered between visits). */
+export function sfxVolume(): number {
+  return sfxVol;
+}
+export function setSfxVolume(v: number): void {
+  sfxVol = Math.max(0, Math.min(1, v));
+  if (master && ac) master.gain.setTargetAtTime(0.35 * sfxVol, ac.currentTime, 0.03);
+  try {
+    localStorage.setItem(SFX_KEY, String(sfxVol));
+  } catch {
+    /* private mode */
+  }
 }
 
 /** Browsers only allow audio after a user gesture, so call this on the first key/pad/click. */

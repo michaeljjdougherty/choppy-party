@@ -230,8 +230,29 @@ export class Fx {
 // ---- screen shake --------------------------------------------------------------------------
 
 let trauma = 0;
+const SHAKE_KEY = 'choppy.shake';
+let shakeAllowed = true;
+try {
+  shakeAllowed = localStorage.getItem(SHAKE_KEY) !== 'off';
+} catch {
+  /* private mode */
+}
+/** Screen shake on or off (a setting, remembered between visits). */
+export function shakeEnabled(): boolean {
+  return shakeAllowed;
+}
+export function setShakeEnabled(on: boolean): void {
+  shakeAllowed = on;
+  if (!on) trauma = 0;
+  try {
+    localStorage.setItem(SHAKE_KEY, on ? 'on' : 'off');
+  } catch {
+    /* private mode */
+  }
+}
 /** Add screen shake (0..1). Shake strength is trauma squared, so small hits stay subtle. */
 export function shake(amount: number): void {
+  if (!shakeAllowed) return;
   trauma = Math.min(1, trauma + amount);
 }
 /** Called by the stage each frame: returns a camera offset and decays the shake. */

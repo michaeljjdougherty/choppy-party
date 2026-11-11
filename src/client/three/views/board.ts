@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import type { PartyState } from '../../../shared/party';
-import { getBoard } from '../../../shared/board/boards';
+import { COSMO_SPREAD, getBoard } from '../../../shared/board/boards';
 import { currentPlayer, exits } from '../../../shared/board/engine';
 import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
 import { roundedRect } from '../../../shared/board/layout';
@@ -379,7 +379,27 @@ const hollowDecor: Dresser = (scene, def) => {
   };
 };
 
-const cosmoDecor: Dresser = (scene) => {
+const cosmoDecor: Dresser = (scene, def) => {
+  const first = scene.children.length;
+  const tick = cosmoDecorInner(scene, def);
+  // the station is built at its old size, then spread out to match the spread-out spaces
+  const K = COSMO_SPREAD;
+  for (const o of scene.children.slice(first)) {
+    if (Math.hypot(o.position.x, o.position.z) > 32 || (o as THREE.Points).isPoints || (o as THREE.InstancedMesh).isInstancedMesh) continue;
+    o.position.x *= K;
+    o.position.z *= K;
+    if (o.userData.spread === 'xz') {
+      o.scale.x *= K;
+      o.scale.z *= K;
+    } else if (o.userData.spread === 'xy') {
+      o.scale.x *= K;
+      o.scale.y *= K;
+    } else if (o.userData.spread === 'y') o.scale.y *= K;
+  }
+  return tick;
+};
+
+const cosmoDecorInner: Dresser = (scene) => {
   scene.fog = null;
   const nebula = sky('space-nebula');
   if (nebula) scene.background = nebula;
@@ -402,6 +422,19 @@ const cosmoDecor: Dresser = (scene) => {
   place(scene, 'station/computer-wide', -14.5, -0.05, -10.6, { s: 2.4, ry: 0.5 });
   place(scene, 'station/container-tall', 18.5, -0.05, 5.5, { s: 2.2 });
   place(scene, 'station/container', 19.8, -0.05, 7.2, { s: 2.2, ry: 0.4 });
+  // more life out on the (now roomier) deck: a crew at work, cargo, turrets and crystal patches
+  place(scene, 'space/turret_double', -9, -0.05, -5.2, { s: 2.2, ry: 0.8 });
+  place(scene, 'space/turret_double', 9.5, -0.05, 5.4, { s: 2.2, ry: -2.3 });
+  place(scene, 'station/display-wall-wide', 6.5, -0.05, -6.6, { s: 2.2, ry: -0.2 });
+  place(scene, 'station/container', -7.5, -0.05, 5.6, { s: 2, ry: 0.3 });
+  place(scene, 'station/container-tall', -8.8, -0.05, 6.4, { s: 2, ry: -0.2 });
+  place(scene, 'space/machine_generator', 11.5, -0.05, -5.2, { s: 2.4, ry: 2 });
+  place(scene, 'space/rover', 7.5, -0.05, 2.6, { s: 3, ry: -1.9 });
+  place(scene, 'space/astronautA', -10.8, -0.05, -3.4, { s: 1.5, ry: 2.4 });
+  place(scene, 'space/astronautB', 12.5, -0.05, 3.4, { s: 1.5, ry: -1.2 });
+  place(scene, 'space/alien', -6.2, -0.05, -6.8, { s: 1.4, ry: 0.4 });
+  for (const [x, z] of [[-13.5, 5.4], [13.6, -3.6], [-2.4, 9.6], [2.6, -9.8]] as [number, number][]) place(scene, 'space/rock_crystals', x, -0.05, z, { s: 2.2, ry: x * 0.7 });
+  for (const [x, z] of [[-12, -7.5], [10.5, 7.8], [0.5, 8.6]] as [number, number][]) place(scene, 'space/crater', x, -0.04, z, { s: 2.4, shadow: false });
   // laser gates mark both ends of Laser Lane
   place(scene, 'modspace/gate-lasers', -18.5, -0.05, 0, { s: 0.75, ry: Math.PI / 2 });
   // a small rocket on a launch pad
@@ -431,10 +464,12 @@ const cosmoDecor: Dresser = (scene) => {
   const deck = mesh(new THREE.CylinderGeometry(22, 21, 1, 72), deckMat, { cast: false, receive: true });
   deck.scale.z = 0.66;
   deck.position.y = -0.55;
+  deck.userData.spread = 'xz';
   scene.add(deck);
   const rim = mesh(new THREE.TorusGeometry(22, 0.35, 10, 90), new THREE.MeshStandardMaterial({ color: '#45e3ff', emissive: '#1aa8d6', emissiveIntensity: 0.9 }));
   rim.scale.y = 0.66;
   rim.rotation.x = Math.PI / 2;
+  rim.userData.spread = 'xy';
   rim.position.y = -0.1;
   scene.add(rim);
   // planets
@@ -481,6 +516,7 @@ const cosmoDecor: Dresser = (scene) => {
   );
   beam.rotation.z = Math.PI / 2;
   beam.position.set(0, 1.9, 0);
+  beam.userData.spread = 'y';
   beam.visible = false;
   scene.add(beam);
   // the Command Core: a round top deck on four legs, with Laser Lane running underneath
@@ -503,6 +539,9 @@ const cosmoDecor: Dresser = (scene) => {
   holoRing.position.y = 7.3;
   holoRing.rotation.x = 1.2;
   core.add(holo, holoRing);
+  coreDeck.scale.set(COSMO_SPREAD, 1, COSMO_SPREAD);
+  coreRim.scale.set(COSMO_SPREAD, COSMO_SPREAD, 1);
+  for (const leg of core.children) if (leg !== coreDeck && leg !== coreRim && leg !== holo && leg !== holoRing) leg.position.multiply(new THREE.Vector3(COSMO_SPREAD, 1, COSMO_SPREAD));
   scene.add(core);
   // a big blue planet far below the station, with a soft glowing rim
   const world = mesh(new THREE.SphereGeometry(70, 64, 32), toy('#3d6fe0', 0.6), { cast: false, receive: false });
@@ -899,9 +938,9 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     cap.position.set(n.x, n.y + TILE_H + 0.055, n.z);
     scene.add(cap);
     springs.set(nodeId, { parts: [tile, rim, cap], base: [n.y, n.y + TILE_H + 0.045, n.y + TILE_H + 0.055], y: 0, v: 0 });
-    if (def.theme === 'cosmo' && !(Math.hypot(n.x, n.z) < 6 && n.y > 4)) {
+    if (def.theme === 'cosmo' && !(Math.hypot(n.x, n.z) < 6 * COSMO_SPREAD && n.y > 4)) {
       // every pad stands on a strut down to the deck
-      const onDeck = (n.x / 22) ** 2 + (n.z / 14.5) ** 2 < 1;
+      const onDeck = (n.x / (22 * COSMO_SPREAD)) ** 2 + (n.z / (14.5 * COSMO_SPREAD)) ** 2 < 1;
       const h = onDeck ? n.y + 1.1 : 1.4;
       const pillar = mesh(new THREE.CylinderGeometry(n.y > 0.5 || !onDeck ? 0.22 : 0.6, 0.3, h, 12), toy('#7b86b8', 0.3));
       pillar.position.set(n.x, n.y + 0.05 - h / 2, n.z);

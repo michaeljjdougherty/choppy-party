@@ -15,14 +15,8 @@ export interface TourStep {
 }
 
 const TYPE_STEPS: [SpaceType, string, (d: BoardDef, s: BoardState) => string][] = [
-  ['key', 'Key Spaces', (_d, s) => `Blue round spaces give you ${s.preset.keySpace} Choppy Keys. Red spiky ones take ${s.preset.thornSpace}. Hearts heal ${s.preset.heartSpace} HP.`],
-  ['lucky', 'Lucky Stars', () => 'Star spaces are lucky: a pile of keys, or once in a while a warp right next to a Crown Chest.'],
-  ['crate', 'Item Crates', () => 'Square crates hand you a random item. You can use one item per turn, before you roll.'],
-  ['post', 'Claim Posts', (_d, s) => `Land on a Claim Post to make it yours. A Toll Post charges visitors ${s.preset.postToll} keys, a Sting Post hits them for ${s.preset.postSting}.`],
   ['duel', 'Duel Shields', () => 'Shield spaces start a duel. Pick a rival; the winner jumps right behind a Crown Chest.'],
   ['stew', 'Stew Battles', () => 'The other shield is a Stew Battle: everyone splits into two teams and the winners share the pot.'],
-  ['fountain', 'Heart Fountain', () => 'Walk past the Heart Fountain to heal. Stop on it and you are fully healed.'],
-  ['spring', 'Springs', () => 'Flower springs bounce you up to five spaces further along.'],
   ['cannon', 'Cannons', (_d, s) => `Octagon cannons let you fire at anyone within ${s.preset.cannonRange} spaces for ${s.preset.cannonDamage} damage.`],
   ['wisp', 'The Wisp', () => 'The Wisp, in the teardrop space, will rob the leader for you, for a price.'],
   ['snare', 'Root Snares', () => 'Down in the cellar the roots wake up at night. Get caught and your next roll is 1 to 3.'],
@@ -30,7 +24,6 @@ const TYPE_STEPS: [SpaceType, string, (d: BoardDef, s: BoardState) => string][] 
   ['counter', 'Laser Gate', (_d, s) => `Every pass through the laser gate counts it down. At zero it fires down the lane for ${s.preset.laserDamage}.`],
   ['dynamite', 'Dynamite', () => 'Burst spaces are dynamite: it hurts you and anyone next to you.'],
   ['station', 'Train Stations', () => 'Pay to ride the steam train between stations. Stand at one at round end and it carries you along.'],
-  ['camp', 'Respawn Camp', () => 'Run out of HP and you drop half your keys and rest here for a turn.'],
 ];
 
 const EVENT_TEXT: Record<BoardDef['theme'], [string, string]> = {
@@ -40,20 +33,15 @@ const EVENT_TEXT: Record<BoardDef['theme'], [string, string]> = {
 };
 
 export function buildTour(def: BoardDef, s: BoardState): TourStep[] {
-  const steps: TourStep[] = [{ title: def.name, text: `Welcome to ${def.name}. ${def.tagline} Let me show you around.`, node: null }];
+  // only what's special about this map, plus the battles: the everyday spaces explain themselves
+  const steps: TourStep[] = [
+    { title: def.name, text: `Welcome to ${def.name}. ${def.tagline} Bring ${s.preset.crownPrice} keys to a Crown Chest for a crown. Here's what's special.`, node: null },
+  ];
   const firstOf = (t: SpaceType) => Object.values(def.nodes).find((n) => n.type === t)?.id ?? null;
-  const chest = s.crowns[0] ?? null;
-  if (chest)
-    steps.push({
-      title: 'Crown Chest',
-      text: `That glowing chest holds a Choppy Crown. Reach it with ${s.preset.crownPrice} keys and it's yours. Most crowns at the end wins.${s.preset.chests > 1 ? ` This board has ${s.preset.chests} chests out at once.` : ''}`,
-      node: chest,
-      also: s.crowns.slice(1),
-    });
   const ev = firstOf('event');
   if (ev) steps.push({ title: EVENT_TEXT[def.theme][0], text: EVENT_TEXT[def.theme][1], node: ev });
   for (const [type, title, text] of TYPE_STEPS) {
-    const n = type === 'camp' ? def.camp : firstOf(type);
+    const n = firstOf(type);
     if (n) steps.push({ title, text: text(def, s), node: n });
   }
   // each map's own hazard

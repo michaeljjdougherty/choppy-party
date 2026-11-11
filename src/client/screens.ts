@@ -56,6 +56,36 @@ function boardCard(ctx: CanvasRenderingContext2D, s: PartyState, id: string): vo
   text(ctx, label, x + w / 2 + 8, y + h + 53, 16, { color: fits ? '#ffffff' : '#2a1b5e', weight: 800, outline: false });
 }
 
+/** The same frame around a live preview of the picked minigame, played by CPU stand-ins. */
+function gameCard(ctx: CanvasRenderingContext2D, s: PartyState, id: string): void {
+  const g = getGame(id);
+  const { x, y, w, h } = PREVIEW;
+  const strip = 76;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  roundRect(ctx, x - 8, y - 2, w + 16, h + strip + 16, 22);
+  ctx.fill();
+  ctx.beginPath();
+  roundRect(ctx, x - 8, y - 8, w + 16, h + strip + 16, 22);
+  ctx.rect(x + w, y, -w, h);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill('evenodd');
+  ctx.restore();
+  ctx.fillStyle = '#2a1b5e';
+  ctx.fillRect(x, y + h, w, strip);
+  ribbon(ctx, x + w / 2, y + 4, Math.min(w - 40, 90 + g.name.length * 15), 40, MODE_COLOR[g.mode] ?? '#9a5bff', g.name, 22);
+  text(ctx, truncate(g.blurb, 58), x + w / 2, y + h + 22, 17, { color: '#ffffff', weight: 700, outline: false });
+  const fits = s.players.length >= g.minPlayers && s.players.length <= g.maxPlayers;
+  const label = `${g.mode}  ·  ${g.minPlayers === g.maxPlayers ? g.minPlayers : `${g.minPlayers}-${g.maxPlayers}`} players`;
+  ctx.font = '800 16px system-ui, sans-serif';
+  const cw = ctx.measureText(label).width + 40;
+  ctx.fillStyle = fits ? '#21c45a' : '#ffd23f';
+  roundRect(ctx, x + w / 2 - cw / 2, y + h + 38, cw, 28, 14);
+  ctx.fill();
+  peopleIcon(ctx, x + w / 2 - cw / 2 + 16, y + h + 52, fits ? '#ffffff' : '#2a1b5e');
+  text(ctx, label, x + w / 2 + 8, y + h + 53, 16, { color: fits ? '#ffffff' : '#2a1b5e', weight: 800, outline: false });
+}
+
 function peopleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color: string): void {
   ctx.save();
   ctx.fillStyle = color;
@@ -99,6 +129,7 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
     sub = `Up/Down: ${ROUND_OPTIONS.join(' / ')} rounds  ·  ${GAMES.length} games in the mix`;
   } else {
     const g = getGame(o.id);
+    gameCard(ctx, s, o.id);
     sub = `${g.mode}  ·  ${g.blurb}`;
   }
   text(ctx, truncate(sub, 92), 640, 636, 17, { color: '#e8ddff', weight: 500, outline: false });

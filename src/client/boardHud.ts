@@ -22,7 +22,7 @@ function menuSounds(s: PartyState): void {
   menuWas = now;
 }
 
-export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
+export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: number, mapOpen = false): void {
   menuSounds(s);
   const b = s.board!;
   const def = getBoard(b.boardId);
@@ -107,7 +107,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   }
 
   // bottom: the item grid for whoever's turn it is
-  if (!setup && mine) drawItemGrid(ctx, s, cur);
+  if (!setup && mine && !mapOpen) drawItemGrid(ctx, s, cur);
 
   // centre callouts
   const name = me?.name ?? '';
@@ -125,7 +125,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     const st = b.tour.steps[b.tour.i];
     const n = b.tour.steps.length;
     ctx.fillStyle = 'rgba(20,12,40,0.72)';
-    roundRect(ctx, 360, 470, 560, 112, 24);
+    roundRect(ctx, 280, 470, 520, 112, 24);
     ctx.fill();
     ctx.strokeStyle = '#ffd23f';
     ctx.lineWidth = 4;
@@ -133,10 +133,10 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     const a = Math.min(1, b.t * 4);
     ctx.save();
     ctx.globalAlpha = a;
-    text(ctx, st?.title ?? '', 640, 508 - (1 - a) * 10, 34, { color: '#ffd23f' });
+    text(ctx, st?.title ?? '', 540, 508 - (1 - a) * 10, 34, { color: '#ffd23f' });
     ctx.restore();
-    text(ctx, `Board tour  ${b.tour.i + 1} / ${n}`, 640, 544, 16, { color: '#c9bdf5', weight: 700 });
-    text(ctx, `${A()}: next   ·   ${B()}: back   ·   ${X()} (host): skip tour`, 640, 568, 17, { color: '#ffffff', weight: 700 });
+    text(ctx, `Board tour  ${b.tour.i + 1} / ${n}`, 540, 544, 16, { color: '#c9bdf5', weight: 700 });
+    text(ctx, `${A()}: next   ·   ${B()}: back   ·   ${X()} (host): skip tour`, 540, 568, 17, { color: '#ffffff', weight: 700 });
   } else if (b.sub === 'orderRoll' || b.sub === 'orderShow') {
     drawOrderRoll(ctx, s, t);
   } else if (b.sub === 'turnIntro') {

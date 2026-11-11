@@ -1,6 +1,7 @@
 import { BOARDS } from '../shared/board/boards';
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
+import { CHARACTERS, PLAYER_COLORS } from '../shared/players';
 import { FINISH_T, FIRST_GAME, PAUSE_OPTIONS, countTotal, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
@@ -347,6 +348,7 @@ function mouseFallback() {
 
 /** Clickable lobby controls: back, CPUs, mode arrows, turns, start. */
 let lastTags: Tag[] = [];
+let lobbyGameLive = false;
 let previewsLive = false;
 let introLive = false;
 
@@ -472,6 +474,24 @@ function renderScreens(wallT: number, dt: number) {
     pv.update(null, [], wallT, dt);
     stage.renderInset(pv, PREVIEW.x, PREVIEW.y, PREVIEW.w, PREVIEW.h);
     previewsLive = true;
+  } else if (s.phase === 'lobby' && opt?.kind === 'game') {
+    // a minigame is picked: show it being played by CPU stand-ins
+    const g = getGame(opt.id);
+    const who = s.players.slice(0, g.maxPlayers).map((p) => ({ ...p }));
+    // too few people for this game (or nobody yet)? CPU stand-ins fill the preview
+    const want = Math.min(g.maxPlayers, Math.max(g.minPlayers, 4));
+    for (const color of PLAYER_COLORS) {
+      if (who.length >= want) break;
+      if (who.some((p) => p.color === color)) continue;
+      const slot = PLAYER_COLORS.indexOf(color);
+      who.push({ id: `pv${slot}`, name: CHARACTERS[slot]?.name ?? 'CPU', color, slot, bot: 'hard' });
+    }
+    const gv = gamePreview(stage.env, `lobby:${opt.id}:${who.map((p) => p.color).join(',')}`, opt.id, who);
+    if (gv) {
+      gv.update(null, [], wallT, dt);
+      stage.renderInset(gv, PREVIEW.x, PREVIEW.y, PREVIEW.w, PREVIEW.h);
+    }
+    lobbyGameLive = true;
   } else if (s.phase !== 'lobby' && previewsLive) {
     clearBoardPreviews();
     previewsLive = false;
@@ -487,6 +507,10 @@ function renderScreens(wallT: number, dt: number) {
   } else if (introLive) {
     clearGamePreview();
     introLive = false;
+  }
+  if (lobbyGameLive && !(s.phase === 'lobby' && opt?.kind === 'game')) {
+    if (s.phase !== 'intro') clearGamePreview();
+    lobbyGameLive = false;
   }
   input.mouseHoldsA = s.phase === 'intro';
   lastTags = view.tags();
@@ -505,8 +529,8 @@ function renderScreens(wallT: number, dt: number) {
       break;
     case 'board':
       bakeItemIcons(stage.renderer);
-      drawBoardHud(ctx, s, wallT);
-      hostCorner(ctx, hostLine, wallT, 'br', 340);
+      drawBoardHud(ctx, s, wallT, mapCam.on);
+      hostCorner(ctx, hostLine, wallT, 'br', 340, 70);
       break;
     case 'intro': {
       drawIntro(ctx, s, wallT);

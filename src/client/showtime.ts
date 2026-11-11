@@ -299,13 +299,13 @@ export function bubble(ctx: CanvasRenderingContext2D, line: HostLine, x: number,
 }
 
 /** Brian's head and shoulders in a corner, with his bubble beside him. */
-export function hostCorner(ctx: CanvasRenderingContext2D, line: HostLine, t: number, corner: 'bl' | 'br' | 'tl' | 'tr' = 'bl', w = 420): void {
+export function hostCorner(ctx: CanvasRenderingContext2D, line: HostLine, t: number, corner: 'bl' | 'br' | 'tl' | 'tr' = 'bl', w = 420, lift = 0): void {
   if (!line.text) return;
   const enter = easeOut(line.age / 0.35);
   const left = corner === 'bl' || corner === 'tl';
   const top = corner === 'tl' || corner === 'tr';
   const hx = left ? 70 - (1 - enter) * 160 : 1210 + (1 - enter) * 160;
-  const hy = top ? 96 : 628;
+  const hy = (top ? 96 : 628) - lift;
   drawBrianBust(ctx, hx, hy, 74, t, { talking: line.talking, mood: line.mood });
   ctx.save();
   ctx.globalAlpha = enter;

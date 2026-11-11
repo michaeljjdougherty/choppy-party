@@ -131,6 +131,9 @@ function lanternHollow(): BoardDef {
  * the lane gate counts the cannon down; at zero it sweeps the lane and blasts coins off anyone on it.
  * Warp pads on the ring fling you somewhere else entirely.
  */
+/** Cosmo Junction is laid out small and then spread out by this much, so the spaces have room to breathe. */
+export const COSMO_SPREAD = 1.4;
+
 function cosmoJunction(): BoardDef {
   const b = new Builder();
   const flat = (pts: Pt[], y = 0): Pt3[] => pts.map(([x, z]) => [x, z, y]);
@@ -168,6 +171,10 @@ function cosmoJunction(): BoardDef {
     return [ring[(i - 1 + ring.length) % ring.length], ring[i % ring.length], ring[(i + 1) % ring.length]];
   });
   const shelters = [...new Set([...domes, start])];
+  for (const n of Object.values(b.nodes)) {
+    n.x *= COSMO_SPREAD;
+    n.z *= COSMO_SPREAD;
+  }
   return {
     id: 'cosmo-junction',
     name: 'Cosmo Junction',

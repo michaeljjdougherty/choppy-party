@@ -16,6 +16,8 @@ export interface WeatherZone {
   /** Where it is, in words ("the low south lane"). */
   area: string;
   nodes: string[];
+  /** Brian's tour line for this zone, when the kind's usual line names another map's places. */
+  tour?: string;
   /** Solar Flare: dome spaces on the ring that are safe from it. */
   shelters?: string[];
 }

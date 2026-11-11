@@ -71,6 +71,15 @@ export const CHUNK_EVENTS: Record<ChunkKind, { name: string; line: string; weigh
   snack: { name: 'Snack Break', line: 'He wanders off for a snack (+2 keys)', weight: 1 },
 };
 
+/** The villain hovers in and glares before his reel starts, then slams his victim after it stops. */
+export const BOSS_INTRO = 2.2;
+export const BOSS_SLAM = 1.6;
+/** Rounds until the villain next strikes (0 = this round), or null when he can't come (the Fucci Verse). */
+export function bossIn(s: BoardState, def: BoardDef): number | null {
+  if (!def.boss || !s.choppy) return null;
+  return Math.max(0, def.boss.every - (s.chopRounds ?? 0) - 1);
+}
+
 export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number, tour = false): BoardState {
   const def = getBoard(boardId);
   const pr = def.preset;
@@ -382,6 +391,10 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
   if (s.sub === 'done' || s.sub === 'event') return;
   if (s.sub === 'roundEnd') {
     if (s.t > 3.2) set(s, 'done');
+    return;
+  }
+  if (s.sub === 'boss') {
+    stepBoss(s, def);
     return;
   }
   if (s.sub === 'tour') {
@@ -1239,6 +1252,12 @@ function boardEvent(s: BoardState, def: BoardDef, id: string): void {
     if (to) me.node = to.id;
     fx(s, 'warp', me.node, id);
     say(s, 'Warp pad! Zoom!', '#45e3ff');
+  } else if (def.theme === 'court') {
+    // Verse Flip: the court swaps between the Fucci Verse and the Choppy Verse
+    s.choppy = !s.choppy;
+    s.chopRounds = 0;
+    fx(s, 'verse', me.node, id);
+    say(s, s.choppy ? 'VERSE FLIP! Welcome to the CHOPPY VERSE...' : 'VERSE FLIP! Back to the Fucci Verse. Phew.', s.choppy ? '#ff3b4e' : '#5fb8ff');
   } else {
     // Gold Strike: a gamble reel of nuggets and cave-ins spins, then pays out
     const pick = rand(s.rng) < 0.65 ? GOLD_WINS[Math.floor(rand(s.rng) * GOLD_WINS.length)] : GOLD_LOSSES[Math.floor(rand(s.rng) * GOLD_LOSSES.length)];
@@ -1380,7 +1399,48 @@ function planHazards(s: BoardState, def: BoardDef): void {
   if (def.theme === 'gulch') s.hazards.boulderLane = Math.floor(rand(s.rng) * 2);
 }
 
+/** Stew Court's villain: every few rounds he drops in, spins a reel of everyone and knocks one out. */
+function startBoss(s: BoardState, def: BoardDef): boolean {
+  if (!def.boss || !s.choppy || s.bossTurn === s.turn) return false;
+  s.bossTurn = s.turn;
+  // he comes every few round ends spent in the Choppy Verse
+  s.chopRounds = (s.chopRounds ?? 0) + 1;
+  if (s.chopRounds < def.boss.every) return false;
+  s.chopRounds = 0;
+  // fresh respawns are safe, and he won't pick on the same player twice in a row if there's anyone else
+  let pool = s.order.filter((o) => !s.players[o].ko && !(s.players[o].fresh && s.turn <= s.players[o].fresh!));
+  if (pool.length > 1 && s.bossLast) pool = pool.filter((o) => o !== s.bossLast);
+  if (!pool.length) return false;
+  const pick = pool[Math.floor(rand(s.rng) * pool.length)];
+  const reel: string[] = [];
+  for (let i = 0; i < SPIN_LEN + 4; i++) reel.push(s.order[Math.floor(rand(s.rng) * s.order.length)]);
+  reel[SPIN_LEN] = pick;
+  s.boss = { reel, at: SPIN_LEN, pick };
+  say(s, `${def.boss.name.toUpperCase()} IS HERE!`, '#ff3b4e');
+  set(s, 'boss');
+  return true;
+}
+
+function stepBoss(s: BoardState, def: BoardDef): void {
+  const b = s.boss;
+  if (!b) return roundEnd(s, def);
+  const hitAt = BOSS_INTRO + SPIN_TIME;
+  if (s.t >= hitAt && !b.hit) {
+    // the slam: a straight knockout (a Knight Shield still blocks it)
+    const p = s.players[b.pick];
+    b.hit = true;
+    fx(s, 'boss', p.node, b.pick);
+    if (hurt(s, def, b.pick, p.hp)) say(s, `${def.boss!.name} slammed one home! Knocked out!`, '#ff3b4e');
+  }
+  if (s.t >= hitAt + BOSS_SLAM) {
+    s.bossLast = b.pick;
+    s.boss = null;
+    roundEnd(s, def);
+  }
+}
+
 function roundEnd(s: BoardState, def: BoardDef): void {
+  if (startBoss(s, def)) return;
   set(s, 'roundEnd');
   const lines: string[] = [];
   const dmg = s.preset.hazardDamage;

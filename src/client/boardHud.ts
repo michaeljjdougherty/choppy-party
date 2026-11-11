@@ -3,7 +3,7 @@ import { slam, sunburst, vignette } from './showtime';
 import { sfx } from './sfx';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
-import { PROMPT_LOCK, SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, CHUNK_EVENTS, CHUNK_INTRO, currentPlayer } from '../shared/board/engine';
+import { PROMPT_LOCK, SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, CHUNK_EVENTS, CHUNK_INTRO, BOSS_INTRO, bossIn, currentPlayer } from '../shared/board/engine';
 import { TRAIN_PRICE, WISP_PRICE, type ChunkKind } from '../shared/board/types';
 import { ITEMS, ITEM_COLS, ITEM_GRID, SHOP_PRICE } from '../shared/board/items';
 import { WEATHER_COLOR, forecast } from '../shared/board/weather';
@@ -44,7 +44,13 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
         ? b.night
           ? 'Night: a pine falls at round end'
           : 'Day: ring the bell for night'
-        : `Boulder in the ${b.hazards.boulderLane ? 'east' : 'west'} canyon`;
+        : def.theme === 'court'
+          ? (() => {
+              const n = bossIn(b, def);
+              if (n === null) return 'Fucci Verse: all calm';
+              return `Choppy Verse: ${def.boss?.name ?? 'Villain'} ${n === 0 ? 'strikes this round!' : n === 1 ? 'strikes next round' : `strikes in ${n} rounds`}`;
+            })()
+          : `Boulder in the ${b.hazards.boulderLane ? 'east' : 'west'} canyon`;
   if (late) event = 'Final turns: Key and Heart pay double!';
   const pill = (y: number, w: number) => {
     ctx.fillStyle = 'rgba(20,12,40,0.62)';
@@ -252,6 +258,41 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
       ctx.restore();
       if (b.t > 0.6) text(ctx, `${who?.name ?? ''} landed on a CHUNK SPACE...`, 640, 262, 26, { color: '#ffffff' });
     } else drawChunkReel(ctx, b.chunk, b.t - CHUNK_INTRO, t);
+  } else if (b.sub === 'boss' && b.boss && def.boss) {
+    const name = def.boss.name.toUpperCase();
+    if (b.t < BOSS_INTRO) {
+      const k = Math.min(1, b.t / 0.35);
+      ctx.save();
+      ctx.translate(640, 200);
+      ctx.rotate(Math.sin(b.t * 30) * 0.03 * (1 - k));
+      ctx.scale(0.5 + k * 0.5, 0.5 + k * 0.5);
+      text(ctx, `${name}!`, 0, 0, 72, { color: '#ff3b4e' });
+      ctx.restore();
+      if (b.t > 0.6) text(ctx, 'He wants someone off his court...', 640, 262, 26, { color: '#ffffff' });
+    } else {
+      const victim = playerById(s.players, b.boss.pick);
+      const boss = b.boss;
+      drawReel(
+        ctx,
+        {
+          n: boss.reel.length,
+          at: boss.at,
+          title: `${name} PICKS...`,
+          color: '#ff3b4e',
+          result: `${victim?.name ?? ''} gets slammed!`,
+          resultColor: '#ff6b6b',
+          cell: (i, x, y, sz) => {
+            const p = playerById(s.players, boss.reel[i]);
+            ctx.fillStyle = p?.color ?? '#4a1a2e';
+            roundRect(ctx, x - sz / 2 + 4, y - sz / 2 + 4, sz - 8, sz - 8, 12);
+            ctx.fill();
+            text(ctx, (p?.name ?? '?').slice(0, 7), x, y, Math.round(sz * 0.2), { color: '#ffffff', weight: 900 });
+          },
+        },
+        b.t - BOSS_INTRO,
+        t,
+      );
+    }
   } else if (b.sub === 'gamble' && b.gamble) {
     drawGambleReel(ctx, b.gamble, b.t, t);
   } else if (b.sub === 'roundEnd') {

@@ -106,7 +106,7 @@ export function grassDetail(): THREE.Texture {
 
 const roads = new Map<string, THREE.Texture>();
 /** A road surface that runs along v (lengthways) and spans the width in u. */
-export function roadTexture(theme: 'hollow' | 'cosmo' | 'gulch'): THREE.Texture {
+export function roadTexture(theme: 'hollow' | 'cosmo' | 'gulch' | 'court'): THREE.Texture {
   const hit = roads.get(theme);
   if (hit) return hit;
   const t = canvasTexture(256, (g, s) => {
@@ -158,6 +158,23 @@ export function roadTexture(theme: 'hollow' | 'cosmo' | 'gulch'): THREE.Texture 
       g.fillStyle = '#5c67a8';
       g.fillRect(0, 0, 12, s);
       g.fillRect(s - 12, 0, 12, s);
+    } else if (theme === 'court') {
+      // a painted lane on the hardwood: darker stained boards, orange centre stripe, white edge lines
+      g.fillStyle = '#a8662f';
+      g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 4; i++) {
+        g.fillStyle = i % 2 ? '#b8743a' : '#9c5c28';
+        g.fillRect(i * (s / 4), 0, s / 4 - 2, s);
+      }
+      for (let i = 0; i < 10; i++) {
+        g.fillStyle = 'rgba(60,30,10,0.35)';
+        g.fillRect(Math.floor(r() * 4) * (s / 4), r() * s, s / 4 - 2, 2);
+      }
+      g.fillStyle = '#ff8a1f';
+      g.fillRect(s / 2 - 7, 0, 14, s);
+      g.fillStyle = '#ffffff';
+      g.fillRect(6, 0, 10, s);
+      g.fillRect(s - 16, 0, 10, s);
     } else {
       // a packed-dirt wagon trail with two wheel ruts and pebbles
       g.fillStyle = '#b98a55';

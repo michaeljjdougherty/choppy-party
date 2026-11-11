@@ -114,7 +114,7 @@ export interface BoardDef {
   players: [number, number];
   tagline: string;
   gimmick: string;
-  theme: 'hollow' | 'cosmo' | 'gulch';
+  theme: 'hollow' | 'cosmo' | 'gulch' | 'court';
   nodes: Record<string, BoardNode>;
   start: string;
   /** Where knocked-out players come back. */
@@ -130,6 +130,8 @@ export interface BoardDef {
   hills?: Hill[];
   /** The board was laid out small and blown up by this much (spaces, hills and scenery), so the spaces sit further apart. */
   spread?: number;
+  /** A villain who drops in at round end and knocks out one player at random (Stew Court: only in the Choppy Verse, every `every` rounds there). */
+  boss?: { name: string; every: number };
   /** Weather zones (see weather.ts). */
   weather?: import('./weather').WeatherZone[];
 }
@@ -227,6 +229,7 @@ export type BoardSub =
   | 'gamble' // Gold Strike: a reel of payouts and cave-ins
   | 'chunk' // Mister Chunk stomps in and spins his reel
   | 'event' // waiting for the party to run a duel or Stew Battle
+  | 'boss' // the map's villain drops in at round end and spins a reel of players to knock out
   | 'roundEnd' // hazards go off after everyone has moved
   | 'done';
 
@@ -294,6 +297,15 @@ export interface BoardState {
   gamble?: { reel: number[]; at: number; pick: number } | null;
   /** Mister Chunk's reel: which nasty surprise he picks. */
   chunk?: { reel: ChunkKind[]; at: number; pick: ChunkKind; victim: string } | null;
+  /** The villain's reel of player ids, stopping on his victim. */
+  boss?: { reel: string[]; at: number; pick: string; hit?: boolean } | null;
+  /** Round the villain last struck, and who he got (so he doesn't pick on the same player twice running). */
+  bossTurn?: number;
+  /** Stew Court: true in the Choppy Verse (the evil floating space court), false in the Fucci Verse. */
+  choppy?: boolean;
+  /** Round ends spent in the Choppy Verse since the villain last struck (or since the flip). */
+  chopRounds?: number;
+  bossLast?: string;
   /** Short-lived effects for the 3D view: hits, heals, knockouts, item use. */
   fx: { n: number; kind: string; node: string; id?: string; amount?: number; t: number }[];
   fxSeq: number;

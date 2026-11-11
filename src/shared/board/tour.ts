@@ -30,6 +30,7 @@ const TYPE_STEPS: [SpaceType, string, (d: BoardDef, s: BoardState) => string][] 
 const EVENT_TEXT: Record<BoardDef['theme'], [string, string]> = {
   hollow: ['The Bell', 'The diamond is the bell. Land there to swap day and night. Night opens the cellar and a pine falls on someone each round.'],
   cosmo: ['Warp Pads', 'Diamond spaces are warp pads. Step on one and you zap to another somewhere on the station.'],
+  court: ['Verse Flips', 'The four diamond spaces are Verse Flips. Land on one and the whole court flips between the Fucci Verse, a normal arena, and the Choppy Verse, a burning court floating in space.'],
   gulch: ['Gold Strikes', 'The gold question-mark spaces are gold strikes. Land on one and spin the reel: usually a pile of keys, sometimes a cave-in that costs you.'],
 };
 
@@ -54,10 +55,18 @@ export function buildTour(def: BoardDef, s: BoardState): TourStep[] {
     const lane = Object.values(def.nodes).filter((n) => n.canyon === s.hazards.boulderLane).map((n) => n.id);
     if (lane.length) steps.push({ title: 'Boulders', text: 'Every round a boulder rolls down one of the rocky canyons. The warning signs with the blinking light show which one.', node: lane[Math.floor(lane.length / 2)], also: lane });
   }
+  if (def.theme === 'court') {
+    const lit = s.crowns[0] ?? def.crownSpots[0];
+    steps.push({ title: 'The Hoops', text: `The hoops at each end hold the Chobglob. The glowing hoop has it: bring ${s.preset.crownPrice} Pit Coin to buy it. Every time someone does, the Chobglob switches to the other end.`, node: lit, also: def.crownSpots });
+    const lanes = Object.values(def.nodes).filter((n) => n.id.startsWith('sw') || n.id.startsWith('se')).map((n) => n.id);
+    if (lanes.length) steps.push({ title: 'Half-Court Lanes', text: 'Two one-way lanes cut across centre court. Each one skips a hoop, so pick the one that heads for the glowing end.', node: lanes[Math.floor(lanes.length / 4)], also: lanes });
+  }
+  if (def.boss)
+    steps.push({ title: def.boss.name, text: `In the Choppy Verse, ${def.boss.every === 1 ? 'at the end of every round' : `every ${def.boss.every} rounds`} ${def.boss.name} drops in, spins a reel of everyone and slams one player. Knocked out: you drop half your Pit Coin and start again from the bench. Only a Knight Shield can stop him.`, node: def.camp });
   // weather zones, each lit up end to end
   for (const z of def.weather ?? []) {
     const mid = z.nodes[Math.floor(z.nodes.length / 2)];
-    if (mid) steps.push({ title: z.name, text: WEATHER_TOUR[z.kind], node: mid, also: z.nodes });
+    if (mid) steps.push({ title: z.name, text: z.tour ?? WEATHER_TOUR[z.kind], node: mid, also: z.nodes });
   }
   steps.push({ title: "Let's play!", text: 'That is everything. First, everyone rolls to see who goes first.', node: null });
   return steps;

@@ -34,12 +34,24 @@ const RIM_X = COURT.hoopX + 1.1;
 const RIM_Y = 4.4;
 
 function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
-  const px = 18; // pixels per world unit
+  return canvasTex(paintCourt(evil, glow, 18));
+}
+
+function canvasTex(c: HTMLCanvasElement, srgb = true): THREE.CanvasTexture {
+  const t = new THREE.CanvasTexture(c);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/** The court's paint job on a canvas, `px` pixels per world unit. */
+function paintCourt(evil: boolean, glow: boolean, px: number): HTMLCanvasElement {
   const cw = FLOOR.w * px, ch = FLOOR.h * px;
   const c = document.createElement('canvas');
   c.width = cw;
   c.height = ch;
-  const g = c.getContext('2d')!;
+  // the burned floor is read back for its pixel pass: keep that canvas in memory, not on the GPU
+  const g = c.getContext('2d', { willReadFrequently: evil })!;
   // hardwood: long boards running lengthways, slightly different tones
   const plank = 0.9 * px;
   let seed = 7;
@@ -48,8 +60,9 @@ function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
     let x = -r() * 6 * px;
     while (x < cw) {
       const len = (4 + r() * 5) * px;
-      const t = evil ? 34 + Math.floor(r() * 22) : 176 + Math.floor(r() * 24);
-      g.fillStyle = glow ? '#000000' : evil ? `rgb(${t},${Math.floor(t * 0.5)},${Math.floor(t * 0.45)})` : `rgb(${t},${Math.floor(t * 0.66)},${Math.floor(t * 0.36)})`;
+      // the Choppy Verse floor starts as the same oak boards; the burn pass adds grain and chars them
+      const t = evil ? 150 + Math.floor(r() * 34) : 176 + Math.floor(r() * 24);
+      g.fillStyle = glow ? '#000000' : evil ? `rgb(${t},${Math.floor(t * 0.6)},${Math.floor(t * 0.34)})` : `rgb(${t},${Math.floor(t * 0.66)},${Math.floor(t * 0.36)})`;
       g.fillRect(x, y, len - 2, plank - 2);
       x += len;
     }
@@ -107,23 +120,6 @@ function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
     g.stroke();
     void dx;
   }
-  if (evil) {
-    // glowing cracks burned right across the boards
-    g.strokeStyle = '#ffb020';
-    g.lineCap = 'round';
-    for (let k = 0; k < 26; k++) {
-      let x = r() * cw, y = r() * ch;
-      g.lineWidth = (0.08 + r() * 0.16) * px;
-      g.beginPath();
-      g.moveTo(x, y);
-      for (let j = 0; j < 6; j++) {
-        x += (r() - 0.5) * 5 * px;
-        y += (r() - 0.5) * 5 * px;
-        g.lineTo(x, y);
-      }
-      g.stroke();
-    }
-  }
   // centre court: a bubbling stew pot and the name
   g.save();
   g.translate(X(0), Z(0));
@@ -157,10 +153,176 @@ function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
     g.fillText(word, 0, 0);
     g.restore();
   }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
-  return t;
+  return c;
+}
+
+// ---- burned hardwood (the Choppy Verse floor) ------------------------------------------------
+
+const hash2 = (x: number, y: number) => {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+};
+function vnoise(x: number, y: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function fbm(x: number, y: number, oct = 4): number {
+  let s = 0, a = 0.5, f = 1, n = 0;
+  for (let i = 0; i < oct; i++) {
+    s += vnoise(x * f, y * f) * a;
+    n += a;
+    a *= 0.5;
+    f *= 2.03;
+  }
+  return s / n;
+}
+const sstep = (a: number, b: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * The Choppy Verse court: the same oak floor and paint, burned. Scorched brown where the fire only
+ * licked it, blackened charcoal split into blocky "alligator" cracks where it burned deep (with a
+ * silvery sheen on the char), ash in the low spots, and embers still glowing down in the cracks.
+ * Returns the colour map, the ember glow map (the painted lines still smoulder) and a bump map.
+ */
+export function burnedCourt(): { map: THREE.CanvasTexture; glow: THREE.CanvasTexture; bump: THREE.CanvasTexture; rough: THREE.CanvasTexture } {
+  const px = 24;
+  const col = paintCourt(true, false, px);
+  const glo = paintCourt(true, true, px);
+  const w = col.width, h = col.height;
+  const cg = col.getContext('2d', { willReadFrequently: true })!, gg = glo.getContext('2d', { willReadFrequently: true })!;
+  const cd = cg.getImageData(0, 0, w, h), gd = gg.getImageData(0, 0, w, h);
+  const bump = document.createElement('canvas');
+  bump.width = w;
+  bump.height = h;
+  const bg = bump.getContext('2d')!;
+  const bd = bg.createImageData(w, h);
+  const rough = document.createElement('canvas');
+  rough.width = w;
+  rough.height = h;
+  const rg = rough.getContext('2d')!;
+  const rd = rg.createImageData(w, h);
+  const C = cd.data, G = gd.data, B = bd.data, R = rd.data;
+  // char cells: longer along the grain (x) than across it
+  const CX = 0.85, CY = 0.26;
+  // the slow-changing fields (how burned, ash drifts, ember clusters) on a coarse grid, smoothed
+  // between samples; the cell jitter for the cracks in a table (keeps the pass to a fraction of a second)
+  const S = 4;
+  const fw = Math.ceil(w / S) + 2, fh = Math.ceil(h / S) + 2;
+  const fBurn = new Float32Array(fw * fh), fAsh = new Float32Array(fw * fh), fHot = new Float32Array(fw * fh);
+  for (let j = 0; j < fh; j++) {
+    for (let k = 0; k < fw; k++) {
+      const wx = (k * S) / px - FLOOR.w / 2, wy = (j * S) / px - FLOOR.h / 2;
+      const mid = 1 - Math.min(1, Math.hypot(wx / 34, wy / 22));
+      fBurn[j * fw + k] = fbm(wx * 0.09 + 3.1, wy * 0.12 - 7.3) * 0.9 + fbm(wx * 0.5, wy * 0.7, 3) * 0.25 + mid * 0.2 - 0.2;
+      fAsh[j * fw + k] = fbm(wx * 1.3 + 11, wy * 1.6 - 4, 3);
+      fHot[j * fw + k] = fbm(wx * 0.7 - 5, wy * 0.9 + 9, 3);
+    }
+  }
+  const field = (f: Float32Array, x: number, y: number) => {
+    const fx = x / S, fy = y / S;
+    const k = fx | 0, j = fy | 0, u = fx - k, v = fy - j;
+    const a = f[j * fw + k], b = f[j * fw + k + 1], c = f[(j + 1) * fw + k], d = f[(j + 1) * fw + k + 1];
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+  const gw = Math.ceil(FLOOR.w / CX) + 4, gh = Math.ceil(FLOOR.h / CY) + 4;
+  const ox0 = Math.floor(-FLOOR.w / 2 / CX) - 2, oy0 = Math.floor(-FLOOR.h / 2 / CY) - 2;
+  const jx = new Float32Array(gw * gh), jy = new Float32Array(gw * gh);
+  for (let j = 0; j < gh; j++) {
+    for (let k = 0; k < gw; k++) {
+      jx[j * gw + k] = hash2(k + ox0, (j + oy0) * 3 + 1);
+      jy[j * gw + k] = hash2((k + ox0) * 5 + 2, j + oy0);
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    const wy = y / px - FLOOR.h / 2;
+    for (let x = 0; x < w; x++) {
+      const wx = x / px - FLOOR.w / 2;
+      const i = (y * w + x) * 4;
+      // how badly this bit burned: big blotches, worst towards the middle, ragged at the edges
+      const burn = field(fBurn, x, y);
+      const scorch = 0.3 + 0.7 * sstep(0, 0.38, burn);
+      const charK = sstep(0.36, 0.58, burn) * 0.92;
+      // the alligator pattern: distance to the nearest two cell centres
+      const gx = wx / CX, gy = wy / CY;
+      const ix = Math.floor(gx), iy = Math.floor(gy);
+      let d1 = 9, d2 = 9;
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          const cx = ix + ox, cy = iy + oy;
+          const ti = (cy - oy0) * gw + (cx - ox0);
+          const dx = cx + jx[ti] - gx;
+          const dy = cy + jy[ti] - gy;
+          const d = dx * dx + dy * dy;
+          if (d < d1) {
+            d2 = d1;
+            d1 = d;
+          } else if (d < d2) d2 = d;
+        }
+      }
+      const edge = Math.sqrt(d2) - Math.sqrt(d1);
+      const crack = charK * (1 - sstep(0.015, 0.07, edge));
+      const dome = Math.min(1, edge * 3);
+      // wood grain: fine streaks along each board (shifted board to board), darker where it's tight
+      const row = Math.floor(wy / 0.9);
+      const gr = vnoise(wx * 0.9 + row * 17.3, wy * 34 + Math.sin(wx * 0.7 + row) * 2.2);
+      const grainK = 0.78 + gr * 0.3 - (gr > 0.72 ? 0.18 : 0);
+      // the gaps between boards (left empty by the paint job) are burned black
+      const gap = C[i + 3] < 128;
+      let r = gap ? 14 : C[i] * grainK, gch = gap ? 9 : C[i + 1] * grainK, b = gap ? 6 : C[i + 2] * grainK;
+      // scorched: browned and darkened, the grain still showing
+      r = r * (1 - scorch * 0.62);
+      gch = gch * (1 - scorch * 0.72);
+      b = b * (1 - scorch * 0.78);
+      // charred: near-black, with a cool silver sheen on the cell tops
+      // (the grain still shows faintly through the char)
+      const grain = (r + gch) / 330;
+      const sheen = charK * dome * 0.35;
+      r = r + (8 + grain * 22 + sheen * 30 - r) * charK;
+      gch = gch + (7 + grain * 16 + sheen * 30 - gch) * charK;
+      b = b + (6 + grain * 10 + sheen * 32 - b) * charK;
+      // the cracks go black
+      r *= 1 - crack * 0.85;
+      gch *= 1 - crack * 0.85;
+      b *= 1 - crack * 0.85;
+      // ash: soft grey drifts and white flecks on the charred parts
+      const ash = sstep(0.66, 0.85, field(fAsh, x, y)) * charK * 0.28 + (hash2(x, y) > 0.995 ? charK * 0.35 : 0);
+      r += (92 - r) * ash;
+      gch += (88 - gch) * ash;
+      b += (84 - b) * ash;
+      C[i] = r;
+      C[i + 1] = gch;
+      C[i + 2] = b;
+      C[i + 3] = 255;
+      // embers: deep in the cracks of the worst-burned patches, flickering in clusters
+      const hot = sstep(0.45, 0.75, burn) * sstep(0.38, 0.6, field(fHot, x, y));
+      const ember = charK * (1 - sstep(0.02, 0.11, edge)) * hot;
+      // the painted lines and keys keep smouldering, but only faintly where they're charred over
+      const keep = 1 - charK * 0.6;
+      G[i] = Math.min(255, G[i] * keep * 0.8 + ember * 255);
+      G[i + 1] = Math.min(255, G[i + 1] * keep * 0.8 + ember * 95);
+      G[i + 2] = Math.min(255, G[i + 2] * keep * 0.8 + ember * 18);
+      // bump: boards high, char domed and lower, cracks deep
+      const hgt = gap ? 40 : 200 - scorch * 30 - charK * 40 + charK * dome * 35 - crack * 150;
+      B[i] = B[i + 1] = B[i + 2] = Math.max(0, hgt);
+      B[i + 3] = 255;
+      // rough: scorched wood is dry and matte; the char's sheen is glossier
+      const ro = 200 + scorch * 40 - sheen * 110;
+      R[i] = R[i + 1] = R[i + 2] = Math.max(0, Math.min(255, ro));
+      R[i + 3] = 255;
+    }
+  }
+  cg.putImageData(cd, 0, 0);
+  gg.putImageData(gd, 0, 0);
+  bg.putImageData(bd, 0, 0);
+  rg.putImageData(rd, 0, 0);
+  return { map: canvasTex(col), glow: canvasTex(glo), bump: canvasTex(bump, false), rough: canvasTex(rough, false) };
 }
 
 function signTexture(txt: string): THREE.CanvasTexture {
@@ -445,7 +607,8 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
   // the floating court
   const floorMat = new THREE.MeshPhysicalMaterial({ map: courtTexture(), roughness: 0.38, metalness: 0.0, color: '#efe2d2', clearcoat: 0.9, clearcoatRoughness: 0.12 });
   floorMat.userData.noDetail = true;
-  const evilMat = new THREE.MeshStandardMaterial({ map: courtTexture(true), roughness: 0.7, color: '#b0a0a0', emissive: '#ffffff', emissiveMap: courtTexture(true, true), emissiveIntensity: 1.1 });
+  const burnt = burnedCourt();
+  const evilMat = new THREE.MeshStandardMaterial({ map: burnt.map, roughness: 1, roughnessMap: burnt.rough, bumpMap: burnt.bump, bumpScale: 2.5, color: '#ffffff', emissive: '#ffffff', emissiveMap: burnt.glow, emissiveIntensity: 1.1 });
   evilMat.userData.noDetail = true;
   const floorMats = [toy('#2a1238', 0.4), toy('#2a1238', 0.4), floorMat, toy('#1b1030', 0.5), toy('#2a1238', 0.4), toy('#2a1238', 0.4)];
   const floor = mesh(new THREE.BoxGeometry(FLOOR.w, 1.2, FLOOR.h), floorMats as unknown as THREE.Material, { cast: false, receive: true });

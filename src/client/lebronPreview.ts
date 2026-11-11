@@ -39,3 +39,5 @@ import { applyPose, DANCES, dancePose } from './three/lebronDance';
   applyPose(ty.rig!, i < 0 ? dancePose(b, DANCES.map((_, k) => k)) : DANCES[i].pose(b), 1);
 };
 (window as unknown as Record<string, unknown>).__n = DANCES.map((d) => d.name);
+import { burnedCourt } from './three/stewCourtDecor';
+(window as unknown as Record<string, unknown>).__burn = () => (burnedCourt().map.image as HTMLCanvasElement).toDataURL('image/png');

@@ -1,7 +1,7 @@
 import type { InputManager } from './input';
 import { roundRect, text } from '../shared/draw';
 import { sunburst } from './showtime';
-import { A, B, promptKind } from './prompts';
+import { A, B, STICK, promptKind } from './prompts';
 
 export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | 'netcfg' | null;
 
@@ -246,7 +246,7 @@ export class MainMenu {
     const k = promptKind();
     const hint =
       k === 'pad'
-        ? 'Stick: move   ·   A: choose   ·   B: back'
+        ? `${STICK()} move   ·   ${A()} choose   ·   ${B()} back`
         : k === 'mouse'
           ? 'Click to choose   ·   Esc: back'
           : `W/S or Arrows: move   ·   ${A()} or Enter: choose   ·   Esc or ${B()}: back`;

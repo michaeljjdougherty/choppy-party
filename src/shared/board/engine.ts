@@ -559,7 +559,13 @@ function endTurn(s: BoardState, def: BoardDef): void {
   } else roundEnd(s, def);
 }
 
+/** A two-choice prompt locks out presses for this long, so a button mashed on the way in can't answer it. */
+export const PROMPT_LOCK = 0.6;
+const TWO_CHOICE = new Set(['crown', 'wisp', 'train', 'claim', 'steal']);
+
 function ask(s: BoardState, p: Prompt): void {
+  // spending prompts start on "No"; the Crown Chest (what everyone wants) and claiming start on the first option
+  if (TWO_CHOICE.has(p.kind) && !('sel' in p)) (p as { sel?: number }).sel = p.kind === 'crown' || p.kind === 'claim' ? 0 : 1;
   s.prompt = p;
   set(s, 'prompt');
 }
@@ -646,19 +652,28 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
     }
     return;
   }
+  // the two-choice prompts: stick left/right moves the cursor, A confirms it, B is always "no"
+  const tp = p as { sel?: number };
+  tp.sel ??= 0;
+  const live = s.t > PROMPT_LOCK;
+  if (live && stick) tp.sel = stick < 0 ? 0 : 1;
+  const confirm = inp.aPressed && live;
   if (p.kind === 'claim') {
-    if (yes || no || auto) {
-      s.posts[p.node] = { owner: id, mode: no ? 'sting' : 'toll' };
-      say(s, no ? 'Claimed a Sting Post!' : 'Claimed a Toll Post!', '#ffd23f');
+    if (confirm || auto) {
+      const sting = !auto && tp.sel === 1;
+      s.posts[p.node] = { owner: id, mode: sting ? 'sting' : 'toll' };
+      say(s, sting ? 'Claimed a Sting Post!' : 'Claimed a Toll Post!', '#ffd23f');
       fx(s, 'claim', p.node, id);
       s.prompt = null;
       set(s, 'land');
     }
     return;
   }
+  const accept = confirm && tp.sel === 0;
+  const decline = (confirm && tp.sel === 1) || (no && s.t > PROMPT_LOCK);
   if (p.kind === 'steal') {
     // idle players don't spend keys stealing posts
-    if (yes && me.keys >= s.preset.postStealCost) {
+    if (accept && me.keys >= s.preset.postStealCost) {
       me.keys -= s.preset.postStealCost;
       s.posts[p.node] = { owner: id, mode: 'toll' };
       s.prompt = null;
@@ -666,15 +681,15 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
       say(s, 'Post stolen! Pick its mode', '#ffd23f');
       return;
     }
-    if (no || auto || yes) {
+    if (decline || auto || accept) {
       s.prompt = null;
       set(s, 'land');
     }
     return;
   }
   // crown, wisp and train: idle players accept anything they can afford
-  if (yes || no || auto) {
-    if (yes || (auto && !no)) resolvePrompt(s, def, id, p);
+  if (accept || decline || auto) {
+    if (accept || (auto && !decline)) resolvePrompt(s, def, id, p);
     if (s.sub === 'prompt') {
       if (me.ko) s.resume = 'land';
       afterPrompt(s);

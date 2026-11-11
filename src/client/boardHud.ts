@@ -3,11 +3,11 @@ import { slam, sunburst } from './showtime';
 import { sfx } from './sfx';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
-import { SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, currentPlayer } from '../shared/board/engine';
+import { PROMPT_LOCK, SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, currentPlayer } from '../shared/board/engine';
 import { TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
 import { ITEMS, ITEM_COLS, ITEM_GRID, SHOP_PRICE } from '../shared/board/items';
 import { WEATHER_COLOR, forecast } from '../shared/board/weather';
-import { playerById, popText, roundRect, text } from '../shared/draw';
+import { playerById, popText, richWidth, roundRect, text } from '../shared/draw';
 import { itemIcon } from './three/itemIcons';
 
 /** Moving the highlight in a board menu (items, targets, forks) ticks like the main menu. */
@@ -77,7 +77,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     }
   });
   ctx.font = '700 17px system-ui, sans-serif';
-  pill(130, ctx.measureText(event).width + 20);
+  pill(130, richWidth(ctx, event, 17) + 20);
   text(ctx, event, 1258, 131, 17, { align: 'right', color: late ? '#ffd23f' : '#ffd9cf' });
 
   // weather forecast under it: each zone, what it's doing now and next round
@@ -194,21 +194,47 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     text(ctx, `(sitting out pays +${pr.sitOutKeys} keys)`, 640, 274, 18, { color: '#6b5aa8', outline: false, weight: 600 });
   } else if (b.sub === 'prompt' && b.prompt) {
     const pm = b.prompt;
-    if (pm.kind === 'crown') box(`Open the Crown Chest for ${pr.crownPrice} keys?`, 'A: Yes      B: No');
-    else if (pm.kind === 'wisp') box(`Pay the Wisp ${WISP_PRICE} keys to rob the leader?`, 'A: Yes      B: No');
-    else if (pm.kind === 'train') box(`Ride the train to the next station for ${TRAIN_PRICE} keys?`, 'A: Yes      B: No');
-    else if (pm.kind === 'claim') {
-      box('Claim this post! Pick its mode', '', 190);
-      text(ctx, `A: Toll Post  (others pay ${pr.postToll} keys)`, 640, 224, 22, { color: '#2a1b5e', outline: false, weight: 700 });
-      text(ctx, `B: Sting Post  (${pr.postSting} damage, you heal ${pr.postStingHeal})`, 640, 262, 22, { color: '#2a1b5e', outline: false, weight: 700 });
-    } else if (pm.kind === 'steal') box(`Pay ${pr.postStealCost} keys to take over this post?`, 'A: Yes      B: No');
+    // two-choice prompts: two big buttons with a cursor, so a stray A press can't say yes
+    const two = (q: string, opts: [string, string], sub: [string, string] = ['', '']) => {
+      const sel = (pm as { sel?: number }).sel ?? 0;
+      const locked = b.t < PROMPT_LOCK;
+      box(q, '', 210);
+      opts.forEach((label, i) => {
+        const on = i === sel;
+        const x = 640 + (i === 0 ? -170 : 170);
+        const w = 280, h = sub[i] ? 74 : 58;
+        const yes = i === 0;
+        ctx.save();
+        ctx.translate(x, 236);
+        if (on) ctx.scale(1.06, 1.06);
+        ctx.fillStyle = on ? (yes ? '#21c45a' : '#ff4d5a') : '#e9e4f7';
+        roundRect(ctx, -w / 2, -h / 2, w, h, 20);
+        ctx.fill();
+        ctx.lineWidth = on ? 5 : 2;
+        ctx.strokeStyle = on ? '#ffd23f' : '#c9c0e6';
+        ctx.stroke();
+        ctx.restore();
+        text(ctx, label, x, 236 - (sub[i] ? 12 : 0), 26, { color: on ? '#ffffff' : '#6b5aa8', outline: false, weight: 800 });
+        if (sub[i]) text(ctx, sub[i], x, 254, 15, { color: on ? '#ffffff' : '#6b5aa8', outline: false, weight: 700 });
+        if (on) text(ctx, '▼', x, 236 - h / 2 - 16 + Math.sin(t * 8) * 3, 22, { color: '#ffd23f' });
+      });
+      ctx.globalAlpha = locked ? 0.4 : 1;
+      text(ctx, `${STICK()} choose   ${A()} confirm   ${B()} no`, 640, 300, 18, { color: '#2a1b5e', outline: false, weight: 700 });
+      ctx.globalAlpha = 1;
+    };
+    if (pm.kind === 'crown') two(`Open the Crown Chest for ${pr.crownPrice} keys?`, ['Yes', 'No']);
+    else if (pm.kind === 'wisp') two(`Pay the Wisp ${WISP_PRICE} keys to rob the leader?`, ['Yes, pay', 'No thanks']);
+    else if (pm.kind === 'train') two(`Ride the train to the next station for ${TRAIN_PRICE} keys?`, ['Yes, ride', 'No thanks']);
+    else if (pm.kind === 'claim')
+      two('Claim this post! Pick its mode', ['Toll Post', 'Sting Post'], [`others pay ${pr.postToll} keys`, `${pr.postSting} dmg, you heal ${pr.postStingHeal}`]);
+    else if (pm.kind === 'steal') two(`Pay ${pr.postStealCost} keys to take over this post?`, ['Yes, steal', 'No thanks']);
     else if (pm.kind === 'shop') drawShop(ctx, pm, mine.keys);
     else if (pm.kind === 'items') {
       // drawn by drawItemGrid at the bottom
     } else if (pm.kind === 'target') {
       const tp = playerById(s.players, pm.options[pm.sel]);
       const what = pm.purpose === 'duel' ? 'Pick your duel rival' : pm.purpose === 'cannon' ? 'Aim the cannon' : `${ITEMS[pm.item!].name}: pick a target`;
-      box(what, '◀ Stick ▶   A: confirm' + (pm.purpose === 'item' ? '   B: back' : ''), 180);
+      box(what, `${STICK()} choose   ${A()} confirm` + (pm.purpose === 'item' ? `   ${B()} back` : ''), 180);
       text(ctx, tp?.name ?? '', 640, 226, 48, { color: tp?.color ?? '#000', outline: false });
     }
   } else if (b.sub === 'itemSpin' && b.spin) {
@@ -455,7 +481,7 @@ function bagHint(ctx: CanvasRenderingContext2D, count: number, canOpen: boolean)
   if (!canOpen) return;
   const label = `${B()}: Items (${count})`;
   ctx.font = `800 18px system-ui, sans-serif`;
-  const w = ctx.measureText(label).width + 36;
+  const w = richWidth(ctx, label, 18) + 36;
   ctx.fillStyle = 'rgba(20,12,40,0.72)';
   roundRect(ctx, 640 - w / 2, 670, w, 36, 18);
   ctx.fill();
@@ -498,11 +524,11 @@ function startBanner(ctx: CanvasRenderingContext2D, msg: string, age: number): v
 function promptPill(ctx: CanvasRenderingContext2D, msg: string, y: number): void {
   let size = 24;
   ctx.font = `800 ${size}px system-ui, sans-serif`;
-  while (size > 15 && ctx.measureText(msg).width > 620) {
+  while (size > 15 && richWidth(ctx, msg, size) > 620) {
     size -= 1;
     ctx.font = `800 ${size}px system-ui, sans-serif`;
   }
-  const w = ctx.measureText(msg).width + 40;
+  const w = richWidth(ctx, msg, size) + 40;
   ctx.fillStyle = 'rgba(20,12,40,0.7)';
   roundRect(ctx, 640 - w / 2, y - 22, w, 44, 22);
   ctx.fill();
@@ -685,5 +711,5 @@ function drawShop(ctx: CanvasRenderingContext2D, pm: { stock: (keyof typeof ITEM
     ctx.fill();
   }
   text(ctx, 'Leave the shop', 640, ly, 20, { color: '#2a1b5e', outline: false });
-  text(ctx, 'Stick: choose   A: buy   B: leave', 640, y0 + h - 22, 16, { color: '#ff4d5a', outline: false, weight: 700 });
+  text(ctx, `${STICK()} choose   ${A()} buy   ${B()} leave`, 640, y0 + h - 22, 16, { color: '#ff4d5a', outline: false, weight: 700 });
 }

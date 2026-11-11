@@ -180,11 +180,12 @@ export interface ClaimPost {
 
 /** Something the current player is choosing. */
 export type Prompt =
-  | { kind: 'crown'; node: string }
-  | { kind: 'wisp' }
-  | { kind: 'train'; to: string }
-  | { kind: 'claim'; node: string }
-  | { kind: 'steal'; node: string }
+  // two-choice prompts carry a cursor (0 = Yes / Toll, 1 = No / Sting), so A alone never says yes by accident
+  | { kind: 'crown'; node: string; sel?: number }
+  | { kind: 'wisp'; sel?: number }
+  | { kind: 'train'; to: string; sel?: number }
+  | { kind: 'claim'; node: string; sel?: number }
+  | { kind: 'steal'; node: string; sel?: number }
   | { kind: 'items'; sel: number }
   | { kind: 'shop'; node: string; stock: ItemId[]; sel: number }
   | { kind: 'target'; purpose: 'item' | 'duel' | 'cannon'; item?: ItemId; options: string[]; sel: number };

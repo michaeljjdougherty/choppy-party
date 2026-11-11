@@ -2,8 +2,8 @@
  * Presentation helpers for the big moments: sunbursts, ribbons, slam-in titles, count-ins,
  * Square Brian's speech bubble, and his lines.
  */
-import { glyph } from './prompts';
-import { roundRect, text } from '../shared/draw';
+import { aWord, glyph } from './prompts';
+import { drawGlyph, glyphWidth, roundRect, text, type Glyph } from '../shared/draw';
 import { drawBrianBust, type BrianFace } from './three/brian';
 
 /* ------------------------------------------------------------------ easing */
@@ -162,11 +162,16 @@ function ringBurst(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
 export function controlChips(ctx: CanvasRenderingContext2D, controls: string, cx: number, y: number): void {
   const parts = controls.split(/\s{2,}/).map((p) => {
     const [k, ...rest] = p.split(':');
-    return { key: k.trim(), what: rest.join(':').trim() };
+    const key = k.trim();
+    const low = key.toLowerCase();
+    // the button this chip is about, as this player's own glyph
+    const btn = low.startsWith('stick') ? 'stick' : low.startsWith('mash') ? 'mash' : /^[abxy]\b/.test(low) ? (low[0] as 'a' | 'b' | 'x' | 'y') : null;
+    const g = btn ? parseGlyph(glyph(btn)) : null;
+    return { key, what: rest.join(':').trim() || key, g, gw: g ? glyphWidth(ctx, g, GLYPH) : GLYPH };
   });
   ctx.save();
   ctx.font = '800 22px system-ui, sans-serif';
-  const widths = parts.map((p) => 64 + ctx.measureText(p.what).width + 26);
+  const widths = parts.map((p) => p.gw + 30 + ctx.measureText(p.what).width + 26);
   const total = widths.reduce((a, b) => a + b, 0) + (parts.length - 1) * 16;
   let x = cx - total / 2;
   parts.forEach((p, i) => {
@@ -177,26 +182,33 @@ export function controlChips(ctx: CanvasRenderingContext2D, controls: string, cx
     ctx.fillStyle = '#ffffff';
     roundRect(ctx, x, y - 26, w, 52, 26);
     ctx.fill();
-    const key = p.key.toLowerCase();
-    const col = key.startsWith('a') || key.startsWith('mash a') ? '#21c45a' : key.startsWith('b') ? '#ff4d5a' : '#3a3f5c';
-    ctx.fillStyle = col;
-    ctx.beginPath();
-    ctx.arc(x + 28, y, 20, 0, Math.PI * 2);
-    ctx.fill();
-    const g = key.startsWith('stick') ? glyph('stick') : key.startsWith('mash') ? glyph('mash') : key.startsWith('a') ? glyph('a') : key.startsWith('b') ? glyph('b') : p.key.charAt(0).toUpperCase();
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `900 ${g.length > 3 ? 11 : g.length > 1 ? 14 : 20}px system-ui, sans-serif`;
-    const glyphText = g;
-    ctx.fillText(glyphText, x + 28, y + 1);
+    if (p.g) drawGlyph(ctx, p.g, x + 10 + p.gw / 2, y, GLYPH);
+    else {
+      // not a button (a role like "Captain"): a plain dark dot with its first letter
+      ctx.fillStyle = '#3a3f5c';
+      ctx.beginPath();
+      ctx.arc(x + 10 + GLYPH / 2, y, GLYPH / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '900 20px system-ui, sans-serif';
+      ctx.fillText(p.key.charAt(0).toUpperCase(), x + 10 + GLYPH / 2, y + 1);
+    }
     ctx.fillStyle = '#2a1b5e';
     ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
     ctx.font = '800 22px system-ui, sans-serif';
-    ctx.fillText(p.what || p.key, x + 58, y + 1);
+    ctx.fillText(p.what, x + p.gw + 22, y + 1);
     x += w + 16;
   });
   ctx.restore();
+}
+
+const GLYPH = 38;
+function parseGlyph(tok: string): Glyph | null {
+  const m = /\u0001([xpnk]):([^\u0002]*)\u0002/.exec(tok);
+  return m ? { style: m[1] as Glyph['style'], btn: m[2] } : null;
 }
 
 /* ------------------------------------------------------------------ Square Brian talks */
@@ -343,7 +355,7 @@ export const LINES = {
   ],
   lobby: ['Gather, friends. The party waits for no one.', 'More players, more chaos. That is the way.'],
   lobbyBots: ['Ah. Machines have joined us. They do not blink. I do, sometimes.'],
-  intro: (blurb: string) => `${blurb} Watch the preview, then hold A to ready up.`,
+  intro: (blurb: string) => `${blurb} Watch the preview, then hold ${aWord()} to ready up.`,
   winner: (name: string) => [`${name}. The crown fits you well.`, `${name} has learned something today.`, `Well played, ${name}. I am not surprised.`],
   tie: ['A tie. Balance, as all things should be.'],
   last: (name: string) => [`${name}, there is always next round.`, `${name}. Even mountains start as pebbles.`],

@@ -83,7 +83,7 @@ export function text(
 ): void {
   ctx.save();
   // big headline text uses the chunky Kenney Future font (UI Pack); body text stays system-ui for readability
-  const headline = size >= 30 && /[A-Za-z]/.test(s);
+  const headline = size >= 30 && /[A-Za-z]/.test(s.replace(TOKEN_RE, ''));
   ctx.font = headline ? `${size}px 'Kenney Future Narrow', system-ui, sans-serif` : `${opts.weight ?? 700} ${size}px system-ui, sans-serif`;
   // the Kenney font is set wide; pull the letters in a little
   if (headline && 'letterSpacing' in ctx) {
@@ -92,16 +92,207 @@ export function text(
     // the tighter letters swallow the gaps between words, so open those back up
     c.wordSpacing = `${size * 0.35}px`;
   }
-  ctx.textAlign = opts.align ?? 'center';
   ctx.textBaseline = 'middle';
-  if (opts.outline !== false) {
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.lineWidth = Math.max(3, size / 8);
-    ctx.lineJoin = 'round';
-    ctx.strokeText(s, x, y);
+  const plain = (str: string, px: number, align: CanvasTextAlign) => {
+    ctx.textAlign = align;
+    if (opts.outline !== false) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+      ctx.lineWidth = Math.max(3, size / 8);
+      ctx.lineJoin = 'round';
+      ctx.strokeText(str, px, y);
+    }
+    ctx.fillStyle = opts.color ?? '#fff';
+    ctx.fillText(str, px, y);
+  };
+  if (!s.includes('\u0001')) {
+    plain(s, x, opts.align ?? 'center');
+    ctx.restore();
+    return;
   }
-  ctx.fillStyle = opts.color ?? '#fff';
-  ctx.fillText(s, x, y);
+  // rich text: controller and key glyphs drawn inline between the words
+  const parts = splitGlyphs(s);
+  const gs = Math.max(14, size * 1.05);
+  const widths = parts.map((p) => (typeof p === 'string' ? ctx.measureText(p).width : glyphWidth(ctx, p, gs) + size * 0.12));
+  const total = widths.reduce((q, w) => q + w, 0);
+  const align = opts.align ?? 'center';
+  let cx = align === 'left' || align === 'start' ? x : align === 'right' || align === 'end' ? x - total : x - total / 2;
+  parts.forEach((p, i) => {
+    if (typeof p === 'string') plain(p, cx, 'left');
+    else {
+      const font = ctx.font;
+      drawGlyph(ctx, p, cx + size * 0.06 + glyphWidth(ctx, p, gs) / 2, y, gs);
+      ctx.font = font;
+    }
+    cx += widths[i];
+  });
+  ctx.restore();
+}
+
+// ---- controller and keyboard glyphs ------------------------------------------------------------
+/**
+ * Prompts carry glyph tokens: \u0001<style>:<button>\u0002. Style is x (Xbox), p (PlayStation),
+ * n (Nintendo) or k (a keyboard key, where the button is the key's label).
+ */
+export interface Glyph {
+  style: 'x' | 'p' | 'n' | 'k';
+  btn: string;
+}
+const TOKEN_RE = /\u0001([xpnk]):([^\u0002]*)\u0002/g;
+export const glyphToken = (style: Glyph['style'], btn: string) => `\u0001${style}:${btn}\u0002`;
+/** The prompt with glyph tokens turned back into words (for logs and measuring). */
+export const plainText = (s: string) => s.replace(TOKEN_RE, (_, st, b) => (st === 'k' ? b : b.toUpperCase()));
+
+/** Width of a prompt in the current ctx.font, counting button glyphs at their drawn size. */
+export function richWidth(ctx: CanvasRenderingContext2D, s: string, size: number): number {
+  if (!s.includes('\u0001')) return ctx.measureText(s).width;
+  const gs = Math.max(14, size * 1.05);
+  return splitGlyphs(s).reduce((w, p) => w + (typeof p === 'string' ? ctx.measureText(p).width : glyphWidth(ctx, p, gs) + size * 0.12), 0);
+}
+
+function splitGlyphs(s: string): (string | Glyph)[] {
+  const out: (string | Glyph)[] = [];
+  let last = 0;
+  for (const m of s.matchAll(TOKEN_RE)) {
+    if (m.index! > last) out.push(s.slice(last, m.index));
+    out.push({ style: m[1] as Glyph['style'], btn: m[2] });
+    last = m.index! + m[0].length;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+}
+
+export function glyphWidth(ctx: CanvasRenderingContext2D, g: Glyph, size: number): number {
+  if (g.style === 'k') {
+    ctx.save();
+    ctx.font = `800 ${Math.round(size * 0.52)}px system-ui, sans-serif`;
+    const w = Math.max(size, ctx.measureText(g.btn).width + size * 0.6);
+    ctx.restore();
+    return w;
+  }
+  return g.btn === 'start' ? size * 1.5 : size;
+}
+
+const XBOX: Record<string, string> = { a: '#3fbf3f', b: '#e8333c', x: '#2f7ff0', y: '#f2c218' };
+const PS: Record<string, string> = { a: '#7fa8ff', b: '#ff6b6b', x: '#f08ad8', y: '#3ad6a6' };
+const NINTENDO_LABEL: Record<string, string> = { a: 'B', b: 'A', x: 'Y', y: 'X' };
+
+/** One button glyph centred on (x, y), `size` px across. */
+export function drawGlyph(ctx: CanvasRenderingContext2D, g: Glyph, x: number, y: number, size: number): void {
+  const r = size / 2;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  if (g.style === 'k') {
+    // a white keycap with a darker base, like a real key
+    const w = glyphWidth(ctx, g, size);
+    ctx.fillStyle = '#9aa0b8';
+    roundRect(ctx, x - w / 2, y - r + 3, w, size, size * 0.22);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, x - w / 2, y - r, w, size - 3, size * 0.22);
+    ctx.fill();
+    ctx.fillStyle = '#2a1b5e';
+    ctx.font = `800 ${Math.round(size * 0.52)}px system-ui, sans-serif`;
+    ctx.fillText(g.btn, x, y - 1);
+    ctx.restore();
+    return;
+  }
+  const b = g.btn;
+  if (b === 'start') {
+    const w = size * 1.5;
+    ctx.fillStyle = '#2b2d36';
+    roundRect(ctx, x - w / 2, y - r * 0.75, w, size * 0.75, size * 0.37);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1.5, size * 0.08);
+    if (g.style === 'p') {
+      // Options: three short lines
+      for (const d of [-0.22, 0, 0.22]) {
+        ctx.beginPath();
+        ctx.moveTo(x - size * 0.22, y + d * size);
+        ctx.lineTo(x + size * 0.22, y + d * size);
+        ctx.stroke();
+      }
+    } else if (g.style === 'n') {
+      ctx.beginPath();
+      ctx.moveTo(x - size * 0.18, y);
+      ctx.lineTo(x + size * 0.18, y);
+      ctx.moveTo(x, y - size * 0.18);
+      ctx.lineTo(x, y + size * 0.18);
+      ctx.stroke();
+    } else {
+      for (const d of [-0.16, 0, 0.16]) {
+        ctx.beginPath();
+        ctx.moveTo(x - size * 0.2, y + d * size);
+        ctx.lineTo(x + size * 0.2, y + d * size);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+    return;
+  }
+  if (b === 'stick') {
+    ctx.fillStyle = '#2b2d36';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#5a5e70';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(size * 0.42)}px system-ui, sans-serif`;
+    ctx.fillText('L', x, y + 1);
+    ctx.restore();
+    return;
+  }
+  // face buttons
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.arc(x, y + size * 0.06, r, 0, Math.PI * 2);
+  ctx.fill();
+  if (g.style === 'x' || g.style === 'n') {
+    const col = g.style === 'x' ? XBOX[b] ?? '#5a5e70' : '#3a3d4a';
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = Math.max(1.5, size * 0.07);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(size * 0.62)}px system-ui, sans-serif`;
+    ctx.fillText(g.style === 'n' ? NINTENDO_LABEL[b] ?? b.toUpperCase() : b.toUpperCase(), x, y + 1);
+    ctx.restore();
+    return;
+  }
+  // PlayStation: dark button with a coloured shape
+  ctx.fillStyle = '#23252e';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = Math.max(1.5, size * 0.06);
+  ctx.stroke();
+  ctx.strokeStyle = PS[b] ?? '#ffffff';
+  ctx.lineWidth = Math.max(2, size * 0.1);
+  const k = r * 0.48;
+  ctx.beginPath();
+  if (b === 'a') {
+    ctx.moveTo(x - k, y - k);
+    ctx.lineTo(x + k, y + k);
+    ctx.moveTo(x + k, y - k);
+    ctx.lineTo(x - k, y + k);
+  } else if (b === 'b') ctx.arc(x, y, k, 0, Math.PI * 2);
+  else if (b === 'x') ctx.rect(x - k * 0.9, y - k * 0.9, k * 1.8, k * 1.8);
+  else {
+    ctx.moveTo(x, y - k * 1.05);
+    ctx.lineTo(x + k, y + k * 0.75);
+    ctx.lineTo(x - k, y + k * 0.75);
+    ctx.closePath();
+  }
+  ctx.stroke();
   ctx.restore();
 }
 

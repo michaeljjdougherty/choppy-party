@@ -56,6 +56,14 @@ const SOLO: KeyProfile = {
 };
 
 export type InputKind = 'pad' | 'keys' | 'mouse';
+/** x = Xbox / generic, p = PlayStation, n = Nintendo. */
+export type PadStyle = 'x' | 'p' | 'n';
+export function padStyleOf(id: string): PadStyle {
+  if (/xbox|045e|xinput/i.test(id)) return 'x';
+  if (/054c|dualsense|dualshock|playstation|ps[345]|^wireless controller/i.test(id)) return 'p';
+  if (/057e|nintendo|pro controller|joy-?con|switch/i.test(id)) return 'n';
+  return 'x';
+}
 
 const DEADZONE = 0.22;
 // Standard Gamepad mapping: 0 = bottom face button, 1 = right face button, 12-15 = d-pad
@@ -76,6 +84,8 @@ export class InputManager {
   soloKeys = true;
   /** What the player last touched, so on-screen prompts can name the right buttons. */
   kind: InputKind = 'keys';
+  /** Which controller family the last-used pad is, so prompts show its own button glyphs. */
+  padStyle: PadStyle = 'x';
   /** While true, holding the mouse button down holds A for the keyboard player (hold to ready). */
   mouseHoldsA = false;
   private pointerDown = false;
@@ -246,7 +256,10 @@ export class InputManager {
       this.padHeld.set(key, pressed(BTN_A) || pressed(BTN_B) || pressed(BTN_Y));
       const a = pressed(BTN_A);
       const b = pressed(BTN_B);
-      if (a || b || Math.abs(x) > 0.5 || Math.abs(y) > 0.5 || gp.buttons.some((bt) => bt.pressed)) this.kind = 'pad';
+      if (a || b || Math.abs(x) > 0.5 || Math.abs(y) > 0.5 || gp.buttons.some((bt) => bt.pressed)) {
+        this.kind = 'pad';
+        this.padStyle = padStyleOf(gp.id);
+      }
       if (a && !d.raw.a) {
         d.raw.aCount++;
         this.onAPress(d);

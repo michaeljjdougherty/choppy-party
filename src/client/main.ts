@@ -30,7 +30,7 @@ import { setCharacters } from './three/choppy';
 import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
 import { clearGamePreview, gamePreview } from './three/views/gamePreview';
 import { attachUi, beginUi, button, clicked, endUi, pointerAt, takeStrayClick, uiSound } from './ui';
-import { Y, setPromptKind } from './prompts';
+import { A, B, START, STICK, Y, localizeControls, setPromptKind } from './prompts';
 import { closeMap, mapCam, openMap } from './mapCam';
 import { setMapLook } from './three/views/board';
 
@@ -194,7 +194,7 @@ function mapLayer(s: PartyState) {
   text(ctx, 'MAP VIEW', 640, 536, 26, { color: '#ffd23f' });
   const hint =
     input.kind === 'pad'
-      ? 'Left stick: move · Right stick: turn · Bumpers: zoom · A/B: close'
+      ? `Left stick: move · Right stick: turn · Bumpers: zoom · ${A()} / ${B()}: close`
       : input.kind === 'mouse'
         ? 'Drag: turn · Wheel: zoom · WASD: move · click Close'
         : 'WASD: move · Q/E: turn · R/F: tilt · Z/X: zoom · Space: close';
@@ -285,7 +285,7 @@ function frame(now: number) {
   last = now;
   input.soloKeys = !hasLocal('kb2');
   input.poll();
-  setPromptKind(input.kind, input.soloKeys);
+  setPromptKind(input.kind, input.soloKeys, input.padStyle);
   // menu music on the title, main menu and lobby; it fades out when the party starts
   syncMusic(session?.view() ?? null, dt);
   if (session && pendingJoin && session.view()?.phase === 'lobby') {
@@ -643,10 +643,10 @@ function pauseLayer(s: PartyState) {
   if (p.help) {
     const g = s.phase === 'board' ? null : s.gameId ? getGame(s.gameId) : null;
     const lines = g
-      ? [g.name, ...wrap(g.blurb, 40), '', g.controls]
+      ? [g.name, ...wrap(g.blurb, 40), '', localizeControls(g.controls)]
       : ['Board game', 'Roll the dice with A. B opens your item bag.', 'Pick a path at forks with the stick.', 'Buy Choppy Crowns at the Crown Chest', 'for 40 Choppy Keys. Most crowns wins!'];
     lines.forEach((l, i) => text(ctx, l, 640, 270 + i * 30, i === 0 ? 24 : 18, { color: i === 0 ? '#ff4d5a' : '#2a1b5e', outline: false, weight: i === 0 ? 900 : 600 }));
-    text(ctx, mine ? 'A or B: back' : `Waiting for ${who?.name ?? 'them'}`, 640, 540, 18, { color: '#6b5aa8', outline: false, weight: 700 });
+    text(ctx, mine ? `${A()} or ${B()}: back` : `Waiting for ${who?.name ?? 'them'}`, 640, 540, 18, { color: '#6b5aa8', outline: false, weight: 700 });
     return;
   }
   const host = hostId(s) === p.by;
@@ -659,7 +659,7 @@ function pauseLayer(s: PartyState) {
     ctx.fill();
     text(ctx, off ? 'End party (host only)' : label, 640, y, 22, { color: off ? '#a99fcf' : '#2a1b5e', outline: false, weight: 800 });
   });
-  text(ctx, mine ? 'Stick: choose   A: pick   B / Start: resume' : `Only ${who?.name ?? 'they'} can use this menu`, 640, 540, 17, { color: '#6b5aa8', outline: false, weight: 700 });
+  text(ctx, mine ? `${STICK()} choose   ${A()} pick   ${B()} / ${START()} resume` : `Only ${who?.name ?? 'they'} can use this menu`, 640, 540, 17, { color: '#6b5aa8', outline: false, weight: 700 });
   // mouse: Resume
   if (mine && button(ctx, 'Resume', 1110, 668, 150, 40, { color: '#4cd97b', size: 18, sound: 'none' })) input.start(deviceOf(p.by));
 }

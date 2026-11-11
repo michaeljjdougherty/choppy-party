@@ -7,7 +7,7 @@ import type { Inputs, PlayerInfo, TickInput } from './types';
 import { NO_INPUT, clamp } from './types';
 import { rand, randRange, type Rng } from './rng';
 import { getBoard } from './board/boards';
-import { currentPlayer, forwardDist, nearDist } from './board/engine';
+import { PROMPT_LOCK, currentPlayer, forwardDist, nearDist } from './board/engine';
 import type { BoardState, ItemId } from './board/types';
 import { WISP_PRICE, TRAIN_PRICE } from './board/types';
 import { ITEM_GRID, SHOP_PRICE } from './board/items';
@@ -483,11 +483,12 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
     }
     case 'claim':
       // toll posts pay steadily; smart bots with low HP want sting posts to heal
-      return me.hp < b.preset.maxHp * 0.5 && smart() ? pressB() : press();
+      if (mem.n < 0) mem.n = me.hp < b.preset.maxHp * 0.5 && smart() ? 1 : 0;
+      return pickTwo(b, pr.sel, mem.n === 0);
     case 'steal':
-      return me.keys >= b.preset.postStealCost + (sk.smart >= 1 ? 12 : 0) && sk.smart > 0.5 ? press() : pressB();
+      return pickTwo(b, pr.sel, me.keys >= b.preset.postStealCost + (sk.smart >= 1 ? 12 : 0) && sk.smart > 0.5);
     case 'crown':
-      return me.keys >= b.preset.crownPrice ? press() : pressB();
+      return pickTwo(b, pr.sel, me.keys >= b.preset.crownPrice);
     case 'shop': {
       // buy something if it still leaves a little cushion of keys; otherwise walk on by
       if (mem.n < 0) {
@@ -498,11 +499,20 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
       return stick(0, 1);
     }
     case 'wisp':
-      return me.keys >= WISP_PRICE + 5 && smart() ? press() : pressB();
+      if (mem.n < 0) mem.n = me.keys >= WISP_PRICE + 5 && smart() ? 0 : 1;
+      return pickTwo(b, pr.sel, mem.n === 0);
     case 'train':
-      return me.keys >= TRAIN_PRICE + 5 && smart() ? press() : pressB();
+      if (mem.n < 0) mem.n = me.keys >= TRAIN_PRICE + 5 && smart() ? 0 : 1;
+      return pickTwo(b, pr.sel, mem.n === 0);
   }
   return NO_INPUT;
+}
+
+/** A two-choice prompt: move the cursor to Yes (left) or No (right), then confirm once the prompt unlocks. */
+function pickTwo(b: BoardState, sel: number | undefined, yes: boolean): TickInput {
+  const want = yes ? 0 : 1;
+  if ((sel ?? 0) !== want) return stick(yes ? -1 : 1, 0);
+  return b.t > PROMPT_LOCK ? press() : NO_INPUT;
 }
 
 /** Step a menu cursor toward `want`, then confirm. */

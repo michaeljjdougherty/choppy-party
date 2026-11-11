@@ -175,6 +175,8 @@ export interface BoardPlayer {
   ko: boolean;
   /** After a respawn: board and weather hazards can't hurt them until the end of this turn number. */
   fresh?: number;
+  /** Stew Court: turns spent in the Chop Pit so far (out after 3, or on a roll over 7). */
+  pitTurns?: number;
   /** Next roll is capped (Sticky Cube, Root Snare). 0 = no cap. */
   rollCap: number;
   /** Next roll's lowest face (High Roller: 4). 0 = normal. */

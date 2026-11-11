@@ -1,6 +1,6 @@
 import type { BoardDef, SpaceType } from './types';
 import { DEFAULT_PRESET } from './types';
-import { Builder, between, roundedRect, trail, type Pt, type Pt3 } from './layout';
+import { Builder, between, ellipse, roundedRect, trail, type Pt, type Pt3 } from './layout';
 import { groundAt } from './terrain';
 import type { Hill } from './types';
 import type { WeatherZone } from './weather';
@@ -379,10 +379,10 @@ function stewCourt(): BoardDef {
   b.set(bleach[Math.floor(bleach.length / 2)], 'lucky');
   // the Chop Pit: a caged walkway floating off the east corner. Nothing leads in; Alley-Oop Pads in the
   // Choppy Verse throw you in. Three spaces in four hurt, and it lets out onto the bottom sideline
-  const pitPts = trail([[34, 4, 0], [38.5, 8, 0], [38.5, 14, 0], [35, 19, 0], [29, 22, 0], [22.5, 21.5, 0]], 2.5, undefined, { ends: true });
-  const pit = b.chain('sp', pitPts, 'RCRBDRBR');
+  // a closed ring: you go round and round until you roll your way out (see the Chop Pit rules in engine.ts)
+  const pitPts = ellipse(4.6, 7, 14).map(([x, z]) => [x + 37, z + 12, 0] as Pt3);
+  const pit = b.chain('sp', pitPts, 'RCRBDRBR', true);
   pit.forEach((id, i) => (i % 8 === 4 ? b.set(id, 'dynamite') : i % 8 === 1 ? b.set(id, 'chunk') : 0));
-  b.link(pit[pit.length - 1], nearest(b, loop, 15, 15));
   // four Verse Flip spaces, one on each side of the oval, swap the Fucci Verse and the Choppy Verse
   const flips = [0.17, 0.4, 0.66, 0.9].map((f) => {
     let i = Math.round(f * loop.length) % loop.length;

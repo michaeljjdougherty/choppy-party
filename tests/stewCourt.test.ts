@@ -59,14 +59,15 @@ describe('Stew Court', () => {
     expect(strikes).toBeGreaterThan(0);
   });
 
-  it('the Chop Pit is a dead-end-free prison, mostly bad spaces, with no way in', () => {
+  it('the Chop Pit is a closed ring of mostly bad spaces with no way in or out', () => {
     const pit = def.pit!;
     expect(pit.length).toBeGreaterThanOrEqual(8);
     const bad = pit.filter((id) => ['thorn', 'chunk', 'dynamite'].includes(def.nodes[id].type)).length;
     expect(bad / pit.length).toBeGreaterThanOrEqual(0.75);
     const into = Object.values(def.nodes).filter((n) => !pit.includes(n.id) && n.next.some((x) => pit.includes(x)));
     expect(into).toEqual([]);
-    expect(pit.includes(def.nodes[pit[pit.length - 1]].next[0])).toBe(false);
+    // a closed ring: the only way out is the escape roll (or a flip back to the Fucci Verse)
+    for (const id of pit) expect(def.nodes[id].next.every((x) => pit.includes(x))).toBe(true);
   });
 
   it('Alley-Oop Pads dunk you into the glowing hoop in the Fucci Verse and into the Chop Pit in the Choppy Verse', () => {
@@ -101,5 +102,39 @@ describe('Stew Court', () => {
     stepBoard(s, {}, DT);
     expect(!!s.choppy).toBe(false);
     expect(s.players[b].node).toBe(def.start);
+  });
+
+  it('the Chop Pit: over 7 breaks you out to the start and you move the roll from there; under goes round the pit; 3 turns max', () => {
+    // play whole games with idle input, throwing one player into the pit, and check the rule holds on every roll
+    let escapes = 0, rounds = 0, timeouts = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const s = createBoard('stew-court', ['a', 'b'], 12, seed);
+      const me = s.players[s.order[0]];
+      let wasIn = false;
+      let lastTurn = 0;
+      play(s, 12, (st) => {
+        if (st.sub === 'turnIntro' && st.order[st.cur] === me.id && st.turn !== lastTurn) {
+          lastTurn = st.turn;
+          // throw them back in at the start of each of their turns about half the time
+          if (st.turn % 2 === 1) {
+            me.node = def.pit![0];
+            me.pitTurns = 0;
+          }
+          wasIn = def.pit!.includes(me.node);
+        }
+        if (wasIn && st.sub === 'move' && st.order[st.cur] === me.id && st.rolls.length) {
+          wasIn = false;
+          const sum = st.rolls.reduce((a, b) => a + b, 0);
+          const out = !def.pit!.includes(me.node) || me.pitTurns === 0;
+          if (sum > 7) {
+            expect(out).toBe(true);
+            escapes++;
+          } else if (out) timeouts++;
+          else rounds++;
+        }
+      });
+    }
+    expect(escapes).toBeGreaterThan(0);
+    expect(rounds + timeouts).toBeGreaterThan(0);
   });
 });

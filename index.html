@@ -2,12 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0b0f1e" />
     <title>Choppy Party</title>
     <style>
       @font-face { font-family: 'Kenney Future'; src: url('fonts/KenneyFuture.ttf') format('truetype'); font-display: block; }
       @font-face { font-family: 'Kenney Future Narrow'; src: url('fonts/KenneyFutureNarrow.ttf') format('truetype'); font-display: block; }
       html, body { margin: 0; height: 100%; background: #0b0f1e; overflow: hidden; font-family: system-ui, sans-serif; }
+      /* phones: no pinch zoom, double-tap zoom, text selection or long-press menus on the game */
+      body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+      #gl, #game { touch-action: none; }
+      #joinBox input { -webkit-user-select: text; user-select: text; touch-action: manipulation; }
       #gl, #game { position: absolute; inset: 0; margin: auto; display: block; }
       #gl { background: #000; }
       #game { pointer-events: none; }

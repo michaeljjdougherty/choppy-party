@@ -5,7 +5,7 @@ import { crownIcon } from './boardHud';
 import { playerById, roundRect, text } from '../shared/draw';
 import { clamp01, controlChips, easeOut, ribbon, slam, springIn, sunburst, vignette } from './showtime';
 import { burst } from './juice';
-import { A, B, X, promptKind } from './prompts';
+import { A, B, X, isTouch, promptKind, tapWord } from './prompts';
 
 /** 2D overlays for the menu screens. The 3D party stage is drawn underneath by the menu view. */
 export interface ScreenCtx {
@@ -253,11 +253,11 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
   text(ctx, lk === 'online' && !sc.roomCode ? sc.status : th.sub, 640, 128, 22, { color: '#ffffff', weight: 700 });
   const k = promptKind();
   if (s.players.length === 0) {
-    text(ctx, k === 'mouse' ? 'Click Join, or press A on a controller' : `Press ${A()} to join!`, 640, 360, 40, { color: '#fff' });
+    text(ctx, k === 'mouse' ? `${tapWord()} Join, or press A on a controller` : `Press ${A()} to join!`, 640, 360, 40, { color: '#fff' });
     text(ctx, 'Controllers: A   ·   Keyboard: Space or Enter', 640, 408, 20, { weight: 600 });
   } else {
     const bots = s.players.filter((p) => p.bot).length;
-    const keysHint = k === 'pad' ? `${A()}: join  ·  ${B()}: leave  ·  X: character  ·  Y: colour  ·  LB/RB: your name` : k === 'mouse' ? 'Click ☺ for a new character, the paint drop for a new colour, ✎ for your name' : `C: character  ·  V: colour  ·  N: your name  ·  1/2/3: add CPU  ·  0: remove  ·  Tab: 2nd keyboard`;
+    const keysHint = k === 'pad' ? `${A()}: join  ·  ${B()}: leave  ·  X: character  ·  Y: colour  ·  LB/RB: your name` : k === 'mouse' ? `${tapWord()} ☺ for a new character, the paint drop for a new colour, ✎ for your name` : `C: character  ·  V: colour  ·  N: your name  ·  1/2/3: add CPU  ·  0: remove  ·  Tab: 2nd keyboard`;
     text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? ` (${bots} CPU)` : ''}   ·   ${keysHint}`, 640, 166, 20, {
       color: '#ffe9f6',
       weight: 600,
@@ -266,7 +266,7 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
 
   const o = OPTIONS[s.selection];
   const hostHint = (pick: string) =>
-    s.players.length ? (k === 'mouse' ? `Host: ${pick.replace('{keys}', 'click')}, then START` : `Host: ${pick.replace('{keys}', k === 'pad' ? 'stick' : 'arrows')}, ${A()} to start`) : '';
+    s.players.length ? (k === 'mouse' ? `Host: ${pick.replace('{keys}', tapWord(true))}, then START` : `Host: ${pick.replace('{keys}', k === 'pad' ? 'stick' : 'arrows')}, ${A()} to start`) : '';
   if (lk === 'online') {
     // mode tabs: the room can play any mode, Start switches between them
     const tabs: [PartyOption['kind'], string][] = [['board', 'Boards'], ['mix', 'Mix'], ['game', 'Free Play']];
@@ -447,7 +447,7 @@ export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
   const ready = who.filter((p) => s.ready.includes(p.id)).length;
   const all = ready === who.length;
   const pulse = all ? 1 : 1 + Math.sin(t * 5) * 0.03;
-  const how = promptKind() === 'mouse' ? 'Hold the mouse button to ready up' : `Hold ${A()} for 1 second to ready up`;
+  const how = promptKind() === 'mouse' ? isTouch() ? 'Hold your finger on the screen to ready up' : 'Hold the mouse button to ready up' : `Hold ${A()} for 1 second to ready up`;
   ctx.save();
   ctx.translate(r.x + r.w / 2, 622);
   ctx.scale(pulse, pulse);

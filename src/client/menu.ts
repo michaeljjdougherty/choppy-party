@@ -1,7 +1,7 @@
 import type { InputManager } from './input';
 import { roundRect, text } from '../shared/draw';
 import { sunburst } from './showtime';
-import { A, B, STICK, promptKind } from './prompts';
+import { A, B, STICK, isTouch, promptKind, tapWord } from './prompts';
 
 export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | 'netcfg' | 'customize' | null;
 
@@ -176,7 +176,7 @@ export class MainMenu {
       roundRect(ctx, -230, -34, 460, 68, 34);
       ctx.fill();
       const k = promptKind();
-      text(ctx, k === 'mouse' ? 'Click to start' : `Press ${A()} to start`, 0, 0, 40, { color: '#ffe14d' });
+      text(ctx, k === 'mouse' ? `${tapWord()} to start` : `Press ${A()} to start`, 0, 0, 40, { color: '#ffe14d' });
       ctx.restore();
       text(ctx, 'Controller: A   ·   Keyboard: Space or Enter   ·   Mouse: click', 640, 690, 18, { weight: 600 });
       return;
@@ -255,7 +255,7 @@ export class MainMenu {
       k === 'pad'
         ? `${STICK()} move   ·   ${A()} choose   ·   ${B()} back`
         : k === 'mouse'
-          ? 'Click to choose   ·   Esc: back'
+          ? isTouch() ? 'Tap to choose' : 'Click to choose   ·   Esc: back'
           : `W/S or Arrows: move   ·   ${A()} or Enter: choose   ·   Esc or ${B()}: back`;
     text(ctx, hint, 960, 694, 18, { weight: 600 });
   }

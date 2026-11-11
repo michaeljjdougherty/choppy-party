@@ -26,6 +26,7 @@ import { sandMap, sandMaterial } from '../nature';
 import { buildWeather } from '../weatherView';
 import { grassDetail, roadTexture, roadUVs } from '../surfaces';
 import { sfx } from '../../sfx';
+import { postPulse } from '../look/post';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
   key: '#2f7dff',
@@ -1739,10 +1740,11 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
             fx.dust(new THREE.Vector3(n.x, n.y + 0.3, n.z), 1.1);
             shake(0.22);
             sfx.land();
-            // TODO(graphics thread): postPulse('impact', 0.5) once look/post.ts lands
+            postPulse('impact', 0.5);
           }
         }
-        // TODO(graphics thread): postPulse('vignette', 0.6) on turnIntro once look/post.ts lands
+        if (b.sub === 'turnIntro' && !b.tour) postPulse('vignette', 0.6);
+        if (b.sub === 'chunk') postPulse('dramatic', 1, '#ff3b4e');
       } else cineT += dt;
       waveT += dt;
       {
@@ -1791,6 +1793,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
               fx.dust(chunkAt.clone().setY(chunkAt.y + 0.3), 2.6);
               fx.blast(chunkAt.clone().setY(chunkAt.y + 0.2), 0.8);
               sfx.boom();
+              postPulse('impact', 1.2);
             }
             const after = b.t - DROP;
             const squash = Math.max(0, 1 - after * 4) * 0.35;

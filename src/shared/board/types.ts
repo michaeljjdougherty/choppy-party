@@ -124,6 +124,8 @@ export interface BoardDef {
   preset: BoardPreset;
   /** Hills and mountains under the board. Spaces on terrain boards sit on this ground. */
   hills?: Hill[];
+  /** The board was laid out small and blown up by this much (spaces, hills and scenery), so the spaces sit further apart. */
+  spread?: number;
   /** Weather zones (see weather.ts). */
   weather?: import('./weather').WeatherZone[];
 }

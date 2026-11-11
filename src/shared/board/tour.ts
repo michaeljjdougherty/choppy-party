@@ -29,7 +29,7 @@ const TYPE_STEPS: [SpaceType, string, (d: BoardDef, s: BoardState) => string][] 
 const EVENT_TEXT: Record<BoardDef['theme'], [string, string]> = {
   hollow: ['The Bell', 'The diamond is the bell. Land there to swap day and night. Night opens the cellar and a pine falls on someone each round.'],
   cosmo: ['Warp Pads', 'Diamond spaces are warp pads. Step on one and you zap to another somewhere on the station.'],
-  gulch: ['Gold Strikes', 'Diamond spaces are gold strikes: usually a pile of keys, sometimes a cave-in that costs you some.'],
+  gulch: ['Gold Strikes', 'The gold question-mark spaces are gold strikes. Land on one and spin the reel: usually a pile of keys, sometimes a cave-in that costs you.'],
 };
 
 export function buildTour(def: BoardDef, s: BoardState): TourStep[] {

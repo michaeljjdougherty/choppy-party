@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import type { PartyState } from '../../../shared/party';
-import { COSMO_SPREAD, getBoard } from '../../../shared/board/boards';
+import { COSMO_SPREAD, getBoard, unspread } from '../../../shared/board/boards';
 import { markHazards } from '../hazardMarks';
 import { currentPlayer, exits } from '../../../shared/board/engine';
 import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
@@ -959,20 +959,33 @@ function clearPath(scene: THREE.Scene, from: number, def: BoardDef, gy: (x: numb
 export function boardView(env: THREE.Texture, party: PartyState, players: PlayerInfo[]): View {
   const def = getBoard(party.board!.boardId);
   const gy = (x: number, z: number) => groundAt(def.hills, x, z);
-  const [top, bottom, fog] = SKY[def.theme];
-  const scene = makeScene(env, { skyTop: top, skyBottom: bottom, fog, shadowSize: 30, sunDir: [12, 26, 16] });
+  const [top, bottom, fog0] = SKY[def.theme];
+  // a spread-out board pushes the haze back with it
+  const fog = fog0 ? ([fog0[0], fog0[1] * (def.spread ?? 1), fog0[2] * (def.spread ?? 1)] as [string, number, number]) : undefined;
+  const scene = makeScene(env, { skyTop: top, skyBottom: bottom, fog, shadowSize: 30 * (def.spread ?? 1), sunDir: [12, 26, 16] });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 400);
   const c0 = scene.children.length;
-  const animateDecor = DECOR[def.theme](scene, def);
+  // the scenery is built at the board's original size, then blown up with it (see spread())
+  const K = def.spread ?? 1;
+  const small = unspread(def);
+  const gy0 = (x: number, z: number) => groundAt(small.hills, x, z);
+  const animateDecor = DECOR[def.theme](scene, small);
   // scenery stands on the hills (sky things and the ground itself excepted)
-  if (def.hills) {
+  if (small.hills) {
     for (let i = c0; i < scene.children.length; i++) {
       const o = scene.children[i];
       if (o.userData.ground || o.userData.sky || o.userData.placed) continue;
-      o.position.y += gy(o.position.x, o.position.z);
+      o.position.y += gy0(o.position.x, o.position.z);
     }
   }
-  clearPath(scene, c0, def, gy);
+  clearPath(scene, c0, small, gy0);
+  if (K !== 1) {
+    const world = new THREE.Group();
+    world.scale.setScalar(K);
+    world.add(...scene.children.slice(c0));
+    world.userData.placed = true;
+    scene.add(world);
+  }
   const hazardMarks = markHazards(scene, def, gy);
 
   // spaces

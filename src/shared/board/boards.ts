@@ -126,10 +126,10 @@ function lanternHollow(): BoardDef {
   const loop = b.chain('h', wobble(roundedRect(26, 17, 4, 34), 0.55), 'BBHBRBCBBEBBHBLBRB', true);
   const left = nearest(b, loop, -13, 0);
   const right = nearest(b, loop, 13, 0);
-  // the Moon Bridge arches over the pond; the Root Cellar dips below ground
+  // the Moon Bridge arches over the pond; the Root Cellar path runs along the ground past it
   const arc = (pts: Pt[], lift: number): Pt3[] => pts.map(([x, z], i) => [x, z, groundAt(hills, x, z) + Math.sin(((i + 1) / (pts.length + 1)) * Math.PI) * lift]);
   const bridge = b.chain('hb', arc(between(pt(b, left), pt(b, right), 7, 2.9), 1.6), 'BLBHBLB');
-  const cellar = b.chain('hc', arc(between(pt(b, left), pt(b, right), 7, -2.9), -0.9), 'BRBCBRB');
+  const cellar = b.chain('hc', arc(between(pt(b, left), pt(b, right), 7, -2.9), 0), 'BRBCBRB');
   b.link(bridge[bridge.length - 1], right);
   b.link(cellar[cellar.length - 1], right);
   const leftNext = b.nodes[left].next[0];
@@ -321,7 +321,28 @@ function goldRushGulch(): BoardDef {
   };
 }
 
-export const BOARDS: BoardDef[] = [lanternHollow(), cosmoJunction(), goldRushGulch()];
+/** Blow a board up by k: every space, and the hills under them, k times further apart (and hills k times taller). */
+function spread(def: BoardDef, k: number): BoardDef {
+  for (const n of Object.values(def.nodes)) {
+    n.x *= k;
+    n.y *= k;
+    n.z *= k;
+  }
+  def.hills = def.hills?.map((h) => ({ ...h, x: h.x * k, z: h.z * k, r: h.r * k, h: h.h * k }));
+  def.spread = k;
+  return def;
+}
+
+/** The board as it was laid out, before spreading (the scenery is built in these coordinates). */
+export function unspread(def: BoardDef): BoardDef {
+  const k = def.spread ?? 1;
+  if (k === 1) return def;
+  const nodes = Object.fromEntries(Object.entries(def.nodes).map(([id, n]) => [id, { ...n, x: n.x / k, y: n.y / k, z: n.z / k }]));
+  const hills = def.hills?.map((h) => ({ ...h, x: h.x / k, z: h.z / k, r: h.r / k, h: h.h / k }));
+  return { ...def, nodes, hills, spread: 1 };
+}
+
+export const BOARDS: BoardDef[] = [spread(lanternHollow(), 1.35), cosmoJunction(), spread(goldRushGulch(), 1.45)];
 
 export function getBoard(id: string): BoardDef {
   const b = BOARDS.find((x) => x.id === id);

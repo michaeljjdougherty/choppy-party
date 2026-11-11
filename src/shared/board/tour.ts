@@ -64,7 +64,7 @@ export function buildTour(def: BoardDef, s: BoardState): TourStep[] {
   if (def.pit) {
     const pad = Object.values(def.nodes).find((n) => n.type === 'oop');
     if (pad) steps.push({ title: 'Alley-Oop Pads', text: 'Land on an orange Alley-Oop Pad and you get launched for a slam dunk. In the Fucci Verse it slams you right into the glowing hoop, so you can buy the Chobglob. In the Choppy Verse it dunks you into the Chop Pit.', node: pad.id });
-    steps.push({ title: 'The Chop Pit', text: 'The cage off the corner is the Chop Pit, a ring where three spaces in four hurt. You go round and round in there until you roll over 7, which breaks you out to the start and you move your whole roll from there. After 3 turns you get out anyway, and a flip back to the Fucci Verse frees everyone.', node: def.pit[Math.floor(def.pit.length / 2)], also: def.pit });
+    steps.push({ title: 'The Chop Pit', text: 'The cage off the corner is the Chop Pit, a ring where three spaces in four hurt. You go round and round in there until you roll 7 or more, which breaks you out to the start and you move your whole roll from there. After 3 turns you get out anyway, and a flip back to the Fucci Verse frees everyone.', node: def.pit[Math.floor(def.pit.length / 2)], also: def.pit });
   }
   if (def.boss)
     steps.push({ title: def.boss.name, text: `In the Choppy Verse, ${def.boss.every === 1 ? 'at the end of every round' : `every ${def.boss.every} rounds`} ${def.boss.name} drops in, spins a reel of everyone and slams one player. Knocked out: you drop half your Pit Coin and start again from the bench. Only a Knight Shield can stop him.`, node: def.camp });

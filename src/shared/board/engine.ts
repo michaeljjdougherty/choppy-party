@@ -42,16 +42,16 @@ function finishRoll(s: BoardState, def: BoardDef, me: BoardPlayer): void {
     me.stats.doubles = (me.stats.doubles ?? 0) + 1;
   }
   s.roll = Math.max(1, sum + me.rollBonus);
-  // the Chop Pit: roll over 7 (or sit out your 3rd turn in there) and you break out to the start, then
+  // the Chop Pit: roll 7 or more (or sit out your 3rd turn in there) and you break out to the start, then
   // move the whole roll from there; otherwise you just go round the pit
   if (def.pit?.includes(me.node)) {
     me.pitTurns = (me.pitTurns ?? 0) + 1;
-    if (sum > PIT_ESCAPE || me.pitTurns >= PIT_TURNS) {
-      say(s, sum > PIT_ESCAPE ? `Rolled ${sum}! Broke out of the CHOP PIT!` : 'Time served! Out of the CHOP PIT', '#4cd97b');
+    if (sum >= PIT_ESCAPE || me.pitTurns >= PIT_TURNS) {
+      say(s, sum >= PIT_ESCAPE ? `Rolled ${sum}! Broke out of the CHOP PIT!` : 'Time served! Out of the CHOP PIT', '#4cd97b');
       me.node = def.start;
       me.pitTurns = 0;
       fx(s, 'warp', me.node, me.id);
-    } else say(s, `Stuck in the Chop Pit (${me.pitTurns}/${PIT_TURNS}). Roll over ${PIT_ESCAPE} to escape!`, '#ff3b4e');
+    } else say(s, `Stuck in the Chop Pit (${me.pitTurns}/${PIT_TURNS}). Roll ${PIT_ESCAPE}+ to escape!`, '#ff3b4e');
   }
   s.stepsLeft = s.roll;
   s.bounced = false;
@@ -84,7 +84,7 @@ export const CHUNK_EVENTS: Record<ChunkKind, { name: string; line: string; weigh
   snack: { name: 'Snack Break', line: 'He wanders off for a snack (+2 Pit Coin)', weight: 1 },
 };
 
-/** The Chop Pit: roll over this to break out, and you're out for sure after this many turns in it. */
+/** The Chop Pit: roll this or more to break out, and you're out for sure after this many turns in it. */
 export const PIT_ESCAPE = 7;
 export const PIT_TURNS = 3;
 /** The villain hovers in and glares before his reel starts, then slams his victim after it stops. */

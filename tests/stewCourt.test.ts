@@ -104,7 +104,7 @@ describe('Stew Court', () => {
     expect(s.players[b].node).toBe(def.start);
   });
 
-  it('the Chop Pit: over 7 breaks you out to the start and you move the roll from there; under goes round the pit; 3 turns max', () => {
+  it('the Chop Pit: 7 or more breaks you out to the start and you move the roll from there; under goes round the pit; 3 turns max', () => {
     // play whole games with idle input, throwing one player into the pit, and check the rule holds on every roll
     let escapes = 0, rounds = 0, timeouts = 0;
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
@@ -126,7 +126,7 @@ describe('Stew Court', () => {
           wasIn = false;
           const sum = st.rolls.reduce((a, b) => a + b, 0);
           const out = !def.pit!.includes(me.node) || me.pitTurns === 0;
-          if (sum > 7) {
+          if (sum >= 7) {
             expect(out).toBe(true);
             escapes++;
           } else if (out) timeouts++;

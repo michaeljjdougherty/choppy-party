@@ -693,7 +693,7 @@ const H = HEAD / 2;
 
 type Blk = [w: number, h: number, d: number, x: number, y: number, z: number, rx?: number, ry?: number, rz?: number];
 
-function rbox(w: number, h: number, d: number, r = 0.06): THREE.BufferGeometry {
+export function rbox(w: number, h: number, d: number, r = 0.06): THREE.BufferGeometry {
   const rad = Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001);
   return new RoundedBoxGeometry(w, h, d, 2, Math.max(0.005, rad));
 }
@@ -1032,7 +1032,7 @@ export interface FolkSlots {
   feet: THREE.Group;
 }
 
-const BODY = {
+export const BODY = {
   legH: 0.42,
   torsoH: 0.66,
   torsoW: 0.84,
@@ -1069,6 +1069,21 @@ export class FolkModel {
   private hopV = 0;
   private exprT = 0;
   private pendingHat: THREE.Group | null = null;
+  /** Body parts that outfits restyle or hide (see cosmetics.ts). */
+  readonly parts = {
+    torso: null as unknown as THREE.Mesh,
+    hem: null as unknown as THREE.Mesh,
+    collar: null as unknown as THREE.Mesh,
+    sleeves: [] as THREE.Mesh[],
+    forearms: [] as THREE.Mesh[],
+    arms: [] as THREE.Group[],
+    shirtMat: null as unknown as THREE.MeshStandardMaterial,
+    shirtDark: null as unknown as THREE.MeshStandardMaterial,
+    /** the character's own hat and glasses, hidden when a cosmetic takes their place */
+    ownHat: null as THREE.Group | null,
+    ownGlasses: null as THREE.Group | null,
+    color: '#ffffff',
+  };
 
   constructor(spec: FolkSpec, color: string, scale = 1) {
     this.spec = spec;
@@ -1099,6 +1114,7 @@ export class FolkModel {
     collar.rotation.x = Math.PI / 2;
     collar.position.y = BODY.legH + BODY.torsoH - 0.02;
     this.body.add(torso, hem, collar);
+    Object.assign(this.parts, { torso, hem, collar, shirtMat: this.shirtMat, shirtDark: this.shirtDark, color });
     // arms pivot at the shoulders
     const shoulderY = BODY.legH + BODY.torsoH - 0.1;
     for (const [arm, side] of [[this.armL, -1], [this.armR, 1]] as [THREE.Group, number][]) {
@@ -1110,6 +1126,9 @@ export class FolkModel {
       const hand = mesh(rbox(0.24, 0.22, 0.24, 0.08), skin);
       hand.position.y = -0.56;
       arm.add(sleeve, forearm, hand);
+      this.parts.sleeves.push(sleeve);
+      this.parts.forearms.push(forearm);
+      this.parts.arms.push(arm);
       this.body.add(arm);
     }
     // neck and head
@@ -1158,8 +1177,11 @@ export class FolkModel {
     if (spec.hat?.kind === 'cap-backwards') {
       this.pendingHat = buildBackwardsCap(spec.hat.color);
     }
-    if (spec.glasses === 'aviator-shades') this.head.add(buildSunglasses());
-    if (spec.glasses === 'round-wire') this.head.add(buildRoundGlasses(spec.frames));
+    const glasses = spec.glasses === 'aviator-shades' ? buildSunglasses() : spec.glasses === 'round-wire' ? buildRoundGlasses(spec.frames) : null;
+    if (glasses) {
+      this.head.add(glasses);
+      this.parts.ownGlasses = glasses;
+    }
     this.body.add(this.head);
 
     // attach slots
@@ -1181,6 +1203,7 @@ export class FolkModel {
 
     if (this.pendingHat) {
       this.slots.hat.add(this.pendingHat);
+      this.parts.ownHat = this.pendingHat;
       this.hideHairTop(true);
     }
 
@@ -1192,7 +1215,12 @@ export class FolkModel {
   setColor(color: string): void {
     this.shirtMat.color.set(color);
     this.shirtDark.color.set(darken(color, 0.25));
+    this.parts.color = color;
+    this.onColor?.(color);
   }
+
+  /** Set by cosmetics so an outfit can re-tint itself when the player's colour changes. */
+  onColor: ((color: string) => void) | null = null;
 
   /** Hide the top of the hair so a hat can sit on the head. */
   hideHairTop(hide: boolean): void {

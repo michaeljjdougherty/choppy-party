@@ -17,6 +17,8 @@ import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
 import { bakeItemIcons } from './three/itemIcons';
 import { MainMenu } from './menu';
+import { CustomizeScreen } from './customize';
+import { customizeView } from './three/views/customize';
 import { roundRect, text } from '../shared/draw';
 import { Stage, type Tag } from './three/stage';
 import { GAME_VIEWS, boardView, mainMenuView, menuView } from './three/views';
@@ -50,6 +52,13 @@ uiSound.press = (k) => (k === 'back' ? sfx.back : sfx.select)();
 const menu = new MainMenu(input);
 /** null while the title screen / main menu is up. */
 let session: Session | null = null;
+/** The Customize screen, while it's open (from the main menu). */
+let customize: CustomizeScreen | null = null;
+function closeCustomize() {
+  customize = null;
+  menu.screen = 'main';
+  menu.resync();
+}
 
 function showError(msg: string) {
   toast.textContent = msg;
@@ -97,6 +106,10 @@ document.getElementById('menuBtn')!.addEventListener('click', () => {
 
 function act(action: ReturnType<MainMenu['update']>) {
   if (!action) return;
+  if (action === 'customize') {
+    customize = new CustomizeScreen(input);
+    return;
+  }
   if (action !== 'join') pendingJoin = menu.picker === 'mouse' ? 'kb1' : menu.picker;
   if (action === 'boards') enter(new LocalSession(input, 0));
   else if (action === 'mix') enter(new LocalSession(input, FIRST_MIX));
@@ -225,6 +238,11 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key !== 'Escape') return;
+  if (!session && customize) {
+    sfx.back();
+    closeCustomize();
+    return;
+  }
   if (!session) {
     const was = menu.screen;
     menu.back();
@@ -292,7 +310,9 @@ function frame(now: number) {
     session.join(pendingJoin);
     pendingJoin = null;
   }
-  if (!session) {
+  if (!session && customize) {
+    if (customize.update(dt) === 'back') closeCustomize();
+  } else if (!session) {
     const p = pointerAt();
     if (p && input.kind === 'mouse') menu.hover(p.x, p.y);
     const before = `${menu.screen}:${menu.sel}`;
@@ -326,6 +346,7 @@ function render(wallT: number, dt: number) {
 function mouseFallback() {
   const c = takeStrayClick();
   if (!c) return;
+  if (!session && customize) return;
   if (!session) {
     if (joinBox.classList.contains('hidden') && !netDialogOpen()) {
       const before = menu.screen;
@@ -453,6 +474,20 @@ function lobbyButtons(s: PartyState) {
 
 function renderScreens(wallT: number, dt: number) {
   ctx.clearRect(0, 0, VIEW_W, VIEW_H);
+  if (!session && customize) {
+    bar.classList.add('hidden');
+    const cz = customize;
+    const view = stage.show('customize', () => customizeView(stage.env, () => (customize ?? cz).dressing()));
+    view.update(null, [], wallT, dt);
+    stage.render(dt, wallT);
+    if (cz.draw(ctx, wallT) === 'back') closeCustomize();
+    if (stage.switches !== seenSwitches) {
+      if (seenSwitches > 0) wipeT = 0;
+      seenSwitches = stage.switches;
+    }
+    drawWipe(dt);
+    return;
+  }
   if (!session) {
     bar.classList.add('hidden');
     const view = stage.show('main-menu', () => mainMenuView(stage.env, () => menu.screen));

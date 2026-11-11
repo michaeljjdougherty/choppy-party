@@ -39,6 +39,7 @@ const RECORDED: Record<string, string> = {
   'duel-space': 'music/duel-space.mp3',
   'stew-space': 'music/stew-space.mp3',
   results: 'music/results.mp3',
+  'evil-lebron': 'music/evil-lebron.mp3',
 };
 /** The composer, as the OST screen credits him. */
 export const COMPOSER = 'DJ Tuna (on the beat)';
@@ -65,6 +66,7 @@ const RECORDED_TRACKS: OstTrack[] = [
   { id: 'duel-space', title: 'Six Seconds to Draw', where: 'Duel Space' },
   { id: 'stew-space', title: 'Clash of the Cast Iron', where: 'Stew Battle Space' },
   { id: 'results', title: 'Confetti Parade', where: 'Minigame Winner' },
+  { id: 'evil-lebron', title: 'Seven Feet of Evil', where: 'Evil LeBron' },
 ];
 
 /** Every track on the OST screen: Michael's recorded songs, in album order (generated songs aren't listed). */
@@ -145,7 +147,8 @@ function resolve(id: string): string {
  */
 function play(id: string, restart?: boolean): void {
   id = resolve(id);
-  restart ??= !id.startsWith('board:');
+  // Evil LeBron's song carries on from visit to visit, so his story plays out over the game
+  restart ??= !id.startsWith('board:') && id !== 'evil-lebron';
   if (RECORDED[id] && !brokenFiles.has(id)) {
     engine.playFile(id, RECORDED[id], 1, 0.8, restart);
     return;
@@ -240,6 +243,8 @@ export function trackFor(s: PartyState | null | undefined): string {
 function boardTrack(b: BoardState): string {
   // Mister Chunk brings his own theme when he stomps in
   if (b.sub === 'chunk' && hasFile('mister-chunk')) return 'mister-chunk';
+  // Evil LeBron drops in at the end of a Choppy Verse round with his own anthem
+  if (b.sub === 'boss' && hasFile('evil-lebron')) return 'evil-lebron';
   // landing on a Duel or Stew Battle space: from picking a rival until the battle starts
   const duel = (b.prompt?.kind === 'target' && b.prompt.purpose === 'duel') || b.event?.kind === 'duel';
   if (duel && hasFile('duel-space')) return 'duel-space';

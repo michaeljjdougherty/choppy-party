@@ -37,4 +37,8 @@ describe('board music', () => {
     const s = { phase: 'board', board: { boardId: 'stew-court', sub: 'event', event: { kind: 'stew' } } } as unknown as PartyState;
     expect(trackFor(s)).toBe('stew-space');
   });
+  it('Evil LeBron brings his anthem when he drops in', () => {
+    const s = { phase: 'board', board: { boardId: 'stew-court', choppy: true, sub: 'boss', order: ['a'], cur: 0, players: { a: { node: 's0' } } } } as unknown as PartyState;
+    expect(trackFor(s)).toBe('evil-lebron');
+  });
 });

@@ -1,4 +1,4 @@
-import { A, B, STICK } from './prompts';
+import { A, B, STICK, X } from './prompts';
 import { slam, sunburst } from './showtime';
 import { sfx } from './sfx';
 import type { PartyState } from '../shared/party';
@@ -105,7 +105,23 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     text(ctx, q, 640, 170, 28, { color: '#2a1b5e', outline: false });
     text(ctx, a, 640, 120 + h - 40, 26, { color: '#ff4d5a', outline: false });
   };
-  if (b.sub === 'orderRoll' || b.sub === 'orderShow') {
+  if (b.sub === 'tour' && b.tour) {
+    const st = b.tour.steps[b.tour.i];
+    const n = b.tour.steps.length;
+    ctx.fillStyle = 'rgba(20,12,40,0.72)';
+    roundRect(ctx, 360, 470, 560, 112, 24);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd23f';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    const a = Math.min(1, b.t * 4);
+    ctx.save();
+    ctx.globalAlpha = a;
+    text(ctx, st?.title ?? '', 640, 508 - (1 - a) * 10, 34, { color: '#ffd23f' });
+    ctx.restore();
+    text(ctx, `Board tour  ${b.tour.i + 1} / ${n}`, 640, 544, 16, { color: '#c9bdf5', weight: 700 });
+    text(ctx, `${A()}: next   ·   ${B()}: back   ·   ${X()} (host): skip tour`, 640, 568, 17, { color: '#ffffff', weight: 700 });
+  } else if (b.sub === 'orderRoll' || b.sub === 'orderShow') {
     drawOrderRoll(ctx, s, t);
   } else if (b.sub === 'turnIntro') {
     if (b.cur === 0) text(ctx, `Turn ${b.turn}`, 640, 220, 40, { color: '#ffffff' });

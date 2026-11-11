@@ -1040,6 +1040,22 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   dice.visible = false;
   scene.add(dice);
 
+  // tour highlights: a glowing ring and a soft beam of light over each feature Brian shows
+  const tourLights: THREE.Group[] = [];
+  const tourRingMat = new THREE.MeshBasicMaterial({ color: '#ffe14d', transparent: true, opacity: 0.9, depthWrite: false });
+  const beamMat = new THREE.MeshBasicMaterial({ color: '#fff3a0', transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  for (let i = 0; i < 12; i++) {
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.09, 8, 40), tourRingMat);
+    ring.rotation.x = -Math.PI / 2;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.15, 7, 24, 1, true), beamMat);
+    beam.position.y = 3.5;
+    g.add(ring, beam);
+    g.visible = false;
+    scene.add(g);
+    tourLights.push(g);
+  }
+
   const models = new Map<string, ChoppyModel>();
   for (const p of players) {
     const m = new ChoppyModel(p.color, 0.55);
@@ -1347,10 +1363,34 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       }
 
       // camera: overview at the top of a turn, then follow whoever is moving
-      const wantOverview = (b.sub === 'turnIntro' && b.cur === 0 && b.t < 2) || b.sub === 'orderRoll' || b.sub === 'orderShow';
+      const step = b.sub === 'tour' && b.tour ? b.tour.steps[b.tour.i] : null;
+      const wantOverview = (b.sub === 'turnIntro' && b.cur === 0 && b.t < 2) || b.sub === 'orderRoll' || b.sub === 'orderShow' || (!!step && !step.node);
       let goalPos = wantOverview ? overview : new THREE.Vector3(cp.x, cp.y + 10.5, cp.z + 10.5);
       let goalLook = wantOverview ? new THREE.Vector3(0, 0, midZ + 1) : new THREE.Vector3(cp.x, cp.y + 0.6, cp.z);
       let follow = 2.2;
+      // board tour: fly to the feature Brian is talking about and light it up
+      tourLights.forEach((l) => (l.visible = false));
+      if (step?.node) {
+        const ids = [step.node, ...(step.also ?? []).filter((x) => x !== step.node)].slice(0, tourLights.length);
+        ids.forEach((id, k) => {
+          const n = def.nodes[id];
+          if (!n) return;
+          const l = tourLights[k];
+          l.visible = true;
+          l.position.set(n.x, n.y + 0.36, n.z);
+          const pulse = 1 + Math.sin(t * 5 + k * 0.6) * 0.12;
+          l.scale.set(pulse, 1, pulse);
+          (l.children[1] as THREE.Mesh).rotation.y = t * 0.8;
+        });
+        const n = def.nodes[step.node];
+        if (n) {
+          goalLook = new THREE.Vector3(n.x, n.y + 0.4, n.z);
+          // a little higher than the follow camera, and never inside a hill
+          const cx = n.x, cz = n.z + 10;
+          goalPos = new THREE.Vector3(cx, Math.max(n.y + 12, gy(cx, cz) + 7, gy(n.x, n.z + 5) + 8), cz);
+          follow = 2.6;
+        }
+      }
       if (mapCam.on) {
         // map view: a free orbit camera over the board
         if (mapCam.fresh) {

@@ -664,7 +664,9 @@ function hostFor(s: PartyState, view: View, t: number, dt: number) {
       const bd = s.board;
       if (!bd) break;
       const def = getBoard(bd.boardId);
-      if (bd.turn === 1 && bd.cur === 0 && bd.sub !== 'move') hostLine.say(`Welcome to ${def.name}. ${def.gimmick}`);
+      if (bd.sub === 'tour' && bd.tour) hostLine.say(bd.tour.steps[bd.tour.i]?.text ?? '', bd.tour.i === 0 ? 'proud' : 'pout');
+      // (with no tour, an all-CPU game, he just gives the summary)
+      else if (bd.turn === 1 && bd.cur === 0 && bd.sub !== 'move' && s.players.every((p) => p.bot)) hostLine.say(`Welcome to ${def.name}. ${def.gimmick}`);
       else if (bd.turn === bd.maxTurns - bd.preset.doubleTurns + 1 && bd.cur === 0 && bd.sub !== 'move' && bd.turn > 1)
         hostLine.say('The final turns are upon us. Key and Heart Spaces now pay double.', 'wow');
       else if (bd.turn === bd.maxTurns && bd.cur === 0 && bd.sub !== 'move') hostLine.say('The last turn. Make it a good one.', 'smug');

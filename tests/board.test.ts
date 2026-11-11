@@ -61,6 +61,33 @@ describe('board rules', () => {
   });
 });
 
+describe('board tour', () => {
+  it('waits on each stop until someone presses A, B goes back, and it ends in the turn-order roll', () => {
+    for (const def of BOARDS) {
+      const s = createBoard(def.id, ['a', 'b'], 5, 3, true);
+      expect(s.sub).toBe('tour');
+      const n = s.tour!.steps.length;
+      expect(n).toBeGreaterThan(8);
+      for (let i = 0; i < 30 * 60; i++) stepBoard(s, {}, DT);
+      expect(s.tour!.i).toBe(0); // no timer: it waits
+      const a = { b: { ...NO_INPUT, aPressed: true } };
+      const back = { a: { ...NO_INPUT, bPressed: true } };
+      const tick = (inp: Inputs) => {
+        for (let i = 0; i < 12; i++) stepBoard(s, {}, DT);
+        stepBoard(s, inp, DT);
+      };
+      tick(a);
+      tick(a);
+      expect(s.tour!.i).toBe(2);
+      tick(back);
+      expect(s.tour!.i).toBe(1);
+      for (let k = 1; k < n; k++) tick(a);
+      expect(s.sub).toBe('orderRoll');
+      expect(s.tour).toBeNull();
+    }
+  });
+});
+
 describe('turn order', () => {
   it('everyone rolls at the start, no ties, and the highest roll goes first', () => {
     const ids = ['a', 'b', 'c', 'd'];

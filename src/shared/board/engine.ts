@@ -2,6 +2,7 @@ import type { Inputs, TickInput } from '../types';
 import { NO_INPUT } from '../types';
 import { rand, randInt, shuffle } from '../rng';
 import { getBoard } from './boards';
+import { buildTour } from './tour';
 import { ITEMS, ITEM_IDS } from './items';
 import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt } from './types';
 import { COUNTER_START, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
@@ -20,7 +21,7 @@ export const ROLL_SPIN = 1.3;
 export const ROLL_SHOW = 1.7;
 const WHEEL_TIME = 3;
 
-export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number): BoardState {
+export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number, tour = false): BoardState {
   const def = getBoard(boardId);
   const pr = def.preset;
   const rng = { seed };
@@ -33,6 +34,7 @@ export function createBoard(boardId: string, playerIds: string[], maxTurns: numb
     baseOrder: [],
     orderRolls: {},
     wonFirst: [],
+    tour: null,
     cur: 0,
     sub: 'orderRoll',
     t: 0,
@@ -80,7 +82,32 @@ export function createBoard(boardId: string, playerIds: string[], maxTurns: numb
   }
   while (s.crowns.length < pr.chests) placeChest(s, def);
   planHazards(s, def);
+  if (tour) {
+    s.tour = { steps: buildTour(def, s), i: 0 };
+    s.sub = 'tour';
+  }
   return s;
+}
+
+/** The tour: any player's A goes to the next stop, B goes back one, the host's X skips (handled by the party). */
+function stepTour(s: BoardState, inputs: Inputs): void {
+  const tr = s.tour;
+  if (!tr) return set(s, 'orderRoll');
+  const pressed = (k: 'aPressed' | 'bPressed') => Object.values(inputs).some((i) => i?.[k]);
+  if (s.t < 0.35) return;
+  if (pressed('aPressed')) {
+    tr.i++;
+    s.t = 0;
+    if (tr.i >= tr.steps.length) endTour(s);
+  } else if (pressed('bPressed') && tr.i > 0) {
+    tr.i--;
+    s.t = 0;
+  }
+}
+
+export function endTour(s: BoardState): void {
+  s.tour = null;
+  set(s, 'orderRoll');
 }
 
 export function currentPlayer(s: BoardState): string {
@@ -303,6 +330,10 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
   if (s.sub === 'done' || s.sub === 'event') return;
   if (s.sub === 'roundEnd') {
     if (s.t > 3.2) set(s, 'done');
+    return;
+  }
+  if (s.sub === 'tour') {
+    stepTour(s, inputs);
     return;
   }
   if (s.sub === 'orderRoll' || s.sub === 'orderShow') {

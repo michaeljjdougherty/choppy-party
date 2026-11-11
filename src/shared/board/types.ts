@@ -198,6 +198,7 @@ export interface BoardEvent {
 }
 
 export type BoardSub =
+  | 'tour' // Square Brian shows the board off, one feature per press of A
   | 'orderRoll' // game start: everyone rolls at once for turn order
   | 'orderShow' // the turn order is shown before turn 1
   | 'turnIntro'
@@ -234,6 +235,8 @@ export interface BoardState {
   baseOrder: string[];
   /** Opening roll per player (1 to 10, no two the same). Missing until they roll. */
   orderRolls: Record<string, number>;
+  /** Board tour before the first roll (null once it's over or when skipped). */
+  tour: { steps: import('./tour').TourStep[]; i: number } | null;
   /** Players who won the last minigame and so go first this turn. */
   wonFirst: string[];
   cur: number;

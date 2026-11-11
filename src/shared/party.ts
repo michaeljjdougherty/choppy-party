@@ -4,7 +4,7 @@ import { GAMES, getGame } from './games';
 import { PLAYER_COLORS, DEFAULT_NAMES } from './players';
 import { shuffle, type Rng } from './rng';
 import { BOARDS, getBoard, recommendedBoard } from './board/boards';
-import { awardMinigame, boardRanking, createBoard, finishEvent, stepBoard, winnerGoesFirst } from './board/engine';
+import { awardMinigame, boardRanking, createBoard, endTour, finishEvent, stepBoard, winnerGoesFirst } from './board/engine';
 import type { BoardState } from './board/types';
 import { addBotInputs, type BotLevel, type BotMem } from './bots';
 
@@ -299,7 +299,7 @@ export function startParty(s: PartyState): void {
   s.round = 0;
   if (o.kind === 'board') {
     s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
-    s.board = createBoard(o.id, s.players.map((p) => p.id), TURN_OPTIONS[s.turnsIdx], s.rng.seed);
+    s.board = createBoard(o.id, s.players.map((p) => p.id), TURN_OPTIONS[s.turnsIdx], s.rng.seed, s.players.some((p) => !p.bot));
     s.playlist = [];
     setPhase(s, 'board');
     return;
@@ -383,6 +383,8 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
     }
     case 'board': {
       const b = s.board!;
+      // the host can skip Square Brian's tour with X
+      if (b.sub === 'tour' && hostIn.xPressed) endTour(b);
       stepBoard(b, inputs, dt);
       if (b.sub === 'event' && b.event) {
         // a Duel or Stew Battle space: play that minigame with just those players, then come back

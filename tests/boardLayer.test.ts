@@ -21,7 +21,7 @@ describe('board layer', () => {
       expect(types).toContain('camp');
       const common = types.filter((t) => t === 'key' || t === 'heart' || t === 'thorn').length;
       expect(common / types.length).toBeGreaterThan(0.5);
-      expect(def.crownSpots.length).toBeGreaterThanOrEqual(15);
+      expect(def.crownSpots.length).toBeGreaterThanOrEqual(def.theme === 'court' ? 2 : 15);
     }
   });
 

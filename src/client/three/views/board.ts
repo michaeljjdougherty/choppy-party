@@ -3,7 +3,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import type { PartyState } from '../../../shared/party';
 import { COSMO_SPREAD, getBoard, unspread } from '../../../shared/board/boards';
 import { markHazards } from '../hazardMarks';
-import { currentPlayer, exits, slowFace } from '../../../shared/board/engine';
+import { BOSS_INTRO, SPIN_STOP, currentPlayer, exits, slowFace } from '../../../shared/board/engine';
 import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
 import { roundedRect } from '../../../shared/board/layout';
 import { groundAt } from '../../../shared/board/terrain';
@@ -27,6 +27,7 @@ import { buildWeather } from '../weatherView';
 import { grassDetail, roadTexture, roadUVs } from '../surfaces';
 import { sfx } from '../../sfx';
 import { postPulse } from '../look/post';
+import { courtDecor } from '../stewCourtDecor';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
   key: '#2f7dff',
@@ -948,14 +949,15 @@ const gulchDecor: Dresser = (scene, def) => {
   };
 };
 
-const DECOR: Record<BoardDef['theme'], Dresser> = { hollow: hollowDecor, cosmo: cosmoDecor, gulch: gulchDecor };
+const DECOR: Record<BoardDef['theme'], Dresser> = { hollow: hollowDecor, cosmo: cosmoDecor, gulch: gulchDecor, court: courtDecor };
 const SKY: Record<BoardDef['theme'], [string, string, [string, number, number] | undefined]> = {
   hollow: ['#ff9a7a', '#ffd8b0', ['#ffb38a', 40, 110]],
   cosmo: ['#05041a', '#2a1660', undefined],
+  court: ['#04031a', '#1c1250', undefined],
   gulch: ['#4ab3ff', '#ffe2b0', ['#ffe2b0', 60, 140]],
 };
-const PATH_COLOR: Record<BoardDef['theme'], string> = { hollow: '#d9b98a', cosmo: '#9fb4ff', gulch: '#a8743f' };
-const RAIL_COLOR: Record<BoardDef['theme'], string> = { hollow: '#ffb347', cosmo: '#45e3ff', gulch: '#ffcf5a' };
+const PATH_COLOR: Record<BoardDef['theme'], string> = { hollow: '#d9b98a', cosmo: '#9fb4ff', gulch: '#a8743f', court: '#c98a4b' };
+const RAIL_COLOR: Record<BoardDef['theme'], string> = { hollow: '#ffb347', cosmo: '#45e3ff', gulch: '#ffcf5a', court: '#ff8a1f' };
 
 /**
  * Keep scenery off the path: anything small enough to move that crowds a space is nudged
@@ -1073,7 +1075,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       const pillar = mesh(new THREE.CylinderGeometry(n.y > 0.5 || !onDeck ? 0.22 : 0.6, 0.3, h, 12), toy('#7b86b8', 0.3));
       pillar.position.set(n.x, n.y + 0.05 - h / 2, n.z);
       scene.add(pillar);
-    } else if (n.y - gy(n.x, n.z) > 0.45) {
+    } else if (n.y - gy(n.x, n.z) > 0.45 && def.theme !== 'court') {
       // bridges: two timber legs down to the ground
       for (const side of [-0.55, 0.55]) {
         const h = n.y - gy(n.x, n.z) + 0.6;
@@ -1301,6 +1303,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   let cineT = 0;
   let cineCur = '';
   let chunkAt: THREE.Vector3 | null = null;
+  let bossNode: string | null = null;
   let chunkLanded = false;
   let chunkLeave = -1;
   // the dice: Geug's red die model, up to three of them in a row over the current player
@@ -1454,6 +1457,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           const glow = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.3, 36), ringMat);
           glow.rotation.x = -Math.PI / 2;
           glow.position.y = 0.36;
+          // on Stew Court the hoop is the chest: the crown hangs in the lit hoop, no treasure chest
+          if (def.theme === 'court') chest.visible = false;
           g.add(c, chest, glow);
           scene.add(g);
           crownPool.push(g);
@@ -1463,7 +1468,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         g.visible = true;
         g.position.set(n.x, n.y, n.z);
         const c = g.getObjectByName('crown')!;
-        c.position.set(0.9, 2.0 + Math.sin(t * 2 + i) * 0.15, -0.7);
+        if (def.theme === 'court') c.position.set(Math.sign(n.x) * 1.1 * (def.spread ?? 1), 5.5 * (def.spread ?? 1) + Math.sin(t * 2 + i) * 0.15, 0);
+        else c.position.set(0.9, 2.0 + Math.sin(t * 2 + i) * 0.15, -0.7);
         c.rotation.y = t * 1.2;
         // the glob jiggles like the goo it is
         const w = Math.sin(t * 5 + i) * 0.07;
@@ -1922,6 +1928,21 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           follow = 2.6;
         }
       }
+      if (b.sub === 'boss' && b.boss) {
+        // the villain: the whole court while he arrives and spins, then in close on the slam
+        if (!bossNode) bossNode = b.players[b.boss.pick]?.node ?? null;
+        const n = bossNode ? def.nodes[bossNode] : null;
+        const k = def.spread ?? 1;
+        if (b.t < BOSS_INTRO + SPIN_STOP + 0.2 || !n) {
+          goalLook = new THREE.Vector3(0, 6 * k, -4 * k);
+          goalPos = new THREE.Vector3(0, 22 * k, 26 * k);
+          follow = 2;
+        } else {
+          goalLook = new THREE.Vector3(n.x, n.y + 4 * k, n.z - 1.5 * k);
+          goalPos = new THREE.Vector3(n.x, n.y + 13 * k, n.z + 21 * k);
+          follow = 3;
+        }
+      } else bossNode = null;
       if (b.sub === 'chunk' && chunkAt) {
         // frame the victim and Chunk together in the lower part of the screen, under the reel
         goalLook = new THREE.Vector3(chunkAt.x - 1.2, chunkAt.y + 3.6, chunkAt.z + 0.5);

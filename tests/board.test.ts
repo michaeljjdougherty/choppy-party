@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOARDS, recommendedBoard } from '../src/shared/board/boards';
-import { createBoard, exits, stepBoard, winnerGoesFirst } from '../src/shared/board/engine';
+import { createBoard, exits, finishEvent, stepBoard, winnerGoesFirst } from '../src/shared/board/engine';
 import { DT, NO_INPUT, type Inputs } from '../src/shared/types';
 import { addPlayer, createParty, OPTIONS, stepParty } from '../src/shared/party';
 
@@ -26,6 +26,8 @@ describe.each(BOARDS.map((b) => [b.name, b] as const))('%s layout', (_n, def) =>
   });
 
   it('has enough crown spots for the crowns it keeps out', () => {
+    // Stew Court's chests are its two hoops, by design
+    if (def.theme === 'court') return expect(def.crownSpots.length).toBe(2);
     expect(def.crownSpots.length).toBeGreaterThanOrEqual(15);
     expect(def.crownSpots.length).toBeLessThanOrEqual(25);
     expect(new Set(def.crownSpots).size).toBe(def.crownSpots.length);
@@ -53,7 +55,11 @@ describe('board rules', () => {
     for (const def of BOARDS) {
       const s = createBoard(def.id, ['a', 'b', 'c'], 5, 9);
       let ticks = 0;
-      while (s.sub !== 'done' && ticks++ < 30 * 200) stepBoard(s, {}, DT);
+      while (s.sub !== 'done' && ticks++ < 30 * 200) {
+        // a duel or Stew Battle hands over to the party layer: settle it straight away
+        if (s.sub === 'event' && s.event) finishEvent(s, s.event.players.map((id, i) => ({ id, value: i })));
+        else stepBoard(s, {}, DT);
+      }
       expect(s.sub).toBe('done');
       // everyone moved off the start or at least has coins from landing
       expect(Object.values(s.players).every((p) => p.keys !== 10 || p.node !== def.start)).toBe(true);

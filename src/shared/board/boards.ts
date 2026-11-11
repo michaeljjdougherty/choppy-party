@@ -322,6 +322,93 @@ function goldRushGulch(): BoardDef {
   };
 }
 
+/**
+ * STEW COURT (4-8 players)
+ * A basketball court floating in deep space. One big oval runs around the court, with the two hoops
+ * at either end: the lit hoop is the Crown Chest, and it switches ends every time someone buys a crown.
+ * Two one-way Half-Court Lanes cut straight across the middle (each skips one hoop), and the
+ * Bleacher Run climbs through floating bleachers behind the far sideline.
+ */
+/** Stew Court is laid out small and then spread out by this much. */
+export const COURT_SPREAD = 1.4;
+/** Court size before spreading (the floor is a little bigger than the loop). */
+export const COURT = { w: 50, h: 30, hoopX: 25 };
+
+function stewCourt(): BoardDef {
+  const b = new Builder();
+  const flat = (pts: Pt[], y = 0): Pt3[] => pts.map(([x, z]) => [x, z, y]);
+  // the oval: long sides along the sidelines, round ends wrapping under each hoop
+  const loop = b.chain('s', flat(roundedRect(COURT.w, COURT.h, 13, 52)), 'B', true);
+  const hoopW = nearest(b, loop, -COURT.hoopX, 0);
+  const hoopE = nearest(b, loop, COURT.hoopX, 0);
+  // Half-Court Lanes: two one-way cuts either side of the centre circle, running opposite ways
+  const topW = nearest(b, loop, -5, -15);
+  const botW = nearest(b, loop, -5, 15);
+  const topE = nearest(b, loop, 5, -15);
+  const botE = nearest(b, loop, 5, 15);
+  const laneW = b.chain('sw', flat(between(pt(b, topW), pt(b, botW), 9, 0.6)), 'B');
+  b.link(topW, laneW[0]);
+  b.link(laneW[laneW.length - 1], botW);
+  const laneE = b.chain('se', flat(between(pt(b, botE), pt(b, topE), 9, 0.6)), 'B');
+  b.link(botE, laneE[0]);
+  b.link(laneE[laneE.length - 1], topE);
+  // Bleacher Run: up through the floating bleachers behind the far sideline and back down
+  const bleach = road(b, 'sb', nearest(b, loop, -15, -15), nearest(b, loop, 15, -15), [[-12, -20, 1.4], [-5, -22, 2.4], [5, -22, 2.4], [12, -20, 1.4]], 'B', undefined, 2.6);
+  const start = loop[0];
+  b.set(start, 'camp');
+  const forks = [topW, botW, topE, botE];
+  for (const id of [...forks, hoopW, hoopE]) b.set(id, 'key');
+  const skip = new Set([start, hoopW, hoopE, ...forks]);
+  // keep the camp's neighbours calm, so a fresh respawn isn't walking straight into trouble
+  for (let d = -2; d <= 2; d++) skip.add(loop[(d + loop.length) % loop.length]);
+  const put = (type: SpaceType, at: number[]) =>
+    at.forEach((f) => {
+      let i = Math.round(f * loop.length) % loop.length;
+      while (skip.has(loop[i])) i = (i + 1) % loop.length;
+      b.set(loop[i], type);
+      skip.add(loop[i]);
+    });
+  put('post', [0.13, 0.37, 0.63, 0.87]);
+  put('duel', [0.2, 0.7]);
+  put('stew', [0.5]);
+  put('fountain', [0.43]);
+  put('spring', [0.08, 0.58]);
+  b.set(laneW[4], 'stew');
+  b.set(laneE[4], 'duel');
+  b.set(bleach[Math.floor(bleach.length / 2)], 'lucky');
+  // four Verse Flip spaces, one on each side of the oval, swap the Fucci Verse and the Choppy Verse
+  const flips = [0.17, 0.4, 0.66, 0.9].map((f) => {
+    let i = Math.round(f * loop.length) % loop.length;
+    while (skip.has(loop[i])) i = (i + 1) % loop.length;
+    b.set(loop[i], 'event');
+    skip.add(loop[i]);
+    return loop[i];
+  });
+  // the hoops are the Crown Chests
+  const crownSpots = [hoopW, hoopE];
+  partyMix(b, [loop, laneW, laneE, bleach], crownSpots, [...skip, ...laneW.slice(3, 6), ...laneE.slice(3, 6)], [0.3, 0.8]);
+  // exactly four flips: any event spaces the mix dealt become lucky stars instead
+  for (const id of [...loop, ...laneW, ...laneE, ...bleach]) if (b.nodes[id].type === 'event' && !flips.includes(id)) b.set(id, 'lucky');
+  return {
+    id: 'stew-court',
+    name: 'Stew Court',
+    players: [4, 8],
+    tagline: 'A basketball court that flips between the Fucci Verse and the evil Choppy Verse.',
+    gimmick: 'The glowing hoop holds the Chobglob, and it switches ends every time someone buys it. Four Verse Flip spaces swap the normal Fucci Verse for the Choppy Verse, a burning court floating in space, where The Dunk Tyrant drops in at the end of every round to knock someone out.',
+    theme: 'court',
+    nodes: b.nodes,
+    start,
+    camp: start,
+    crownSpots,
+    boss: { name: 'The Dunk Tyrant', every: 1 },
+    weather: [
+      { kind: 'lowgrav', name: 'Hang Time', area: 'the floating Bleacher Run', nodes: bleach, tour: `The Bleacher Run floats in low gravity: Hang Time! Roll from up there and you get +2, but at every fork you float off down a random path.` },
+      { kind: 'wind', name: 'Solar Wind', area: 'the far sideline', nodes: loop.filter((id) => b.nodes[id].z < -12 && Math.abs(b.nodes[id].x) < 13 && !forks.includes(id)), tour: 'A Solar Wind blows across the far sideline. At the end of each round it pushes everyone there 2 spaces, and it changes direction every round.' },
+    ] satisfies WeatherZone[],
+    preset: { ...DEFAULT_PRESET, chests: 1 },
+  };
+}
+
 /** Blow a board up by k: every space, and the hills under them, k times further apart (and hills k times taller). */
 function spread(def: BoardDef, k: number): BoardDef {
   for (const n of Object.values(def.nodes)) {
@@ -343,7 +430,7 @@ export function unspread(def: BoardDef): BoardDef {
   return { ...def, nodes, hills, spread: 1 };
 }
 
-export const BOARDS: BoardDef[] = [spread(lanternHollow(), 1.35), cosmoJunction(), spread(goldRushGulch(), 1.45)];
+export const BOARDS: BoardDef[] = [spread(lanternHollow(), 1.35), cosmoJunction(), spread(goldRushGulch(), 1.45), spread(stewCourt(), COURT_SPREAD)];
 
 export function getBoard(id: string): BoardDef {
   const b = BOARDS.find((x) => x.id === id);

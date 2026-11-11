@@ -23,7 +23,7 @@ const fresh = (boardId: string) => {
 describe('weather zones', () => {
   it('every board has its zones, on real spaces', () => {
     const kinds = BOARDS.map((b) => (b.weather ?? []).map((z) => z.kind).join(','));
-    expect(kinds).toEqual(['fog,wind', 'flare,lowgrav', 'sandstorm,flood,heat']);
+    expect(kinds).toEqual(['fog,wind', 'flare,lowgrav', 'sandstorm,flood,heat', 'lowgrav,wind']);
     for (const b of BOARDS)
       for (const z of b.weather!) {
         expect(z.nodes.length).toBeGreaterThan(4);

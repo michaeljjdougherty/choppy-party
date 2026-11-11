@@ -133,7 +133,7 @@ export const WEATHER_TOUR: Record<WeatherKind, string> = {
   fog: `At night fog fills the Fog Marsh. Rolls in there stay hidden until you're done moving, and nobody can target you with items. Good for hiding.`,
   wind: `Up on the hilltop the Will-o'-Wind blows. At the end of each round it pushes everyone up there ${WEATHER.windPush} spaces, and it changes direction every round.`,
   flare: `Every ${WEATHER.flareEvery} rounds a Solar Flare scorches the outer ring for ${WEATHER.flareDamage}. Stand under one of the glass domes and you're safe.`,
-  lowgrav: `The Command Core has low gravity. Roll from up here and you get +${WEATHER.lowGravBonus}, but at every fork you float off down a random path.`,
+  lowgrav: `The Docking Arm has low gravity. Roll from out there and you get +${WEATHER.lowGravBonus}, but at every fork you float off down a random path.`,
   sandstorm: `Every ${WEATHER.stormEvery} rounds a sandstorm sweeps the dunes: ${WEATHER.stormDamage} damage, a push of ${WEATHER.stormPush}, and you can't see the Crown Chests until you get out.`,
   flood: `When it rains, the dry riverbed floods. Anyone in it gets washed ${WEATHER.floodPush} spaces downstream and drops ${WEATHER.floodDrop} keys for someone else to grab.`,
   heat: `On a heatwave the salt flats bake. Every step there costs ${WEATHER.heatDamage} HP and Heart Spaces heal nothing. The panel top left says when it's coming.`,

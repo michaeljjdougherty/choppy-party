@@ -23,7 +23,8 @@ export type SpaceType =
   | 'wisp' // Hollow: pay to rob the leader
   | 'station' // Gulch train station
   | 'counter' // Cosmo laser gate
-  | 'camp'; // Respawn Camp
+  | 'camp' // Respawn Camp
+  | 'shop'; // pass-by item shop: spend keys on items (doesn't use up a step)
 
 export interface BoardNode {
   id: string;
@@ -183,6 +184,7 @@ export type Prompt =
   | { kind: 'claim'; node: string }
   | { kind: 'steal'; node: string }
   | { kind: 'items'; sel: number }
+  | { kind: 'shop'; node: string; stock: ItemId[]; sel: number }
   | { kind: 'target'; purpose: 'item' | 'duel' | 'cannon'; item?: ItemId; options: string[]; sel: number };
 
 /** A minigame the board starts in the middle of a turn. */
@@ -213,6 +215,7 @@ export type BoardSub =
   | 'land'
   | 'wheel'
   | 'itemSpin' // an Item Crate spins a reel of items before giving one
+  | 'gamble' // Gold Strike: a reel of payouts and cave-ins
   | 'event' // waiting for the party to run a duel or Stew Battle
   | 'roundEnd' // hazards go off after everyone has moved
   | 'done';
@@ -275,6 +278,8 @@ export interface BoardState {
   banner: { text: string; color: string; t: number } | null;
   /** Item Crate reel: the items it scrolls through, ending on the one you get. */
   spin?: { reel: ItemId[]; at: number; pick: ItemId } | null;
+  /** Gold Strike reel: key amounts (negative = cave-in), ending on the result. */
+  gamble?: { reel: number[]; at: number; pick: number } | null;
   /** Short-lived effects for the 3D view: hits, heals, knockouts, item use. */
   fx: { n: number; kind: string; node: string; id?: string; amount?: number; t: number }[];
   fxSeq: number;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import type { PartyState } from '../../../shared/party';
 import { COSMO_SPREAD, getBoard } from '../../../shared/board/boards';
+import { markHazards } from '../hazardMarks';
 import { currentPlayer, exits } from '../../../shared/board/engine';
 import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
 import { roundedRect } from '../../../shared/board/layout';
@@ -45,6 +46,7 @@ const SPACE_COLORS: Record<SpaceType, string> = {
   station: '#ff8a1f',
   counter: '#ff3fd2',
   camp: '#a16207',
+  shop: '#0ea5a4',
 };
 const SPACE_ICON: Record<SpaceType, string> = {
   key: '+',
@@ -66,6 +68,7 @@ const SPACE_ICON: Record<SpaceType, string> = {
   station: '$',
   counter: '⚡',
   camp: '⌂',
+  shop: '$',
 };
 /** Kenney models that float or stand on each kind of space. [model, size, floats] */
 const SPACE_PROP: Partial<Record<SpaceType, [string, number, boolean]>> = {
@@ -81,6 +84,64 @@ const SPACE_PROP: Partial<Record<SpaceType, [string, number, boolean]>> = {
   snare: ['forest/plant', 0.8, false],
   camp: ['forest/tent', 1.6, false],
 };
+
+/** A little market stall beside a shop space: striped awning, counter, stock and a SHOP sign. */
+function shopStall(def: BoardDef, n: { x: number; y: number; z: number }): THREE.Group {
+  const g = new THREE.Group();
+  const [a, b] = def.theme === 'cosmo' ? ['#45e3ff', '#ffffff'] : def.theme === 'gulch' ? ['#e04b3a', '#fff3d6'] : ['#9a5bff', '#ffe9a8'];
+  const wood = toy(def.theme === 'cosmo' ? '#7b86b8' : '#9a6a3c', 0.6);
+  const counter = mesh(new THREE.BoxGeometry(1.7, 0.75, 0.7), wood);
+  counter.position.set(0, 0.38, 0);
+  g.add(counter);
+  for (const sx of [-0.8, 0.8]) {
+    const post = mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.9, 8), wood);
+    post.position.set(sx, 0.95, -0.25);
+    g.add(post);
+  }
+  // striped awning
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 16;
+  const x = c.getContext('2d')!;
+  for (let i = 0; i < 8; i++) {
+    x.fillStyle = i % 2 ? b : a;
+    x.fillRect(i * 16, 0, 16, 16);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const awning = mesh(new THREE.BoxGeometry(2.0, 0.08, 1.0), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
+  awning.position.set(0, 1.9, 0.05);
+  awning.rotation.x = 0.28;
+  g.add(awning);
+  // a sign on top
+  const sc = document.createElement('canvas');
+  sc.width = 128;
+  sc.height = 48;
+  const sx2 = sc.getContext('2d')!;
+  sx2.fillStyle = '#2a1b5e';
+  sx2.fillRect(0, 0, 128, 48);
+  sx2.fillStyle = '#ffd23f';
+  sx2.font = '900 34px system-ui, sans-serif';
+  sx2.textAlign = 'center';
+  sx2.textBaseline = 'middle';
+  sx2.fillText('SHOP', 64, 26);
+  const st = new THREE.CanvasTexture(sc);
+  st.colorSpace = THREE.SRGBColorSpace;
+  const sign = mesh(new THREE.BoxGeometry(1.1, 0.42, 0.06), new THREE.MeshStandardMaterial({ map: st, roughness: 0.5 }));
+  sign.position.set(0, 2.25, -0.2);
+  g.add(sign);
+  // goods on the counter
+  for (const [m, px] of [['platformer/crate-item', -0.5], ['platformer/heart', 0.05], ['platformer/coin-gold', 0.55]] as [string, number][]) {
+    const o = fitProp(m, 0.38);
+    o.position.set(px, 0.76, 0.05);
+    g.add(o);
+  }
+  // stand it beside the space, facing the camera side of the path
+  g.position.set(n.x + 1.5, n.y, n.z - 0.9);
+  g.rotation.y = -0.35;
+  g.userData.placed = true;
+  return g;
+}
 
 function iconTexture(icon: string, color: string): THREE.Texture {
   const c = document.createElement('canvas');
@@ -912,6 +973,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     }
   }
   clearPath(scene, c0, def, gy);
+  const hazardMarks = markHazards(scene, def, gy);
 
   // spaces
   const rimMat = toy('#ffffff', 0.35);
@@ -923,8 +985,11 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const springs = new Map<string, { parts: THREE.Object3D[]; base: number[]; y: number; v: number }>();
   for (const [nodeId, n] of Object.entries(def.nodes)) {
     if (!capMats.has(n.type)) {
-      capMats.set(n.type, new THREE.MeshStandardMaterial({ map: iconTexture(SPACE_ICON[n.type], SPACE_COLORS[n.type]), roughness: 0.35 }));
-      tileMats.set(n.type, toy(darken(SPACE_COLORS[n.type], 0.15), 0.4));
+      // Gold Strikes are a gamble: a gold "?" space instead of the plain event diamond
+      const gold = def.theme === 'gulch' && n.type === 'event';
+      const col = gold ? '#e8a400' : SPACE_COLORS[n.type];
+      capMats.set(n.type, new THREE.MeshStandardMaterial({ map: iconTexture(gold ? '?' : SPACE_ICON[n.type], col), roughness: 0.3, metalness: gold ? 0.35 : 0 }));
+      tileMats.set(n.type, toy(darken(col, 0.15), 0.4));
     }
     // each kind of space has its own silhouette (coins round, lucky stars, battle shields...)
     const sg = spaceGeo(n.type);
@@ -967,6 +1032,29 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       else o.position.set(n.x, floats ? 1.0 : 0.33, n.z);
       scene.add(o);
       if (floats) floaters.push({ o, y: o.position.y + n.y, k: n.x + n.z });
+    }
+    if (n.type === 'shop') scene.add(shopStall(def, n));
+    if (n.type === 'event' && def.theme === 'gulch') {
+      // a heap of gold nuggets with a pickaxe stuck in it, glinting
+      const heap = new THREE.Group();
+      const nug = new THREE.MeshStandardMaterial({ color: '#ffc61a', emissive: '#7a4a00', emissiveIntensity: 0.35, metalness: 0.6, roughness: 0.3 });
+      for (let i = 0; i < 9; i++) {
+        const a = i * 2.4;
+        const r = i === 0 ? 0 : 0.2 + (i % 3) * 0.08;
+        const m = mesh(new THREE.DodecahedronGeometry(0.13 + (i % 2) * 0.05, 0), nug, { cast: true });
+        m.position.set(Math.cos(a) * r, (i === 0 ? 0.2 : 0.08) + (i % 4) * 0.02, Math.sin(a) * r);
+        m.rotation.set(i, i * 1.7, 0);
+        heap.add(m);
+      }
+      const handle = mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.8, 8), toy('#7a4f2a', 0.8));
+      handle.position.set(0.12, 0.45, 0);
+      handle.rotation.z = -0.35;
+      const head = mesh(new THREE.TorusGeometry(0.22, 0.035, 6, 16, Math.PI), toy('#9aa3b5', 0.3));
+      head.position.set(0.25, 0.8, 0);
+      head.rotation.z = -0.35;
+      heap.add(handle, head);
+      heap.position.set(n.x, 0.36, n.z);
+      scene.add(heap);
     }
     if (n.type === 'fountain') {
       const col = fitProp('proto/column', 0.5, 'xz');
@@ -1266,11 +1354,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       const warnNodes =
         def.theme === 'cosmo'
           ? b.hazards.meteors
-          : def.theme === 'hollow'
-            ? b.night
-              ? b.hazards.pine
-              : []
-            : Object.values(def.nodes).filter((n) => n.canyon === b.hazards.boulderLane).map((n) => n.id);
+          : []; // pines and boulder canyons are marked on the ground, with blinking signs
+      hazardMarks.update(b, t);
       warnNodes.forEach((nodeId, i) => {
         const n = def.nodes[nodeId];
         const w = takeWarn(i);
@@ -1524,7 +1609,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       tourLights.forEach((l) => (l.visible = false));
       if (step?.node) {
         const ids = [step.node, ...(step.also ?? []).filter((x) => x !== step.node)].slice(0, tourLights.length);
-        ids.forEach((id, k) => {
+        // whole zones are marked on the ground already: only single features get the spotlight
+        (ids.length > 4 ? [] : ids).forEach((id, k) => {
           const n = def.nodes[id];
           if (!n) return;
           const l = tourLights[k];

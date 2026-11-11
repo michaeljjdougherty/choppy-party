@@ -28,6 +28,7 @@ export const SPACE_SHAPE: Record<SpaceType, ShapeName> = {
   station: 'square',
   counter: 'hexagon',
   camp: 'house',
+  shop: 'house',
 };
 
 function poly(pts: [number, number][]): THREE.Shape {

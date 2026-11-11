@@ -10,6 +10,7 @@ import { getBoard } from './board/boards';
 import { currentPlayer, forwardDist, nearDist } from './board/engine';
 import type { BoardState, ItemId } from './board/types';
 import { WISP_PRICE, TRAIN_PRICE } from './board/types';
+import { SHOP_PRICE } from './board/items';
 import type { CloudburstState } from './games/coinCloudburst';
 import { ANVIL_HIT, AX0, AX1, AY0, AY1 } from './games/coinCloudburst';
 import type { CrateGrabState } from './games/crateGrab';
@@ -629,6 +630,15 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
       return me.keys >= b.preset.postStealCost + (sk.smart >= 1 ? 12 : 0) && sk.smart > 0.5 ? press() : pressB();
     case 'crown':
       return me.keys >= b.preset.crownPrice ? press() : pressB();
+    case 'shop': {
+      // buy something if it still leaves a little cushion of keys; otherwise walk on by
+      if (mem.n < 0) {
+        const ok = pr.stock.map((it, i) => [i, SHOP_PRICE[it]] as const).filter(([, c]) => c <= me.keys - (smart() ? 8 : 0));
+        mem.n = ok.length && rand(r) < 0.75 ? ok[Math.floor(rand(r) * ok.length)][0] : pr.stock.length;
+      }
+      if (pr.sel === mem.n) return press();
+      return stick(0, 1);
+    }
     case 'wisp':
       return me.keys >= WISP_PRICE + 5 && smart() ? press() : pressB();
     case 'train':

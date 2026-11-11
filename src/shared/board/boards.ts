@@ -1,6 +1,6 @@
 import type { BoardDef, SpaceType } from './types';
 import { DEFAULT_PRESET } from './types';
-import { Builder, between, ellipse, roundedRect, trail, type Pt, type Pt3 } from './layout';
+import { Builder, between, roundedRect, trail, type Pt, type Pt3 } from './layout';
 import { groundAt } from './terrain';
 import type { Hill } from './types';
 import type { WeatherZone } from './weather';
@@ -62,6 +62,54 @@ function chestSpots(b: Builder, ids: string[], max: number, avoid: string[]): st
 }
 
 /**
+ * Party-board space mix: lots of plain blue Key Spaces with the rest spread evenly between them,
+ * roughly 12% red, 8% events, 5% item crates, 4% lucky stars and 6% hearts, plus two pass-by shops
+ * on opposite sides of the main loop. Only plain spaces are re-dealt; map features stay put.
+ */
+const MIX: [SpaceType, number][] = [
+  ['thorn', 0.12],
+  ['event', 0.08],
+  ['heart', 0.06],
+  ['crate', 0.05],
+  ['lucky', 0.04],
+];
+function partyMix(b: Builder, chains: string[][], crownSpots: string[], keep: string[], shopsAt: number[]): void {
+  const plain = new Set(['key', 'thorn', 'heart', 'crate', 'lucky']);
+  const all = chains.flat();
+  // shops first, on the main loop, never next to another special space
+  for (const f of shopsAt) {
+    const main = chains[0];
+    for (let d = 0; d < main.length; d++) {
+      const id = main[(Math.round(f * main.length) + d) % main.length];
+      if (b.nodes[id].type === 'key' && !crownSpots.includes(id) && !keep.includes(id)) {
+        b.set(id, 'shop');
+        break;
+      }
+    }
+  }
+  const free = all.filter((id) => plain.has(b.nodes[id].type) && !crownSpots.includes(id) && !keep.includes(id));
+  for (const id of free) b.set(id, 'key');
+  const total = all.length;
+  // deal each type at an even stride through the path, skipping spaces already taken
+  let offset = 1;
+  for (const [type, share] of MIX) {
+    const want = Math.max(1, Math.round(total * share)) - all.filter((id) => b.nodes[id].type === type).length;
+    if (want <= 0) continue;
+    const stride = free.length / want;
+    for (let k = 0; k < want; k++) {
+      for (let d = 0; d < free.length; d++) {
+        const id = free[(Math.floor(k * stride + offset) + d) % free.length];
+        if (b.nodes[id].type === 'key') {
+          b.set(id, type);
+          break;
+        }
+      }
+    }
+    offset += 2;
+  }
+}
+
+/**
  * LANTERN HOLLOW (4-6 players)
  * A compact haunted pumpkin village. Event spaces ring the town bell and swap day and night,
  * which opens either the Moon Bridge or the Root Cellar through the middle of town.
@@ -104,6 +152,7 @@ function lanternHollow(): BoardDef {
   b.set(cellar[3], 'snare');
   const pines = [[loop[7], loop[8]], [loop[16], loop[17]], [loop[24], loop[25]], [loop[31], loop[32]]];
   const crownSpots = chestSpots(b, [...loop, ...bridge, ...cellar, ...chapel], 17, [left, right, start]);
+  partyMix(b, [loop, bridge, cellar, chapel], crownSpots, [left, right, start], [0.3, 0.78]);
   return {
     id: 'lantern-hollow',
     name: 'Lantern Hollow',
@@ -137,49 +186,44 @@ export const COSMO_SPREAD = 1.4;
 function cosmoJunction(): BoardDef {
   const b = new Builder();
   const flat = (pts: Pt[], y = 0): Pt3[] => pts.map(([x, z]) => [x, z, y]);
-  const ring = b.chain('c', flat(wobble(ellipse(18, 11.5, 46), 0.45)), 'BBHBRBCBBEBLBBHBRB', true);
-  const left = nearest(b, ring, -18, 0);
-  const right = nearest(b, ring, 18, 0);
-  // Laser Lane runs along the deck, straight under the Command Core
-  const lane = b.chain('cl', between(pt(b, left), pt(b, right), 11), 'BBLBHBCBLBB');
+  // one big readable main loop around the deck, with the Command Core standing in the middle
+  const ring = b.chain('c', flat(wobble(roundedRect(50, 32, 10, 56), 0.5)), 'B', true);
+  const left = nearest(b, ring, -25, 0);
+  const right = nearest(b, ring, 25, 0);
+  // Laser Lane: the straight shortcut across the middle, right under the Command Core
+  const lane = b.chain('cl', between(pt(b, left), pt(b, right), 17), 'B');
   for (const id of lane) b.nodes[id].lane = true;
   b.link(left, lane[0]);
   b.link(lane[lane.length - 1], right);
-  // the Command Core: a raised loop up on the station's top deck
-  const hub = b.chain('ch', flat(ellipse(4.7, 4.7, 14), 5), 'BLBHBEB', true);
-  // ramps up from the west side, down to the east side, and a skybridge back to the north ring
-  const upW = road(b, 'cu', nearest(b, ring, -15, -6.4), nearest(b, hub, -4.4, -1.6), [[-12, -4.6, 1.2], [-8.6, -6.2, 2.7], [-6.2, -4.2, 4.1]], 'BCB');
-  const downE = road(b, 'cd', nearest(b, hub, 4.4, 1.6), nearest(b, ring, 15.2, 6.3), [[6.2, 4.2, 4.1], [8.8, 6, 2.7], [12, 4.6, 1.2]], 'BLB');
-  const sky = road(b, 'cs', nearest(b, hub, 0, -4.7), nearest(b, ring, 2.5, -11.4), [[0.8, -7.4, 3.6], [1.8, -9.6, 1.6]], 'HB');
-  // a docking arm swings out over space on the west side
-  const dock = road(b, 'ck', nearest(b, ring, -17.2, 3.6), nearest(b, ring, -17.2, -3.6), [[-21, 6, 1], [-25, 3, 2.2], [-25, -3, 2.2], [-21, -6, 1]], 'BHLCB');
+  // the Skywalk: a raised detour behind the Core, and the Docking Arm swinging out over space
+  const sky = road(b, 'cs', nearest(b, ring, -14, -16), nearest(b, ring, 14, -16), [[-9, -11.8, 1.2], [0, -11.2, 1.8], [9, -11.8, 1.2]], 'B', undefined, 2.6);
+  const dock = road(b, 'ck', nearest(b, ring, -24, 7), nearest(b, ring, -24, -7), [[-29.5, 9.5, 1], [-34.5, 5, 2.2], [-34.5, -5, 2.2], [-29.5, -9.5, 1]], 'B', undefined, 2.6);
   b.set(left, 'key');
   b.set(right, 'key');
   b.set(lane[0], 'counter');
   const start = ring[0];
   b.set(start, 'camp');
-  sprinkle(b, ring, 'post', [0.1, 0.3, 0.55, 0.72, 0.9]);
-  sprinkle(b, ring, 'duel', [0.2, 0.65]);
-  sprinkle(b, ring, 'stew', [0.42, 0.82]);
-  sprinkle(b, ring, 'vent', [0.15, 0.47, 0.78]);
-  sprinkle(b, ring, 'spring', [0.05, 0.6]);
-  b.set(lane[5], 'stew');
-  const crownSpots = chestSpots(b, [...ring, ...lane, ...hub, ...upW, ...downE, ...sky, ...dock], 22, [left, right, start]);
+  sprinkle(b, ring, 'post', [0.12, 0.37, 0.62, 0.87]);
+  sprinkle(b, ring, 'duel', [0.21, 0.71]);
+  sprinkle(b, ring, 'stew', [0.46]);
+  sprinkle(b, ring, 'vent', [0.16, 0.54, 0.79]);
+  sprinkle(b, ring, 'spring', [0.04]);
+  b.set(lane[8], 'stew');
+  b.set(sky[2], 'event');
+  b.set(dock[3], 'event');
+  const crownSpots = chestSpots(b, [...ring, ...lane, ...sky, ...dock], 22, [left, right, start]);
+  partyMix(b, [ring, lane, sky, dock], crownSpots, [start, left, right], [0.3, 0.8]);
   // glass domes along the ring keep you safe from solar flares
   const domes = [0.125, 0.375, 0.625, 0.875].flatMap((f) => {
     const i = Math.round(f * ring.length);
     return [ring[(i - 1 + ring.length) % ring.length], ring[i % ring.length], ring[(i + 1) % ring.length]];
   });
   const shelters = [...new Set([...domes, start])];
-  for (const n of Object.values(b.nodes)) {
-    n.x *= COSMO_SPREAD;
-    n.z *= COSMO_SPREAD;
-  }
   return {
     id: 'cosmo-junction',
     name: 'Cosmo Junction',
     players: [6, 8],
-    tagline: 'A two-deck space station with ramps, a skybridge and a docking arm.',
+    tagline: 'A space station loop with a laser shortcut, a skywalk and a docking arm.',
     gimmick: 'Every pass through the laser gate counts it down, and at zero it hits everyone in the lane for 15. Meteor targets show where rocks will land next round. Airlock vents blast you backward. Event spaces are warp pads.',
     theme: 'cosmo',
     nodes: b.nodes,
@@ -187,8 +231,8 @@ function cosmoJunction(): BoardDef {
     camp: start,
     crownSpots,
     weather: [
-      { kind: 'flare', name: 'Solar Flare', area: 'the open outer ring', nodes: ring.filter((id) => !shelters.includes(id)), shelters },
-      { kind: 'lowgrav', name: 'Low Gravity', area: 'the Command Core', nodes: hub },
+      { kind: 'flare', name: 'Solar Flare', area: 'the open outer ring', nodes: ring.filter((id) => !shelters.includes(id) && b.nodes[id].type !== 'shop'), shelters },
+      { kind: 'lowgrav', name: 'Low Gravity', area: 'the Docking Arm', nodes: dock },
     ] satisfies WeatherZone[],
     preset: { ...DEFAULT_PRESET, chests: 1 },
   };
@@ -254,6 +298,7 @@ function goldRushGulch(): BoardDef {
   put('cannon', [0.2, 0.53, 0.78]);
   b.set(west[3], 'dynamite');
   const crownSpots = chestSpots(b, [...loop, ...west, ...east, ...trailUp, ...ledge, ...mesa], 25, [...skip]);
+  partyMix(b, [loop, west, east, trailUp, ledge, mesa], crownSpots, [...skip], [0.3, 0.8]);
   return {
     id: 'gold-rush-gulch',
     name: 'Gold Rush Gulch',

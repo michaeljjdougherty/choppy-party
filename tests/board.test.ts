@@ -115,15 +115,15 @@ describe('turn order', () => {
     expect(s.sub).toBe('orderShow');
   });
 
-  it('the minigame winner goes first next turn, everyone else keeps the rolled order', () => {
+  it('next turn goes in minigame finishing order, ties keep the rolled order', () => {
     const s = createBoard(BOARDS[0].id, ['a', 'b', 'c', 'd'], 5, 3);
     s.order = ['b', 'd', 'a', 'c'];
     s.baseOrder = [...s.order];
     winnerGoesFirst(s, [{ id: 'a', place: 1 }, { id: 'b', place: 2 }, { id: 'c', place: 3 }, { id: 'd', place: 4 }]);
-    expect(s.order).toEqual(['a', 'b', 'd', 'c']);
+    expect(s.order).toEqual(['a', 'b', 'c', 'd']);
     expect(s.wonFirst).toEqual(['a']);
     winnerGoesFirst(s, [{ id: 'c', place: 1 }, { id: 'd', place: 1 }, { id: 'a', place: 3 }, { id: 'b', place: 4 }]);
-    expect(s.order).toEqual(['d', 'c', 'b', 'a']);
+    expect(s.order).toEqual(['d', 'c', 'a', 'b']);
   });
 });
 

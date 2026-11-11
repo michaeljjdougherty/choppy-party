@@ -5,7 +5,7 @@ import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
 import { SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, currentPlayer } from '../shared/board/engine';
 import { TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
-import { ITEMS } from '../shared/board/items';
+import { ITEMS, SHOP_PRICE } from '../shared/board/items';
 import { WEATHER_COLOR, forecast } from '../shared/board/weather';
 import { playerById, popText, roundRect, text } from '../shared/draw';
 import { itemIcon } from './three/itemIcons';
@@ -142,7 +142,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   } else if (b.sub === 'turnIntro') {
     startBanner(ctx, `${name} start turn!`, b.t);
     if (b.cur === 0) text(ctx, `Turn ${b.turn}`, 640, 168, 30, { color: '#ffffff' });
-    if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Won the minigame, so they go first!', 640, 204, 22, { color: '#ffd23f' });
+    if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Turn order follows the last minigame\'s finish!', 640, 204, 22, { color: '#ffd23f' });
   } else if (b.sub === 'roll') {
     const first = b.rolls.length === 0;
     const canItem = first && mine.items.length > 0 && mine.usedItemTurn !== b.turn;
@@ -199,6 +199,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
       text(ctx, `A: Toll Post  (others pay ${pr.postToll} keys)`, 640, 224, 22, { color: '#2a1b5e', outline: false, weight: 700 });
       text(ctx, `B: Sting Post  (${pr.postSting} damage, you heal ${pr.postStingHeal})`, 640, 262, 22, { color: '#2a1b5e', outline: false, weight: 700 });
     } else if (pm.kind === 'steal') box(`Pay ${pr.postStealCost} keys to take over this post?`, 'A: Yes      B: No');
+    else if (pm.kind === 'shop') drawShop(ctx, pm, mine.keys);
     else if (pm.kind === 'items') {
       const h = 110 + mine.items.length * 44;
       ctx.fillStyle = 'rgba(255,255,255,0.96)';
@@ -228,6 +229,8 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     }
   } else if (b.sub === 'itemSpin' && b.spin) {
     drawItemReel(ctx, b.spin, b.t, t);
+  } else if (b.sub === 'gamble' && b.gamble) {
+    drawGambleReel(ctx, b.gamble, b.t, t);
   } else if (b.sub === 'roundEnd') {
     text(ctx, 'End of round', 640, 220, 40, { color: '#ff9f1c' });
   } else if (b.sub === 'event' && b.event) {
@@ -472,15 +475,21 @@ function promptPill(ctx: CanvasRenderingContext2D, msg: string, y: number): void
   text(ctx, msg, 640, y, size, { color: '#ffffff', weight: 800 });
 }
 
-/** Item Crate: a reel of items whizzes past the pointer, slows down and stops on the prize. */
+/** A reel that whizzes past a pointer, slows down and stops on the prize (Item Crates, Gold Strikes). */
 let reelTick = -1;
-function drawItemReel(ctx: CanvasRenderingContext2D, spin: { reel: (keyof typeof ITEMS)[]; at: number }, age: number, t: number): void {
+function drawReel(
+  ctx: CanvasRenderingContext2D,
+  o: { n: number; at: number; title: string; color: string; cell: (i: number, x: number, y: number, size: number, prize: boolean) => void; result: string; resultColor: string },
+  age: number,
+  t: number,
+): void {
   const cell = 92, vis = 7, cx = 640, cy = 236;
   const w = cell * vis;
   const k = Math.min(1, age / SPIN_STOP);
-  const pos = spin.at * (1 - Math.pow(1 - k, 4));
+  const pos = o.at * (1 - Math.pow(1 - k, 4));
   const idx = Math.floor(pos + 0.5);
-  if (idx !== reelTick) {
+  if (age < 0.05) reelTick = -1;
+  if (idx !== reelTick && reelTick !== 1e9) {
     if (reelTick >= 0 && idx > reelTick) sfx.move();
     reelTick = idx;
   }
@@ -489,46 +498,33 @@ function drawItemReel(ctx: CanvasRenderingContext2D, spin: { reel: (keyof typeof
     sfx.gem();
     reelTick = 1e9;
   }
-  if (age < 0.05) reelTick = -1;
   const enter = Math.min(1, age / 0.2);
   ctx.save();
   ctx.globalAlpha = enter;
-  // frame
   ctx.fillStyle = 'rgba(20,12,40,0.82)';
   roundRect(ctx, cx - w / 2 - 14, cy - cell / 2 - 46, w + 28, cell + 92, 20);
   ctx.fill();
-  ctx.strokeStyle = '#ffb347';
+  ctx.strokeStyle = o.color;
   ctx.lineWidth = 4;
   ctx.stroke();
-  text(ctx, 'ITEM CRATE!', cx, cy - cell / 2 - 22, 26, { color: '#ffb347' });
-  // the strip, clipped to the window
+  text(ctx, o.title, cx, cy - cell / 2 - 22, 26, { color: o.color });
   ctx.save();
   ctx.beginPath();
   ctx.rect(cx - w / 2, cy - cell / 2, w, cell);
   ctx.clip();
   const first = Math.floor(pos) - Math.ceil(vis / 2) - 1;
   for (let i = first; i <= first + vis + 3; i++) {
-    if (i < 0 || i >= spin.reel.length) continue;
-    const id = spin.reel[i];
+    if (i < 0 || i >= o.n) continue;
     const x = cx + (i - pos) * cell;
-    const prize = done && i === spin.at;
-    // fade toward the edges like a drum turning away
+    const prize = done && i === o.at;
     const edge = 1 - Math.min(1, Math.abs(x - cx) / (w / 2)) * 0.7;
     ctx.globalAlpha = enter * edge;
     ctx.fillStyle = prize ? 'rgba(255,179,71,0.35)' : 'rgba(255,255,255,0.08)';
     ctx.fillRect(x - cell / 2 + 4, cy - cell / 2 + 4, cell - 8, cell - 8);
-    const icon = itemIcon(id);
-    const s = prize ? 1 + Math.sin(Math.min(1, (age - SPIN_STOP) / 0.3) * Math.PI) * 0.18 : 1;
-    const sz = (cell - 16) * s;
-    if (icon) ctx.drawImage(icon, x - sz / 2, cy - sz / 2, sz, sz);
-    else {
-      ctx.fillStyle = ITEMS[id].color;
-      roundRect(ctx, x - sz / 3, cy - sz / 3, (sz * 2) / 3, (sz * 2) / 3, 8);
-      ctx.fill();
-    }
+    const sc = prize ? 1 + Math.sin(Math.min(1, (age - SPIN_STOP) / 0.3) * Math.PI) * 0.18 : 1;
+    o.cell(i, x, cy, (cell - 16) * sc, prize);
   }
   ctx.restore();
-  // pointer and centre window
   ctx.globalAlpha = enter;
   ctx.strokeStyle = done ? '#ffd23f' : '#ffffff';
   ctx.lineWidth = done ? 5 + Math.sin(t * 10) * 1.5 : 3;
@@ -543,7 +539,117 @@ function drawItemReel(ctx: CanvasRenderingContext2D, spin: { reel: (keyof typeof
     ctx.closePath();
     ctx.fill();
   }
-  const name = done ? ITEMS[spin.reel[spin.at]].name : '';
-  if (name) text(ctx, name, cx, cy + cell / 2 + 24, 22, { color: '#ffd23f' });
+  if (done) text(ctx, o.result, cx, cy + cell / 2 + 24, 22, { color: o.resultColor });
   ctx.restore();
+}
+
+function drawItemReel(ctx: CanvasRenderingContext2D, spin: { reel: (keyof typeof ITEMS)[]; at: number }, age: number, t: number): void {
+  drawReel(
+    ctx,
+    {
+      n: spin.reel.length,
+      at: spin.at,
+      title: 'ITEM CRATE!',
+      color: '#ffb347',
+      result: ITEMS[spin.reel[spin.at]].name,
+      resultColor: '#ffd23f',
+      cell: (i, x, y, sz) => {
+        const id = spin.reel[i];
+        const icon = itemIcon(id);
+        if (icon) ctx.drawImage(icon, x - sz / 2, y - sz / 2, sz, sz);
+        else {
+          ctx.fillStyle = ITEMS[id].color;
+          roundRect(ctx, x - sz / 3, y - sz / 3, (sz * 2) / 3, (sz * 2) / 3, 8);
+          ctx.fill();
+        }
+      },
+    },
+    age,
+    t,
+  );
+}
+
+/** Gold Strike: nuggets and cave-ins flick past; where it stops is what you get. */
+function drawGambleReel(ctx: CanvasRenderingContext2D, g: { reel: number[]; at: number; pick: number }, age: number, t: number): void {
+  drawReel(
+    ctx,
+    {
+      n: g.reel.length,
+      at: g.at,
+      title: 'GOLD STRIKE!',
+      color: '#ffc61a',
+      result: g.pick >= 0 ? `Struck gold! +${g.pick} keys` : `Cave-in! ${g.pick} keys`,
+      resultColor: g.pick >= 0 ? '#ffd23f' : '#ff6b6b',
+      cell: (i, x, y, sz) => {
+        const v = g.reel[i];
+        const win = v >= 0;
+        ctx.fillStyle = win ? '#ffc61a' : '#8a5a3a';
+        roundRect(ctx, x - sz / 2 + 4, y - sz / 2 + 4, sz - 8, sz - 8, 12);
+        ctx.fill();
+        if (win) {
+          // a little nugget pile
+          ctx.fillStyle = '#fff1a8';
+          for (const [dx, dy, r] of [[-10, 8, 8], [6, 10, 7], [-2, -2, 9]] as [number, number, number][]) {
+            ctx.beginPath();
+            ctx.arc(x + dx * (sz / 76), y - sz * 0.12 + dy * (sz / 76), r * (sz / 76), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else {
+          ctx.fillStyle = '#5b3a24';
+          for (const [dx, dy, r] of [[-12, 6, 9], [8, 4, 10], [-1, -8, 8]] as [number, number, number][]) {
+            ctx.beginPath();
+            ctx.arc(x + dx * (sz / 76), y - sz * 0.12 + dy * (sz / 76), r * (sz / 76), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        text(ctx, win ? `+${v}` : `${v}`, x, y + sz * 0.26, Math.round(sz * 0.3), { color: win ? '#5a3a00' : '#ffd0c0', outline: false, weight: 900 });
+      },
+    },
+    age,
+    t,
+  );
+}
+
+/** Shop counter: the stock with prices, and a Leave row. */
+function drawShop(ctx: CanvasRenderingContext2D, pm: { stock: (keyof typeof ITEMS)[]; sel: number }, keys: number): void {
+  const rows = pm.stock.length + 1;
+  const h = 96 + rows * 58;
+  const x0 = 360, w = 560, y0 = 96;
+  ctx.fillStyle = 'rgba(255,255,255,0.97)';
+  roundRect(ctx, x0, y0, w, h, 26);
+  ctx.fill();
+  ctx.strokeStyle = '#0ea5a4';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  text(ctx, 'SHOP', 640, y0 + 34, 32, { color: '#0ea5a4' });
+  keyIcon(ctx, 640 + 120, y0 + 34);
+  text(ctx, `${keys}`, 640 + 134, y0 + 35, 20, { align: 'left', color: '#2a1b5e', outline: false });
+  pm.stock.forEach((it, k) => {
+    const y = y0 + 84 + k * 58;
+    const sel = k === pm.sel;
+    const price = SHOP_PRICE[it];
+    const can = keys >= price;
+    if (sel) {
+      ctx.fillStyle = 'rgba(255,210,63,0.6)';
+      roundRect(ctx, x0 + 16, y - 26, w - 32, 52, 14);
+      ctx.fill();
+    }
+    const icon = itemIcon(it);
+    if (icon) ctx.drawImage(icon, x0 + 26, y - 24, 48, 48);
+    ctx.save();
+    ctx.globalAlpha = can ? 1 : 0.45;
+    text(ctx, ITEMS[it].name, x0 + 86, y - 8, 22, { align: 'left', color: '#2a1b5e', outline: false });
+    text(ctx, ITEMS[it].desc, x0 + 86, y + 14, 13, { align: 'left', color: '#5b4a91', outline: false, weight: 600 });
+    keyIcon(ctx, x0 + w - 70, y);
+    text(ctx, `${price}`, x0 + w - 28, y + 1, 22, { align: 'right', color: can ? '#2a1b5e' : '#ff4d5a', outline: false });
+    ctx.restore();
+  });
+  const ly = y0 + 84 + pm.stock.length * 58;
+  if (pm.sel === pm.stock.length) {
+    ctx.fillStyle = 'rgba(255,210,63,0.6)';
+    roundRect(ctx, x0 + 16, ly - 22, w - 32, 44, 14);
+    ctx.fill();
+  }
+  text(ctx, 'Leave the shop', 640, ly, 20, { color: '#2a1b5e', outline: false });
+  text(ctx, 'Stick: choose   A: buy   B: leave', 640, y0 + h - 22, 16, { color: '#ff4d5a', outline: false, weight: 700 });
 }

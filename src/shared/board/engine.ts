@@ -4,7 +4,7 @@ import { rand, randInt, shuffle } from '../rng';
 import { getBoard } from './boards';
 import { buildTour } from './tour';
 import { WEATHER, flareThisRound, inZone, newWeather, stormThisRound } from './weather';
-import { ITEMS, ITEM_IDS } from './items';
+import { ITEMS, ITEM_IDS, SHOP_PRICE, SHOP_STOCK } from './items';
 import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt } from './types';
 import { COUNTER_START, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
 
@@ -52,6 +52,9 @@ const WHEEL_TIME = 3;
 /** Item Crate reel: how many items scroll past and how long it runs (the last ~0.9 s shows the prize). */
 export const SPIN_LEN = 26;
 export const SPIN_STOP = 2.8;
+/** Gold Strike payouts (keys) and cave-ins. */
+export const GOLD_WINS = [5, 8, 10, 12, 20];
+export const GOLD_LOSSES = [-5, -10];
 const SPIN_TIME = SPIN_STOP + 0.9;
 
 export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number, tour = false): BoardState {
@@ -259,16 +262,16 @@ export function awardMinigame(s: BoardState, placements: { id: string; place: nu
  * The minigame winner (or winners, on a tie) goes first next turn; everyone else keeps their
  * place from the opening roll.
  */
+/**
+ * Next turn goes in the order everyone finished the minigame: 1st place moves first, then 2nd,
+ * and so on. Ties (and anyone who sat the game out) fall back to the rolled order.
+ */
 export function winnerGoesFirst(s: BoardState, placements: { id: string; place: number }[]): void {
   const base = s.baseOrder.length ? s.baseOrder : s.order;
+  const place = new Map(placements.map((p) => [p.id, p.place]));
   const won = new Set(placements.filter((p) => p.place === 1).map((p) => p.id));
-  if (won.size === 0 || won.size >= base.length) {
-    s.order = [...base];
-    s.wonFirst = [];
-    return;
-  }
-  s.wonFirst = base.filter((id) => won.has(id));
-  s.order = [...s.wonFirst, ...base.filter((id) => !won.has(id))];
+  s.wonFirst = won.size < base.length ? base.filter((id) => won.has(id)) : [];
+  s.order = [...base].sort((x, y) => (place.get(x) ?? 99) - (place.get(y) ?? 99) || base.indexOf(x) - base.indexOf(y));
 }
 
 const ORDER_SHOW = 4.5;
@@ -441,7 +444,8 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
             if (s.pushBack <= 0) set(s, 'land');
             break;
           }
-          s.stepsLeft--;
+          // shops sit beside the path: walking past one doesn't use up a step
+          if (def.nodes[me.node].type !== 'shop' || s.stepsLeft <= 0) s.stepsLeft--;
           onPass(s, def, id);
         }
         break;
@@ -523,6 +527,24 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       }
       break;
 
+    case 'gamble':
+      if (s.t > SPIN_TIME && s.gamble) {
+        const v = s.gamble.pick;
+        s.gamble = null;
+        if (v >= 0) {
+          me.keys += v;
+          fx(s, 'keys', me.node, id, v);
+          say(s, `Struck gold! +${v} keys`, '#ffd23f');
+        } else {
+          const c = Math.min(me.keys, -v);
+          me.keys -= c;
+          fx(s, 'keys', me.node, id, -c);
+          say(s, `Cave-in! -${c} keys`, '#ff5a5f');
+        }
+        set(s, 'land');
+      }
+      break;
+
     case 'land':
       if (s.t > BANNER + 0.6) endTurn(s, def);
       break;
@@ -569,6 +591,30 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
       return;
     }
     if (yes) useItem(s, def, id, p.sel);
+    return;
+  }
+  if (p.kind === 'shop') {
+    const n = p.stock.length + 1; // the last row is "Leave"
+    if ((stick || stickY) && s.t > 0.2) {
+      p.sel = (p.sel + (stickY || stick) + n) % n;
+      s.t = 0.05;
+    }
+    if (yes && p.sel < p.stock.length) {
+      const it = p.stock[p.sel];
+      const price = SHOP_PRICE[it];
+      if (me.keys < price) {
+        say(s, `Not enough keys (${price})`, '#ff5a5f');
+        s.t = 0.05;
+        return;
+      }
+      me.keys -= price;
+      me.items.push(it);
+      fx(s, 'keys', p.node, id, -price);
+      say(s, `Bought ${ITEMS[it].name}!`, '#ffb347');
+      afterPrompt(s);
+      return;
+    }
+    if (yes || no || auto) afterPrompt(s);
     return;
   }
   if (p.kind === 'target') {
@@ -846,6 +892,20 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
       if (h) say(s, `Heart Fountain: +${h} HP`, '#ff7bd5');
     }
   }
+  if (node.type === 'shop' && passing) {
+    const cheapest = Math.min(...ITEM_IDS.map((i) => SHOP_PRICE[i]));
+    if (me.items.length >= s.preset.maxItems) say(s, 'Shop: your bag is full!', '#ffb347');
+    else if (me.keys < cheapest) say(s, `Shop: items start at ${cheapest} keys`, '#ffb347');
+    else {
+      // a fresh counter every visit, cheapest first
+      const pool = [...ITEM_IDS];
+      const stock: ItemId[] = [];
+      while (stock.length < SHOP_STOCK && pool.length) stock.push(pool.splice(Math.floor(rand(s.rng) * pool.length), 1)[0]);
+      stock.sort((a, b) => SHOP_PRICE[a] - SHOP_PRICE[b]);
+      ask(s, { kind: 'shop', node: me.node, stock, sel: 0 });
+    }
+    return;
+  }
   if (node.type === 'wisp' && me.keys >= WISP_PRICE && leaderOtherThan(s, id)) {
     ask(s, { kind: 'wisp' });
     return;
@@ -1052,15 +1112,14 @@ function boardEvent(s: BoardState, def: BoardDef, id: string): void {
     fx(s, 'warp', me.node, id);
     say(s, 'Warp pad! Zoom!', '#45e3ff');
   } else {
-    if (rand(s.rng) < 0.7) {
-      const c = randInt(s.rng, 5, 12);
-      me.keys += c;
-      say(s, `Struck gold! +${c} keys`, '#ffd23f');
-    } else {
-      const c = Math.min(me.keys, 6);
-      me.keys -= c;
-      say(s, `Cave-in! -${c} keys`, '#ff5a5f');
-    }
+    // Gold Strike: a gamble reel of nuggets and cave-ins spins, then pays out
+    const pick = rand(s.rng) < 0.65 ? GOLD_WINS[Math.floor(rand(s.rng) * GOLD_WINS.length)] : GOLD_LOSSES[Math.floor(rand(s.rng) * GOLD_LOSSES.length)];
+    const all = [...GOLD_WINS, ...GOLD_LOSSES];
+    const reel: number[] = [];
+    for (let i = 0; i < SPIN_LEN + 4; i++) reel.push(all[Math.floor(rand(s.rng) * all.length)]);
+    reel[SPIN_LEN] = pick;
+    s.gamble = { reel, at: SPIN_LEN, pick };
+    set(s, 'gamble');
   }
 }
 

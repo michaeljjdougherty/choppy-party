@@ -51,7 +51,7 @@ export function buildTour(def: BoardDef, s: BoardState): TourStep[] {
     steps.push({ title: 'Meteor Showers', text: 'Red rings mark where meteors land at the end of the round. Be anywhere else.', node: s.hazards.meteors[0], also: s.hazards.meteors });
   if (def.theme === 'gulch') {
     const lane = Object.values(def.nodes).filter((n) => n.canyon === s.hazards.boulderLane).map((n) => n.id);
-    if (lane.length) steps.push({ title: 'Boulders', text: 'Every round a boulder rolls down one canyon. The top-left panel tells you which.', node: lane[Math.floor(lane.length / 2)], also: lane });
+    if (lane.length) steps.push({ title: 'Boulders', text: 'Every round a boulder rolls down one of the rocky canyons. The warning signs with the blinking light show which one.', node: lane[Math.floor(lane.length / 2)], also: lane });
   }
   // weather zones, each lit up end to end
   for (const z of def.weather ?? []) {

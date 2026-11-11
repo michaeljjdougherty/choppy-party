@@ -26,3 +26,19 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   'sticky-cube': { id: 'sticky-cube', name: 'Sticky Cube', desc: "A player's next roll is 1 to 3", target: true, model: 'proto/figurine-cube-detailed', color: '#b06cff' },
 };
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
+
+/** Shop prices in Choppy Keys: small helpers are cheap, big swings cost more. */
+export const SHOP_PRICE: Record<ItemId, number> = {
+  'spring-boots': 5,
+  'heart-snack': 5,
+  'sticky-cube': 8,
+  'spike-trap': 8,
+  'knight-shield': 10,
+  'hunting-bow': 10,
+  'double-barrel': 12,
+  'treasure-shovel': 12,
+  'pirate-cannon': 15,
+  'swap-pipe': 15,
+};
+/** How many items a shop has on the counter at once. */
+export const SHOP_STOCK = 4;

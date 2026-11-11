@@ -4,6 +4,8 @@ import { character } from './assets';
 import { recolor } from './recolor';
 import { mesh, toy } from './kit';
 import { FolkModel, folk } from './folks';
+import { applyLook } from './cosmetics';
+import { lookFor } from '../looks';
 
 /**
  * Which character each colour is wearing right now. Players pick their character and colour
@@ -65,6 +67,8 @@ export class ChoppyModel {
     if (c.folk) {
       // one of our people: shirt in the player's colour, sized to stand as tall as the aliens
       this.folk = new FolkModel(folk(c.folk), color, folkScale());
+      // their saved outfit from the Customize screen (or the one the room sent, online)
+      applyLook(this.folk, lookFor(color, c.folk));
       this.body.add(this.folk.group);
     } else if (c.model) {
       const { scene, animations } = character(c.model);

@@ -184,7 +184,7 @@ function chunkModel(h: number): THREE.Group {
   return g;
 }
 
-function makeCrown(): THREE.Group {
+export function makeCrown(): THREE.Group {
   const g = new THREE.Group();
   const gold = new THREE.MeshStandardMaterial({ color: '#ffcc33', roughness: 0.22, metalness: 0.75, emissive: '#5a3a00' });
   const band = mesh(new THREE.CylinderGeometry(0.55, 0.5, 0.35, 28, 1, true), gold);

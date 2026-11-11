@@ -14,6 +14,7 @@ import { crateView, ropeView } from './teams';
 import { hotPotatoView, kitchenView } from './wave3a';
 import { lanternView, memoryView, snowView } from './wave3b';
 import { laserView } from './laser';
+import { alienView, bowlView, crownView, lightsView, plazaView, seatView } from './wave5';
 import { burgerView, cannonView, crazeView, digView, raftView, repairView } from './wave4';
 
 type Factory = (env: THREE.Texture, state: any, players: PlayerInfo[]) => View;
@@ -44,6 +45,12 @@ export const GAME_VIEWS: Record<string, Factory> = {
   'burger-builder': burgerView,
   'color-craze': crazeView,
   'station-repair': repairView,
+  'paint-the-plaza': plazaView,
+  'alien-count': alienView,
+  'lights-out-freeze': lightsView,
+  'pumpkin-bowling': bowlView,
+  'capture-the-crown': crownView,
+  'last-seat': seatView,
 };
 
 export { menuView } from './menu';

@@ -109,3 +109,52 @@ describe('pause menu', () => {
     expect(s.players.length).toBe(2);
   });
 });
+
+import { FIRST_GAME, GRID_COLS, OPTIONS, optionsOfKind } from '../src/shared/party';
+
+describe('separate lobbies', () => {
+  const tick = (s: ReturnType<typeof createParty>, inp: Partial<typeof NO_INPUT> & { startPressed?: boolean }) => {
+    stepParty(s, { a: { ...NO_INPUT, ...inp } }, DT);
+    for (let i = 0; i < 20; i++) stepParty(s, {}, DT); // let the nav cooldown run out
+  };
+  it('scrolling the boards never reaches the minigames', () => {
+    const s = createParty(3);
+    s.lockMode = true;
+    addPlayer(s, 'a');
+    s.autoPick = false;
+    for (let i = 0; i < 10; i++) {
+      tick(s, { x: 1 });
+      expect(OPTIONS[s.selection].kind).toBe('board');
+    }
+  });
+  it('Free Play moves through a grid and stays on minigames', () => {
+    const s = createParty(3);
+    s.lockMode = true;
+    s.selection = FIRST_GAME;
+    addPlayer(s, 'a');
+    tick(s, { x: -1 });
+    expect(s.selection).toBe(optionsOfKind('game').at(-1));
+    tick(s, { x: 1 });
+    expect(s.selection).toBe(FIRST_GAME);
+    tick(s, { y: 1 });
+    expect(s.selection).toBe(FIRST_GAME + GRID_COLS);
+    for (let i = 0; i < 20; i++) {
+      tick(s, { y: 1 });
+      expect(OPTIONS[s.selection].kind).toBe('game');
+    }
+  });
+  it('a local lobby ignores Start; an online room switches modes with it', () => {
+    const s = createParty(3);
+    s.lockMode = true;
+    addPlayer(s, 'a');
+    tick(s, { startPressed: true });
+    expect(OPTIONS[s.selection].kind).toBe('board');
+    s.lockMode = false;
+    tick(s, { startPressed: true });
+    expect(OPTIONS[s.selection].kind).toBe('mix');
+    tick(s, { startPressed: true });
+    expect(OPTIONS[s.selection].kind).toBe('game');
+    tick(s, { startPressed: true });
+    expect(OPTIONS[s.selection].kind).toBe('board');
+  });
+});

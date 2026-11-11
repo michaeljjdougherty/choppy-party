@@ -1,5 +1,5 @@
 import { GAMES, getGame } from '../shared/games';
-import { MAX_PLAYERS, OPTIONS, ROUND_OPTIONS, selectionLabel, standings, type PartyState } from '../shared/party';
+import { GRID_COLS, MAX_PLAYERS, OPTIONS, ROUND_OPTIONS, optionsOfKind, selectionLabel, standings, type PartyOption, type PartyState } from '../shared/party';
 import { getBoard, recommendedBoard } from '../shared/board/boards';
 import { crownIcon } from './boardHud';
 import { playerById, roundRect, text } from '../shared/draw';
@@ -11,6 +11,7 @@ import { A, B, X, promptKind } from './prompts';
 export interface ScreenCtx {
   status: string;
   roomCode: string | null;
+  online?: boolean;
 }
 
 function panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, a = 0.42): void {
@@ -100,9 +101,156 @@ function peopleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color: 
   ctx.restore();
 }
 
-export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: ScreenCtx): void {
-  text(ctx, 'Choppy Party', 640, 74, 84, { color: '#ffd23f' });
-  text(ctx, sc.roomCode ? `Room code: ${sc.roomCode}` : sc.status, 640, 136, 28, { color: '#ffffff', weight: 700 });
+export type LobbyKind = 'boards' | 'mix' | 'free' | 'online';
+
+/** Each lobby has its own colour, title and backdrop pattern, so the modes feel like different places. */
+export const LOBBY_THEME: Record<LobbyKind, { color: string; title: string; sub: string; deco: 'dice' | 'stars' | 'tiles' | 'waves' }> = {
+  boards: { color: '#ff4d5a', title: 'Party Boards', sub: 'Roll the dice, race the board, grab Choppy Crowns', deco: 'dice' },
+  mix: { color: '#2f8cff', title: 'Minigame Mix', sub: 'Back-to-back minigames. Most points wins', deco: 'stars' },
+  free: { color: '#21c45a', title: 'Free Play', sub: 'Pick any minigame and play it right now', deco: 'tiles' },
+  online: { color: '#9a5bff', title: 'Play Online', sub: 'Friends join with the room code', deco: 'waves' },
+};
+
+export function lobbyKind(s: PartyState, online: boolean): LobbyKind {
+  if (online) return 'online';
+  const k = OPTIONS[s.selection].kind;
+  return k === 'board' ? 'boards' : k === 'mix' ? 'mix' : 'free';
+}
+
+/** Free Play's tile grid (HUD coordinates): only two rows show at a time and it scrolls with the pick. */
+export const GRID = { x: 228, y: 572, w: 824, tileH: 50, gap: 8 };
+export function gridTiles(s: PartyState): { opt: number; x: number; y: number; w: number; h: number }[] {
+  const list = optionsOfKind('game');
+  const pos = Math.max(0, list.indexOf(s.selection));
+  const rows = Math.ceil(list.length / GRID_COLS);
+  const row = Math.floor(pos / GRID_COLS);
+  const first = Math.max(0, Math.min(rows - 2, row));
+  const tw = (GRID.w - (GRID_COLS - 1) * GRID.gap) / GRID_COLS;
+  const out: { opt: number; x: number; y: number; w: number; h: number }[] = [];
+  for (let r = first; r < Math.min(rows, first + 2); r++)
+    for (let c = 0; c < GRID_COLS; c++) {
+      const i = r * GRID_COLS + c;
+      if (i >= list.length) break;
+      out.push({ opt: list[i], x: GRID.x + c * (tw + GRID.gap), y: GRID.y + (r - first) * (GRID.tileH + GRID.gap), w: tw, h: GRID.tileH });
+    }
+  return out;
+}
+
+/** Tinted bands top and bottom with the lobby's own pattern drifting through them. */
+function backdrop(ctx: CanvasRenderingContext2D, kind: LobbyKind, t: number): void {
+  const th = LOBBY_THEME[kind];
+  ctx.save();
+  const top = ctx.createLinearGradient(0, 0, 0, 250);
+  top.addColorStop(0, hexA(th.color, 0.85));
+  top.addColorStop(1, hexA(th.color, 0));
+  ctx.fillStyle = top;
+  ctx.fillRect(0, 0, 1280, 250);
+  const bot = ctx.createLinearGradient(0, 520, 0, 720);
+  bot.addColorStop(0, hexA(th.color, 0));
+  bot.addColorStop(1, hexA(th.color, 0.7));
+  ctx.fillStyle = bot;
+  ctx.fillRect(0, 520, 1280, 200);
+  // the pattern, only in the top band
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 4;
+  for (let i = 0; i < 18; i++) {
+    const x = ((i * 151 + t * 22) % 1400) - 60;
+    const y = 24 + ((i * 53) % 120);
+    const sz = 14 + ((i * 7) % 10);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(t * 0.4 + i);
+    if (th.deco === 'dice') {
+      roundRect(ctx, -sz, -sz, sz * 2, sz * 2, 6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (th.deco === 'stars') {
+      ctx.beginPath();
+      for (let k = 0; k < 10; k++) {
+        const rr = k % 2 ? sz * 0.45 : sz;
+        const a = (k / 10) * Math.PI * 2;
+        ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      ctx.fill();
+    } else if (th.deco === 'tiles') {
+      ctx.fillRect(-sz, -sz * 0.6, sz * 2, sz * 1.2);
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, sz, 0, Math.PI * 2);
+      ctx.moveTo(sz * 0.5, 0);
+      ctx.arc(0, 0, sz * 0.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function hexA(hex: string, a: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+/** The Minigame Mix card: a slot-machine reel of game names and what's in the pot. */
+function mixCard(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
+  const { x, y, w, h } = PREVIEW;
+  windowFrame(ctx, PREVIEW, 76);
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#173a8a');
+  g.addColorStop(1, '#2f8cff');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  // three reels spinning through the minigames
+  const pool = GAMES.filter((q) => q.mode !== 'Duel');
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y + 50, w, h - 60);
+  ctx.clip();
+  for (let r = 0; r < 3; r++) {
+    const cx = x + w * (0.2 + r * 0.3);
+    const speed = 1.6 + r * 0.5;
+    const f = t * speed + r * 3.3;
+    for (let k = -1; k <= 2; k++) {
+      const idx = (((Math.floor(f) + k + r * 7) % pool.length) + pool.length) % pool.length;
+      const yy = y + 130 + (k - (f % 1)) * 60;
+      const q = pool[idx];
+      ctx.fillStyle = MODE_COLOR[q.mode] ?? '#9a5bff';
+      roundRect(ctx, cx - 78, yy - 22, 156, 44, 12);
+      ctx.fill();
+      text(ctx, truncate(q.name, 19), cx, yy, 14, { color: '#fff', weight: 800 });
+    }
+  }
+  ctx.restore();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(x, y + 108, w, 44);
+  ribbon(ctx, x + w / 2, y + 4, 260, 40, '#2f8cff', 'Minigame Mix', 22);
+  const count = (m: string) => GAMES.filter((q) => q.mode === m).length;
+  text(ctx, `${pool.length} minigames shuffled in, never the same twice in a row`, x + w / 2, y + h + 22, 16, { color: '#ffffff', weight: 700, outline: false });
+  const label = `${count('Free-for-all')} free-for-all  ·  ${count('Team')} team  ·  ${count('1-vs-many')} 1-vs-many`;
+  text(ctx, label, x + w / 2, y + h + 52, 15, { color: '#bfe0ff', weight: 700, outline: false });
+}
+
+export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: ScreenCtx, t = 0): void {
+  const lk = lobbyKind(s, !!sc.online);
+  const th = LOBBY_THEME[lk];
+  backdrop(ctx, lk, t);
+  ribbon(ctx, 640, 64, Math.max(360, th.title.length * 30), 70, th.color, th.title, 46);
+  if (sc.roomCode) {
+    // the room code is the star of the online lobby
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, 1010, 22, 250, 84, 18);
+    ctx.fill();
+    ctx.strokeStyle = th.color;
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    text(ctx, 'ROOM CODE', 1135, 42, 15, { color: '#6b4bb8', weight: 800, outline: false });
+    text(ctx, sc.roomCode, 1135, 78, 46, { color: '#2a1b5e', outline: false });
+  }
+  text(ctx, lk === 'online' && !sc.roomCode ? sc.status : th.sub, 640, 128, 22, { color: '#ffffff', weight: 700 });
   const k = promptKind();
   if (s.players.length === 0) {
     text(ctx, k === 'mouse' ? 'Click Join, or press A on a controller' : `Press ${A()} to join!`, 640, 360, 40, { color: '#fff' });
@@ -110,33 +258,126 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
   } else {
     const bots = s.players.filter((p) => p.bot).length;
     const keysHint = k === 'pad' ? `${A()}: join  ·  ${B()}: leave  ·  X: character  ·  Y: colour` : k === 'mouse' ? 'Click ☺ for a new character, the paint drop for a new colour' : `C: character  ·  V: colour  ·  1/2/3: add CPU  ·  0: remove  ·  Tab: 2nd keyboard`;
-    text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? ` (${bots} CPU)` : ''}   ·   ${keysHint}`, 640, 172, 20, {
+    text(ctx, `${s.players.length}/${MAX_PLAYERS} players${bots ? ` (${bots} CPU)` : ''}   ·   ${keysHint}`, 640, 166, 20, {
       color: '#ffe9f6',
       weight: 600,
     });
   }
 
-  panel(ctx, 220, 556, 840, 130);
-  text(ctx, selectionLabel(s), 640, 598, 36, { color: '#fff' });
   const o = OPTIONS[s.selection];
-  let sub: string;
+  const hostHint = (pick: string) =>
+    s.players.length ? (k === 'mouse' ? `Host: ${pick.replace('{keys}', 'click')}, then START` : `Host: ${pick.replace('{keys}', k === 'pad' ? 'stick' : 'arrows')}, ${A()} to start`) : '';
+  if (lk === 'online') {
+    // mode tabs: the room can play any mode, Start switches between them
+    const tabs: [PartyOption['kind'], string][] = [['board', 'Boards'], ['mix', 'Mix'], ['game', 'Free Play']];
+    tabs.forEach(([kind, label], i) => {
+      const on = o.kind === kind;
+      const ty = 80 + i * 46;
+      ctx.fillStyle = on ? '#ffffff' : 'rgba(20,10,50,0.5)';
+      roundRect(ctx, 16, ty, 150, 40, 14);
+      ctx.fill();
+      text(ctx, (on ? '▸ ' : '') + label, 91, ty + 21, 18, { color: on ? '#6b2bd9' : '#ffffff', weight: 800, outline: false });
+    });
+    if (k !== 'mouse') text(ctx, k === 'pad' ? 'Start: switch mode' : 'P: switch mode', 91, 276, 15, { color: '#ffe14d', weight: 700 });
+  }
   if (o.kind === 'board') {
     boardCard(ctx, s, o.id);
+    panel(ctx, 220, 556, 840, 130);
+    text(ctx, selectionLabel(s), 640, 598, 36, { color: '#fff' });
     const b = getBoard(o.id);
     const best = s.players.length > 0 && recommendedBoard(s.players.length).id === b.id;
-    sub = `Best for ${b.players[0]}-${b.players[1]}${b.players[1] >= 10 ? '+' : ''} players${best ? '  ★ Recommended for your group' : ''}  ·  Up/Down: turns`;
+    const sub = `Best for ${b.players[0]}-${b.players[1]}${b.players[1] >= 10 ? '+' : ''} players${best ? '  ★ Recommended for your group' : ''}`;
+    text(ctx, truncate(sub, 92), 640, 634, 17, { color: '#ffe0e2', weight: 500, outline: false });
+    // one pip per board
+    const boards = optionsOfKind('board');
+    boards.forEach((bi, i) => {
+      ctx.fillStyle = bi === s.selection ? '#ffe14d' : 'rgba(255,255,255,0.4)';
+      ctx.beginPath();
+      ctx.arc(640 + (i - (boards.length - 1) / 2) * 22, 566, bi === s.selection ? 6 : 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    text(ctx, hostHint('{keys} left/right for a board, up/down for turns'), 640, 664, 17, { color: '#ffd23f', weight: 700, outline: false });
   } else if (o.kind === 'mix') {
-    sub = `Up/Down: ${ROUND_OPTIONS.join(' / ')} rounds  ·  ${GAMES.length} games in the mix`;
+    mixCard(ctx, s, t);
+    panel(ctx, 220, 556, 840, 130);
+    text(ctx, 'HOW MANY ROUNDS?', 640, 576, 18, { color: '#bfe0ff', weight: 800, outline: false });
+    ROUND_OPTIONS.forEach((n, i) => {
+      const on = i === s.roundsIdx;
+      const cx = 640 + (i - 1) * 150;
+      const sz = on ? 1.12 + Math.sin(t * 6) * 0.03 : 1;
+      ctx.save();
+      ctx.translate(cx, 620);
+      ctx.scale(sz, sz);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      roundRect(ctx, -58 + 3, -26 + 6, 116, 52, 16);
+      ctx.fill();
+      ctx.fillStyle = on ? '#2f8cff' : 'rgba(255,255,255,0.18)';
+      roundRect(ctx, -58, -26, 116, 52, 16);
+      ctx.fill();
+      ctx.lineWidth = on ? 5 : 2;
+      ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.5)';
+      ctx.stroke();
+      ctx.restore();
+      text(ctx, `${n}`, cx - 22, 620, 30, { color: '#fff' });
+      text(ctx, 'rounds', cx + 26, 622, 14, { color: '#fff', weight: 800, outline: false });
+    });
+    text(ctx, hostHint('{keys} to pick the rounds'), 640, 670, 17, { color: '#ffd23f', weight: 700, outline: false });
   } else {
-    const g = getGame(o.id);
     gameCard(ctx, s, o.id);
-    sub = `${g.mode}  ·  ${g.blurb}`;
+    freeGrid(ctx, s, t);
+    text(ctx, hostHint('{keys} to pick a game'), 640, 706, 15, { color: '#ffd23f', weight: 700 });
   }
-  text(ctx, truncate(sub, 92), 640, 636, 17, { color: '#e8ddff', weight: 500, outline: false });
-  if (s.players.length) {
-    const hint = k === 'mouse' ? 'Host: click the arrows to choose, then START' : k === 'pad' ? 'Host: Left/Right to choose, A to start' : `Host: A/D or Left/Right to choose, ${A()} to start`;
-    text(ctx, hint, 640, 664, 17, { color: '#ffd23f', weight: 700, outline: false });
+}
+
+/** Free Play: every minigame as a coloured tile. Two rows show; it scrolls as you move. */
+function freeGrid(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
+  panel(ctx, GRID.x - 10, GRID.y - 14, GRID.w + 20, 2 * GRID.tileH + GRID.gap + 26, 0.5);
+  const list = optionsOfKind('game');
+  const rows = Math.ceil(list.length / GRID_COLS);
+  const pos = list.indexOf(s.selection);
+  for (const tile of gridTiles(s)) {
+    const o = OPTIONS[tile.opt];
+    if (o.kind !== 'game') continue;
+    const g = getGame(o.id);
+    const on = tile.opt === s.selection;
+    const col = MODE_COLOR[g.mode] ?? '#9a5bff';
+    ctx.save();
+    if (on) {
+      const b = 1.06 + Math.sin(t * 7) * 0.02;
+      ctx.translate(tile.x + tile.w / 2, tile.y + tile.h / 2);
+      ctx.scale(b, b);
+      ctx.translate(-(tile.x + tile.w / 2), -(tile.y + tile.h / 2));
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    roundRect(ctx, tile.x + 2, tile.y + 5, tile.w, tile.h, 12);
+    ctx.fill();
+    const gr = ctx.createLinearGradient(0, tile.y, 0, tile.y + tile.h);
+    gr.addColorStop(0, shadeHex(col, 0.22));
+    gr.addColorStop(1, col);
+    ctx.fillStyle = gr;
+    roundRect(ctx, tile.x, tile.y, tile.w, tile.h, 12);
+    ctx.fill();
+    ctx.lineWidth = on ? 5 : 2;
+    ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.7)';
+    ctx.stroke();
+    ctx.restore();
+    text(ctx, truncate(g.name, 18), tile.x + tile.w / 2, tile.y + tile.h / 2 + 1, 14, { color: '#fff', weight: 800 });
   }
+  // scroll pips down the side
+  const row = Math.floor(Math.max(0, pos) / GRID_COLS);
+  for (let r = 0; r < rows; r++) {
+    ctx.fillStyle = r === row ? '#ffe14d' : 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.arc(GRID.x - 30, GRID.y + 6 + (r * (2 * GRID.tileH)) / Math.max(1, rows - 1), r === row ? 5 : 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  text(ctx, `${pos + 1}/${list.length}`, GRID.x - 76, GRID.y + GRID.tileH + 2, 15, { color: '#fff', weight: 800 });
+}
+
+function shadeHex(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (v: number) => Math.max(0, Math.min(255, v + 255 * amt)) | 0;
+  return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
 const MODE_COLOR: Record<string, string> = { 'Free-for-all': '#ff8a1f', Team: '#3fa9f5', '1-vs-many': '#b06cff', Duel: '#ff4d5a' };

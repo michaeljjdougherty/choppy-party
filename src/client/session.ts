@@ -37,6 +37,7 @@ export class LocalSession implements Session {
     startSelection = 0,
   ) {
     this.state.selection = startSelection;
+    this.state.lockMode = true;
   }
 
   status() {

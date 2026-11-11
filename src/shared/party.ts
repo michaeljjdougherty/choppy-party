@@ -26,6 +26,11 @@ export const OPTIONS: PartyOption[] = [
 ];
 export const FIRST_MIX = BOARDS.length;
 export const FIRST_GAME = BOARDS.length + 1;
+/** Free Play shows the minigames as a grid this many tiles wide. */
+export const GRID_COLS = 6;
+/** OPTIONS indices of one kind (boards, the mix, or minigames). */
+export const optionsOfKind = (kind: PartyOption['kind']): number[] => OPTIONS.flatMap((o, i) => (o.kind === kind ? [i] : []));
+const KIND_ORDER: PartyOption['kind'][] = ['board', 'mix', 'game'];
 /** Party points by finishing place. Ties share the better place. */
 export const PLACE_POINTS = [5, 3, 2, 1];
 
@@ -85,6 +90,8 @@ export interface PartyState {
   pause: { by: string; sel: number; cool: number; help: boolean } | null;
   /** Last "quit to main menu" from the pause menu; the quitter's screen leaves the room. */
   quit: { id: string; n: number } | null;
+  /** Local lobbies stay on the mode picked in the main menu; an online room can switch modes with Start. */
+  lockMode?: boolean;
 }
 
 export const PAUSE_OPTIONS = ['Resume', 'How to play', 'End party (back to lobby)', 'Quit to main menu'] as const;
@@ -367,21 +374,38 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
   switch (s.phase) {
     case 'lobby': {
       s.navCooldown = Math.max(0, s.navCooldown - dt);
-      const options = OPTIONS.length;
       const kind = OPTIONS[s.selection].kind;
       if (s.autoPick && kind === 'board' && s.players.length) {
         const want = OPTIONS.findIndex((o) => o.kind === 'board' && o.id === recommendedBoard(s.players.length).id);
         if (want >= 0) s.selection = want;
       }
-      if (s.navCooldown === 0 && Math.abs(hostIn.x) > 0.6) {
-        s.selection = (s.selection + (hostIn.x > 0 ? 1 : -1) + options) % options;
+      // the host only moves through the lobby's own mode: boards, the mix, or the minigames
+      const list = optionsOfKind(kind);
+      const pos = Math.max(0, list.indexOf(s.selection));
+      const dx = Math.abs(hostIn.x) > 0.6 ? Math.sign(hostIn.x) : 0;
+      const dy = Math.abs(hostIn.y) > 0.6 ? Math.sign(hostIn.y) : 0;
+      if (!s.lockMode && hostIn.startPressed) {
+        const next = KIND_ORDER[(KIND_ORDER.indexOf(kind) + 1) % KIND_ORDER.length];
+        s.selection = optionsOfKind(next)[0];
+        s.autoPick = next === 'board';
         s.navCooldown = 0.22;
-        s.autoPick = false;
-      } else if (s.navCooldown === 0 && kind !== 'game' && Math.abs(hostIn.y) > 0.6) {
-        const d = hostIn.y < 0 ? 1 : -1;
-        if (kind === 'mix') s.roundsIdx = Math.max(0, Math.min(ROUND_OPTIONS.length - 1, s.roundsIdx + d));
-        else s.turnsIdx = Math.max(0, Math.min(TURN_OPTIONS.length - 1, s.turnsIdx + d));
+      } else if (s.navCooldown === 0 && (dx || dy)) {
         s.navCooldown = 0.22;
+        if (kind === 'mix') {
+          const d = dx || -dy;
+          s.roundsIdx = Math.max(0, Math.min(ROUND_OPTIONS.length - 1, s.roundsIdx + d));
+        } else if (kind === 'board') {
+          if (dx) {
+            s.selection = list[(pos + dx + list.length) % list.length];
+            s.autoPick = false;
+          } else s.turnsIdx = Math.max(0, Math.min(TURN_OPTIONS.length - 1, s.turnsIdx - dy));
+        } else {
+          // Free Play grid: left/right steps (wrapping), up/down jumps a row
+          let np = dx ? (pos + dx + list.length) % list.length : pos + dy * GRID_COLS;
+          if (np >= list.length) np = dy > 0 && Math.floor(pos / GRID_COLS) < Math.floor((list.length - 1) / GRID_COLS) ? list.length - 1 : pos;
+          if (np < 0) np = pos;
+          s.selection = list[np];
+        }
       }
       for (const p of s.players) {
         const inp = inputs[p.id];

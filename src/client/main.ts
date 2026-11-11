@@ -2,7 +2,7 @@ import { BOARDS } from '../shared/board/boards';
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
 import { CHARACTERS, PLAYER_COLORS } from '../shared/players';
-import { FINISH_T, FIRST_GAME, PAUSE_OPTIONS, countTotal, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
+import { FINISH_T, FIRST_GAME, PAUSE_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { loadHosted } from './net';
@@ -10,9 +10,9 @@ import { netDialogOpen, openNetDialog } from './netDialog';
 
 /** ?server uses the optional Node room server instead of peer-to-peer. */
 const SERVER_MODE = new URLSearchParams(location.search).has('server');
-import { INTRO_PREVIEW, PREVIEW, drawFinal, drawIntro, drawLobby, drawResults } from './screens';
+import { INTRO_PREVIEW, PREVIEW, drawFinal, drawIntro, drawLobby, drawResults, gridTiles } from './screens';
 import { loadSamples, sfx, unlockAudio } from './sfx';
-import { kickMusic, menuMusic } from './music';
+import { music, syncMusic } from './soundtrack';
 import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
 import { bakeItemIcons } from './three/itemIcons';
@@ -29,7 +29,7 @@ import type { View } from './three/stage';
 import { setCharacters } from './three/choppy';
 import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
 import { clearGamePreview, gamePreview } from './three/views/gamePreview';
-import { attachUi, beginUi, button, endUi, pointerAt, takeStrayClick, uiSound } from './ui';
+import { attachUi, beginUi, button, clicked, endUi, pointerAt, takeStrayClick, uiSound } from './ui';
 import { Y, setPromptKind } from './prompts';
 import { closeMap, mapCam, openMap } from './mapCam';
 import { setMapLook } from './three/views/board';
@@ -122,10 +122,10 @@ if (roomParam) {
 }
 
 // in the lobby: A joins, B leaves (or goes back to the menu if you're not in)
-for (const ev of ['keydown', 'pointerdown', 'touchstart']) window.addEventListener(ev, () => (unlockAudio(), kickMusic()));
+for (const ev of ['keydown', 'pointerdown', 'touchstart']) window.addEventListener(ev, () => (unlockAudio(), music.unlock()));
 input.onAPress = (d) => {
   unlockAudio();
-  kickMusic();
+  music.unlock();
   if (!session) return;
   const s = session.view();
   if (!s || s.phase === 'lobby') session.join(d.key);
@@ -218,6 +218,12 @@ window.addEventListener('keydown', (e) => {
     if (dev) input.start(dev);
     return;
   }
+  // in an online lobby, P is Start too: it switches between boards, the mix and Free Play
+  if (session && phase === 'lobby' && e.code === 'KeyP') {
+    const dev = pauseDevice();
+    if (dev) input.start(dev);
+    return;
+  }
   if (e.key !== 'Escape') return;
   if (!session) {
     const was = menu.screen;
@@ -281,7 +287,7 @@ function frame(now: number) {
   input.poll();
   setPromptKind(input.kind, input.soloKeys);
   // menu music on the title, main menu and lobby; it fades out when the party starts
-  menuMusic(!session || session.view()?.phase === 'lobby' || !session.view(), dt);
+  syncMusic(session?.view() ?? null, dt);
   if (session && pendingJoin && session.view()?.phase === 'lobby') {
     session.join(pendingJoin);
     pendingJoin = null;
@@ -382,6 +388,9 @@ function lightness(hex: string): number {
   return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
 }
 
+let gridPick: { opt: number; until: number } | null = null;
+let gridNudgeAt = 0;
+
 function lobbyButtons(s: PartyState) {
   if (!session) return;
   if (button(ctx, '◀  Back', 16, 16, 150, 50, { color: '#6b6f86', size: 20, sound: 'none' })) {
@@ -413,13 +422,31 @@ function lobbyButtons(s: PartyState) {
   const h = hostId(s);
   if (!h || !mine.has(h)) return;
   const dev = deviceOf(h);
-  if (button(ctx, '◀', 236, 572, 64, 52, { color: '#9a5bff', size: 26 })) (input.nudge(dev, -1, 0));
-  if (button(ctx, '▶', 980, 572, 64, 52, { color: '#9a5bff', size: 26 })) (input.nudge(dev, 1, 0));
   const kind = OPTIONS[s.selection].kind;
   if (kind !== 'game') {
-    text(ctx, kind === 'mix' ? 'Rounds' : 'Turns', 160, 698, 18, { weight: 800 });
-    if (button(ctx, '+', 130, 566, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, -1));
-    if (button(ctx, '−', 130, 626, 60, 50, { color: '#2f8cff', size: 30 })) (input.nudge(dev, 0, 1));
+    if (button(ctx, '◀', 236, 572, 64, 52, { color: '#9a5bff', size: 26 })) input.nudge(dev, -1, 0);
+    if (button(ctx, '▶', 980, 572, 64, 52, { color: '#9a5bff', size: 26 })) input.nudge(dev, 1, 0);
+  }
+  if (kind === 'board') {
+    text(ctx, 'Turns', 160, 698, 18, { weight: 800 });
+    if (button(ctx, '+', 130, 566, 60, 50, { color: '#2f8cff', size: 30 })) input.nudge(dev, 0, -1);
+    if (button(ctx, '−', 130, 626, 60, 50, { color: '#2f8cff', size: 30 })) input.nudge(dev, 0, 1);
+  }
+  if (session.kind === 'online' && button(ctx, 'Switch mode ▸', 16, 220, 150, 40, { color: '#9a5bff', size: 16 })) input.start(dev);
+  // Free Play: click a tile to pick it (the stick walks there a step at a time, so it works online too)
+  if (kind === 'game') {
+    for (const tile of gridTiles(s)) if (tile.opt !== s.selection && clicked(tile.x, tile.y, tile.w, tile.h)) gridPick = { opt: tile.opt, until: performance.now() + 4000 };
+  }
+  if (gridPick) {
+    const list = optionsOfKind('game');
+    const at = list.indexOf(s.selection), want = list.indexOf(gridPick.opt);
+    if (at < 0 || want < 0 || at === want || performance.now() > gridPick.until || kind !== 'game') gridPick = null;
+    else if (s.navCooldown === 0 && performance.now() > gridNudgeAt) {
+      const dr = Math.floor(want / GRID_COLS) - Math.floor(at / GRID_COLS);
+      if (dr) input.nudge(dev, 0, Math.sign(dr));
+      else input.nudge(dev, Math.sign(want - at), 0);
+      gridNudgeAt = performance.now() + 140;
+    }
   }
   if (button(ctx, 'START!', 1080, 566, 184, 110, { color: '#21c45a', size: 34, disabled: !s.players.length })) input.tap(dev, 'a');
 }
@@ -521,10 +548,10 @@ function renderScreens(wallT: number, dt: number) {
     seenSwitches = stage.switches;
   }
 
-  const sc = { status: session.status(), roomCode: session.roomCode() };
+  const sc = { status: session.status(), roomCode: session.roomCode(), online: session.kind === 'online' };
   switch (s.phase) {
     case 'lobby':
-      drawLobby(ctx, s, sc);
+      drawLobby(ctx, s, sc, wallT);
       lobbyButtons(s);
       break;
     case 'board':

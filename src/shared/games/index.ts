@@ -32,9 +32,12 @@ import { lastSeat } from './lastSeat';
 import { zombieTag } from './zombieTag';
 import { chiliChallenge } from './chiliChallenge';
 import { moonball } from './moonball';
+import { shantyShuffle } from './shantyShuffle';
+import { sushiBelt } from './sushiBelt';
+import { movingDay } from './movingDay';
 
 /** Every playable minigame. Add new games here. */
-export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab, hotPotato, kitchenRaid, lanternHunt, hauntedMemory, snowballScramble, laserLimbo, treasureDig, cannonKing, raftRowing, burgerBuilder, colorCraze, stationRepair, paintPlaza, alienCount, lightsOut, pumpkinBowling, captureCrown, lastSeat, zombieTag, chiliChallenge, moonball];
+export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab, hotPotato, kitchenRaid, lanternHunt, hauntedMemory, snowballScramble, laserLimbo, treasureDig, cannonKing, raftRowing, burgerBuilder, colorCraze, stationRepair, paintPlaza, alienCount, lightsOut, pumpkinBowling, captureCrown, lastSeat, zombieTag, chiliChallenge, moonball, shantyShuffle, sushiBelt, movingDay];
 
 export function getGame(id: string): Minigame {
   const g = GAMES.find((x) => x.id === id);

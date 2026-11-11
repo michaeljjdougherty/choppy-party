@@ -3,7 +3,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import type { PartyState } from '../../../shared/party';
 import { COSMO_SPREAD, getBoard, unspread } from '../../../shared/board/boards';
 import { markHazards } from '../hazardMarks';
-import { currentPlayer, exits } from '../../../shared/board/engine';
+import { currentPlayer, exits, slowFace } from '../../../shared/board/engine';
 import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
 import { roundedRect } from '../../../shared/board/layout';
 import { groundAt } from '../../../shared/board/terrain';
@@ -1656,6 +1656,12 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           const pop = (b.sub === 'rolled' && (throwing || final)) ? Math.min(1, b.t / 0.45) : 1;
           sc = 1.15 + Math.sin(pop * Math.PI) * 0.55 * (1 - pop * 0.5) + (final && b.doubles ? Math.sin(t * 9) * 0.06 : 0);
           y = cp.y + 3.1;
+        } else if (me?.slowRoll && i === b.rolls.length && b.sub === 'roll') {
+          // Slow Roller: the die clicks through its faces, showing the one A will stop on
+          faceQ(slowFace(b, me), camYaw, tmpQ);
+          d.quaternion.slerp(tmpQ, Math.min(1, dt * 16));
+          y = cp.y + 3.0;
+          sc = 1.2;
         } else {
           // waiting to be rolled: lazy tumble and bob
           tumble.set(t * 1.4 + i * 2, t * 1.9 + i, t * 1.1);

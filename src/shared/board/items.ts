@@ -23,13 +23,17 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   'spike-trap': { id: 'spike-trap', name: 'Spike Trap', desc: 'Hide spikes here: the next player to land takes 10', target: false, model: 'platformer/trap-spikes', color: '#9aa3b5' },
   'knight-shield': { id: 'knight-shield', name: 'Knight Shield', desc: 'Block the next hit, steal or swap', target: false, model: 'proto/weapon-shield', color: '#3fa9f5' },
   'swap-pipe': { id: 'swap-pipe', name: 'Swap Pipe', desc: 'Swap places with a player. Your turn ends', target: true, model: 'platformer/pipe', color: '#2ecc71' },
+  'slow-roller': { id: 'slow-roller', name: 'Slow Roller', desc: 'Your dice spin in slow motion: stop them on the number you want', target: false, model: 'proto/number-3', color: '#7cf3ff' },
+  'high-roller': { id: 'high-roller', name: 'High Roller', desc: 'Your dice only show 4, 5 and 6 this turn', target: false, model: 'proto/number-6', color: '#ffd23f' },
   'sticky-cube': { id: 'sticky-cube', name: 'Sticky Cube', desc: "A player's next roll is 1 to 3", target: true, model: 'proto/figurine-cube-detailed', color: '#b06cff' },
 };
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 
-/** Shop prices in Choppy Keys: small helpers are cheap, big swings cost more. */
+/** Shop prices in Pit Coin: small helpers are cheap, big swings cost more. */
 export const SHOP_PRICE: Record<ItemId, number> = {
   'spring-boots': 5,
+  'high-roller': 4,
+  'slow-roller': 6,
   'heart-snack': 5,
   'sticky-cube': 8,
   'spike-trap': 8,

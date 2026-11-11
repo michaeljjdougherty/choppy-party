@@ -7,7 +7,7 @@ import type { Inputs, PlayerInfo, TickInput } from './types';
 import { NO_INPUT, clamp } from './types';
 import { rand, randRange, type Rng } from './rng';
 import { getBoard } from './board/boards';
-import { PROMPT_LOCK, currentPlayer, forwardDist, nearDist } from './board/engine';
+import { PROMPT_LOCK, currentPlayer, dieHigh, forwardDist, nearDist, slowFace } from './board/engine';
 import type { BoardState, ItemId } from './board/types';
 import { WISP_PRICE, TRAIN_PRICE } from './board/types';
 import { ITEM_GRID, SHOP_PRICE } from './board/items';
@@ -445,6 +445,8 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
         return pressB();
       }
     }
+    // Slow Roller: wait for the top face (sloppier bots stop it early)
+    if (me.slowRoll && sk.smart >= 0.5 && b.t < 4 && slowFace(b, me) < dieHigh(me)) return NO_INPUT;
     return press();
   }
 
@@ -541,6 +543,8 @@ function pickItem(b: BoardState, id: string, sk: Skill, r: Rng): number {
         return !me.shield;
       case 'spring-boots':
       case 'double-barrel':
+      case 'high-roller':
+      case 'slow-roller':
         return chest > 5 && chest < 99;
       case 'treasure-shovel':
         return others.some((o) => near.has(o.node) && o.keys > 0);

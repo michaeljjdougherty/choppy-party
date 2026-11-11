@@ -45,6 +45,8 @@ function finishRoll(s: BoardState, def: BoardDef, me: BoardPlayer): void {
   s.stepsLeft = s.roll;
   s.bounced = false;
   me.rollCap = 0;
+  me.rollMin = 0;
+  me.slowRoll = false;
   me.rollBonus = 0;
   me.dice = 2;
 }
@@ -312,6 +314,17 @@ function stepOrderRoll(s: BoardState, inputs: Inputs): void {
   }
 }
 
+/** Faces the current die can land on. */
+export const dieLow = (me: BoardPlayer) => Math.min(me.rollMin || 1, me.rollCap || 6);
+export const dieHigh = (me: BoardPlayer) => me.rollCap || 6;
+/** Slow Roller: faces tick by about twice a second. */
+export const SLOW_RATE = 2.2;
+/** The face a Slow Roller die shows right now (what A will stop it on). */
+export function slowFace(s: BoardState, me: BoardPlayer): number {
+  const lo = dieLow(me), n = dieHigh(me) - lo + 1;
+  return lo + ((Math.floor(s.t * SLOW_RATE) + s.rolls.length * 2) % n);
+}
+
 export function nextTurn(s: BoardState): void {
   s.turn++;
   s.cur = 0;
@@ -430,7 +443,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
           s.weather.hiddenRoll = s.night && inZone(def, me.node, 'fog');
         }
         // Sticky Cube and Root Snare: a single die that only shows 1 to 3
-        s.rolls.push(randInt(s.rng, 1, me.rollCap || 6));
+        s.rolls.push(me.slowRoll ? slowFace(s, me) : randInt(s.rng, dieLow(me), dieHigh(me)));
         if (s.rolls.length >= s.diceN) finishRoll(s, def, me);
         set(s, 'rolling');
       }
@@ -761,6 +774,14 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
     case 'spring-boots':
       me.rollBonus += 5;
       say(s, 'Spring Boots! +5 to your roll', info.color);
+      break;
+    case 'slow-roller':
+      me.slowRoll = true;
+      say(s, 'Slow Roller! Stop each die on the number you want', info.color);
+      break;
+    case 'high-roller':
+      me.rollMin = 4;
+      say(s, 'High Roller! Your dice only show 4, 5 and 6', info.color);
       break;
     case 'double-barrel':
       me.dice = 3;

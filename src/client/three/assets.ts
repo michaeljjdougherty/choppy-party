@@ -29,7 +29,7 @@ export const PROPS = [
   // prototype kit
   'proto/column', 'proto/column-rounded', 'proto/pipe', 'proto/pipe-corner', 'proto/figurine-large', 'proto/figurine-cube-detailed',
   'proto/shape-hexagon', 'proto/shape-cylinder-detailed', 'proto/indicator-round-a', 'proto/indicator-special-cross', 'proto/crate-color',
-  'proto/target-a-round', 'proto/vehicle-convertible',
+  'proto/target-a-round', 'proto/number-3', 'proto/number-6', 'proto/vehicle-convertible',
   // food kit
   'food/pancakes', 'food/plate-dinner', 'food/plate', 'food/frying-pan', 'food/cooking-spatula', 'food/bottle-ketchup', 'food/bottle-oil',
   'food/honey', 'food/whipped-cream', 'food/strawberry', 'food/mug', 'food/cup-coffee', 'food/waffle', 'food/cake', 'food/cupcake',

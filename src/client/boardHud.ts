@@ -154,7 +154,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     const which = n > 1 ? ` die ${b.rolls.length + 1} of ${n}` : '';
     promptPill(ctx, `${name}: ${A()} to roll${which}${first ? `   ·   ${B()} for items` : ''}`, 104);
     if (first) {
-      const bonus = [mine.dice > 2 && !mine.rollCap ? '3 dice!' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `snared: 1 die, max ${mine.rollCap}` : ''].filter(Boolean).join('  ');
+      const bonus = [mine.dice > 2 && !mine.rollCap ? '3 dice!' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `snared: 1 die, max ${mine.rollCap}` : '', mine.rollMin ? `High Roller: ${mine.rollMin} to 6` : '', mine.slowRoll ? `Slow Roller: ${A()} stops the die` : ''].filter(Boolean).join('  ');
       text(ctx, bonus || `Doubles pay +${DOUBLES_KEYS} Pit Coin`, 640, 146, 22, { color: '#ffd23f' });
     } else text(ctx, `${b.rolls.map((r, i) => `Die ${i + 1}: ${fog ? '?' : r}`).join('   ')}`, 640, 146, 22, { color: '#ffd23f' });
   } else if (b.sub === 'rolling') {

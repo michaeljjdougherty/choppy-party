@@ -155,7 +155,9 @@ export type ItemId =
   | 'spike-trap'
   | 'knight-shield'
   | 'swap-pipe'
-  | 'sticky-cube';
+  | 'sticky-cube'
+  | 'slow-roller'
+  | 'high-roller';
 
 export interface BoardPlayer {
   id: string;
@@ -170,6 +172,10 @@ export interface BoardPlayer {
   fresh?: number;
   /** Next roll is capped (Sticky Cube, Root Snare). 0 = no cap. */
   rollCap: number;
+  /** Next roll's lowest face (High Roller: 4). 0 = normal. */
+  rollMin?: number;
+  /** Next roll's dice tick through their faces slowly and stop on A (Slow Roller). */
+  slowRoll?: boolean;
   /** Extra steps or dice for the next roll (Spring Boots, Double Barrel). */
   rollBonus: number;
   dice: number;

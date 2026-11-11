@@ -37,6 +37,7 @@ const RECORDED: Record<string, string> = {
   'mister-chunk': 'music/mister-chunk.mp3',
   'mr-chop': 'music/mr-chop.mp3',
   'duel-space': 'music/duel-space.mp3',
+  'stew-space': 'music/stew-space.mp3',
 };
 /** The composer, as the OST screen credits him. */
 export const COMPOSER = 'DJ Tuna (on the beat)';
@@ -61,6 +62,7 @@ const RECORDED_TRACKS: OstTrack[] = [
   { id: 'mister-chunk', title: "The Bully's Heavy Step", where: 'Mister Chunk' },
   { id: 'mr-chop', title: 'A Seat at the Infinite Table', where: 'Mister Chop' },
   { id: 'duel-space', title: 'Six Seconds to Draw', where: 'Duel Space' },
+  { id: 'stew-space', title: 'Clash of the Cast Iron', where: 'Stew Battle Space' },
 ];
 
 /** Generated screen songs and where they play ('title' and 'lobby' only stand in for the menu mp3). */

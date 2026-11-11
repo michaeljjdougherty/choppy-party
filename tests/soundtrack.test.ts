@@ -33,4 +33,8 @@ describe('board music', () => {
     expect(trackFor(wait)).toBe('duel-space');
     expect(trackFor(item)).toBe('board:cosmo-junction');
   });
+  it('a Stew Battle space plays its own theme until the battle starts', () => {
+    const s = { phase: 'board', board: { boardId: 'stew-court', sub: 'event', event: { kind: 'stew' } } } as unknown as PartyState;
+    expect(trackFor(s)).toBe('stew-space');
+  });
 });

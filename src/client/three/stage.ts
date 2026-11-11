@@ -2,14 +2,16 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { PlayerInfo } from '../../shared/types';
 import { VIEW_H, VIEW_W } from '../../shared/types';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { disposeTree } from './kit';
 import { shakeOffset } from './fx';
 import type { SquareBrian } from './brian';
 import { Ambience } from './ambience';
+import { Post } from './look/post';
+import { gfx, onGfx } from './look/quality';
+import { detailTree, loadDetail, tickDetail } from './look/detail';
+import { loadHdris } from './look/lighting';
+import { dressView, type Dressed } from './look/dress';
+import { tickScenery } from './look/scenery';
 
 export interface Tag {
   /** Player id, when the tag belongs to a player. */
@@ -42,40 +44,47 @@ export class Stage {
   private key = '';
   /** Counts view switches, so the HUD can play a transition wipe. */
   switches = 0;
-  private composer: EffectComposer | null = null;
-  private renderPass: RenderPass | null = null;
-  private bloom: UnrealBloomPass | null = null;
+  /** Post-processing chain (look/post.ts); its settings follow the graphics preset. */
+  readonly post: Post;
+  /** The view still needs its scenery, lighting and grade (done on its first frame, once the camera is placed). */
+  private needsDress = false;
+  private dressed: Dressed | null = null;
+  private frames = 0;
+  private insets = new WeakSet<THREE.Scene>();
+  private css = { w: VIEW_W, h: VIEW_H, dpr: 1 };
   /** Minigame arenas get drifting dust, swaying plants and a slow camera sway. */
   private ambience: Ambience | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.enabled = gfx().shadowMap > 0;
+    this.renderer.shadowMap.type = gfx().softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.92;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
-    // soft glow on bright things (coins, lanterns, highlights). Add ?lowfx to the URL to turn it off.
-    if (!new URLSearchParams(location.search).has('lowfx')) {
-      this.composer = new EffectComposer(this.renderer);
-      this.renderPass = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(VIEW_W, VIEW_H), 0.3, 0.4, 1.5);
-      this.composer.addPass(this.renderPass);
-      this.composer.addPass(this.bloom);
-      this.composer.addPass(new OutputPass());
-    }
+    // the look: graded post chain, surface textures, HDRI lighting (all scaled by the quality preset)
+    this.post = new Post(this.renderer);
+    void Promise.all([loadDetail(), loadHdris()]).then(() => (this.needsDress = !!this.view));
+    onGfx((g) => {
+      this.renderer.shadowMap.enabled = g.shadowMap > 0;
+      this.renderer.shadowMap.type = g.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+      this.post.rebuild(g);
+      this.resize(this.css.w, this.css.h, this.css.dpr);
+      void Promise.all([loadDetail(), loadHdris()]);
+      // rebuild the current view so every material and light picks the new settings up
+      this.key = '';
+    });
   }
 
   resize(cssW: number, cssH: number, dpr: number): void {
-    this.renderer.setPixelRatio(Math.min(dpr, 2));
+    this.css = { w: cssW, h: cssH, dpr };
+    const pr = Math.min(dpr, gfx().maxPixelRatio);
+    this.renderer.setPixelRatio(pr);
     this.renderer.setSize(cssW, cssH, false);
-    if (this.composer) {
-      this.composer.setPixelRatio(Math.min(dpr, 2));
-      this.composer.setSize(cssW, cssH);
-    }
+    this.post.setSize(cssW, cssH, pr);
   }
 
   /** Switch to the view for `key`, building it with `make` only when the key changes. */
@@ -94,6 +103,8 @@ export class Stage {
       }
       this.view.camera.aspect = VIEW_W / VIEW_H;
       this.view.camera.updateProjectionMatrix();
+      this.needsDress = true;
+      this.dressed = null;
       this.key = key;
       this.switches++;
     }
@@ -103,17 +114,26 @@ export class Stage {
   render(dt = 1 / 60, t = 0): void {
     if (!this.view) return;
     const cam = this.view.camera;
+    if (this.needsDress) {
+      this.needsDress = false;
+      try {
+        this.dressed = dressView(this.key, this.view.scene, cam, this.renderer);
+        this.post.setLook(this.dressed.grade);
+      } catch (e) {
+        console.warn('Could not dress', this.key, e);
+      }
+      detailTree(this.view.scene);
+    } else if (++this.frames % 45 === 0) detailTree(this.view.scene); // things spawned mid-game
+    tickDetail(t);
+    tickScenery(t);
+    if (this.dressed) for (const l of this.dressed.lives) l.update(t, dt);
     const off = shakeOffset(dt, t);
     cam.position.add(off);
     if (this.ambience) {
       this.ambience.update(dt, t);
       this.ambience.swayCamera(cam, t);
     }
-    if (this.composer && this.renderPass) {
-      this.renderPass.scene = this.view.scene;
-      this.renderPass.camera = cam;
-      this.composer.render(dt);
-    } else this.renderer.render(this.view.scene, cam);
+    if (!this.post.frame(this.view.scene, cam, dt, t)) this.renderer.render(this.view.scene, cam);
     if (this.ambience) this.ambience.unswayCamera(cam);
     cam.position.sub(off);
   }
@@ -129,6 +149,11 @@ export class Stage {
     const vx = x * k, vy = (VIEW_H - y - h) * k, vw = w * k, vh = h * k;
     view.camera.aspect = w / h;
     view.camera.updateProjectionMatrix();
+    // previews get the surface detail too (no scenery: they are small and change often)
+    if (!this.insets.has(view.scene)) {
+      this.insets.add(view.scene);
+      detailTree(view.scene);
+    }
     r.setScissorTest(true);
     r.setScissor(vx, vy, vw, vh);
     r.setViewport(vx, vy, vw, vh);

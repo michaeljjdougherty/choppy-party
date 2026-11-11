@@ -2,7 +2,7 @@ import { BOARDS } from '../shared/board/boards';
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
 import { CHARACTERS, DEFAULT_NAMES, PLAYER_COLORS } from '../shared/players';
-import { FINISH_T, FIRST_GAME, PAUSE_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
+import { addBot, FINISH_T, FIRST_GAME, PAUSE_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { loadHosted } from './net';
@@ -912,6 +912,13 @@ Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px '
   addBots(n: number) {
     const st = (session as any)?.state;
     for (let i = 0; i < n && st; i++) addPlayer(st, `bot${i}`);
+  },
+  /** Test helper: open a local lobby on option `sel` with `n` CPUs and start it. */
+  play(sel: number, n = 4, level: BotLevel = 'normal') {
+    enter(new LocalSession(input, sel));
+    const st = (session as any).state;
+    for (let i = 0; i < n; i++) addBot(st, level);
+    startParty(st);
   },
   /** Test helper: start whatever is selected in a local lobby. */
   start() {

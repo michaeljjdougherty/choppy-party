@@ -62,6 +62,8 @@ export class ChoppyModel {
   private spawn = { y: 3.2, vy: 0, done: false };
 
   constructor(color: string, scale = 1) {
+    // players keep their clean look (no surface texture from look/detail.ts)
+    this.group.userData.noDetail = true;
     const slot = COLOR_CHAR.get(color) ?? Math.max(0, PLAYER_COLORS.indexOf(color));
     const c = CHARACTERS[slot] ?? CHARACTERS[0];
     if (c.folk) {

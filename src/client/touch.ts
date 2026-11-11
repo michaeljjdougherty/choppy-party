@@ -38,6 +38,24 @@ const CSS = `
   background: rgba(20,12,40,0.7); padding: 6px 12px; border-radius: 12px; white-space: nowrap; pointer-events: none; }
 `;
 
+/** Which on-screen controls a screen needs. */
+export interface TouchNeed {
+  stick: boolean;
+  a: boolean;
+  b: boolean;
+  x: boolean;
+  y: boolean;
+}
+
+/** The controls a minigame's control line mentions ("Stick: move   A: jump" needs the stick and A). */
+export function needsFromControls(line: string): TouchNeed {
+  const has = (b: string) => new RegExp(`(^|[\\s(/])${b}(?=$|[\\s:/,)!])`).test(line);
+  const n = { stick: /\bStick\b/i.test(line), a: has('A'), b: has('B'), x: has('X'), y: has('Y') };
+  // a line we can't read: show everything rather than leave a player without a button
+  if (!n.stick && !n.a && !n.b && !n.x && !n.y) return { stick: true, a: true, b: true, x: true, y: true };
+  return n;
+}
+
 interface Ctl {
   el: HTMLElement;
   btn: 'a' | 'b' | 'x' | 'y' | 'start';
@@ -53,6 +71,9 @@ export class TouchControls {
   private stickId: number | null = null;
   private shown = false;
   layout: TouchLayout = 'landscape';
+  /** Which controls the current screen uses; the rest are hidden. */
+  private need: TouchNeed = { stick: true, a: true, b: true, x: true, y: true };
+  private lastPlace: Parameters<TouchControls['place']> | null = null;
 
   constructor(private input: InputManager) {
     const style = document.createElement('style');
@@ -94,6 +115,17 @@ export class TouchControls {
     if (!want) this.release();
   }
 
+  /** Show only the controls this screen or minigame uses (the pause button always stays). */
+  setNeeds(n: TouchNeed): void {
+    const k = (o: TouchNeed) => `${+o.stick}${+o.a}${+o.b}${+o.x}${+o.y}`;
+    if (k(n) === k(this.need)) return;
+    this.need = { ...n };
+    this.release();
+    this.stick.style.display = n.stick ? '' : 'none';
+    for (const c of this.buttons) if (c.btn !== 'start') c.el.style.display = n[c.btn] ? '' : 'none';
+    if (this.lastPlace) this.place(...this.lastPlace);
+  }
+
   get visible(): boolean {
     return this.shown;
   }
@@ -103,6 +135,7 @@ export class TouchControls {
    * controls sit in the space under it, in landscape they float over its bottom corners.
    */
   place(vw: number, vh: number, game: { x: number; y: number; w: number; h: number }, safe: { t: number; l: number; r: number; b: number }): void {
+    this.lastPlace = [vw, vh, game, safe];
     this.layout = vh > vw ? 'portrait' : 'landscape';
     const portrait = this.layout === 'portrait';
     const below = vh - (game.y + game.h);
@@ -122,11 +155,23 @@ export class TouchControls {
     // the face buttons: a diamond, A at the bottom like a real pad
     const ring = btnD * 0.95;
     const bx = vw - safe.r - pad - ring - btnD / 2 - 4;
-    const at: Record<string, [number, number]> = { a: [bx, cy + ring], b: [bx + ring, cy], x: [bx - ring, cy], y: [bx, cy - ring] };
+    const nd = this.need;
+    const only = [nd.a, nd.b, nd.x, nd.y].filter(Boolean).length;
+    let at: Record<string, [number, number]> = { a: [bx, cy + ring], b: [bx + ring, cy], x: [bx - ring, cy], y: [bx, cy - ring] };
+    let big = 1.12, small = 1;
+    if (only === 1) {
+      // one button (mash games, quick draws): one big button where the thumb rests
+      at = { a: [bx, cy], b: [bx, cy], x: [bx, cy], y: [bx, cy] };
+      big = small = 1.7;
+    } else if (only === 2 && nd.a && nd.b && !nd.x && !nd.y) {
+      // A and B side by side, big, for alternating games (rowing, hop / duck)
+      at = { a: [bx - ring * 0.95, cy + ring * 0.3], b: [bx + ring * 0.6, cy - ring * 0.3], x: [0, 0], y: [0, 0] };
+      big = small = 1.3;
+    }
     for (const c of this.buttons) {
       if (c.btn === 'start') continue;
       const [x, y] = at[c.btn];
-      const d = c.btn === 'a' ? Math.round(btnD * 1.12) : btnD;
+      const d = Math.round(btnD * (c.btn === 'a' ? big : small));
       this.setBox(c.el, x - d / 2, y - d / 2, d, d);
       c.el.style.fontSize = `${Math.round(d * 0.42)}px`;
     }

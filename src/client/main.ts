@@ -36,7 +36,7 @@ import { attachUi, beginUi, button, clicked, endUi, pointerAt, takeStrayClick, u
 import { A, B, START, STICK, Y, localizeControls, setPromptKind } from './prompts';
 import { closeMap, mapCam, openMap } from './mapCam';
 import { setMapLook } from './three/views/board';
-import { TouchControls, isTouchDevice, safeInsets } from './touch';
+import { TouchControls, isTouchDevice, needsFromControls, safeInsets, type TouchNeed } from './touch';
 import { boardPointer, pauseHover, pausePointer, stepSeek } from './pointerNav';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -264,6 +264,25 @@ function mapLayer(s: PartyState) {
   if (button(ctx, 'Close map', 1106, 668, 106, 40, { color: '#ff8a1f', size: 16, sound: 'none' })) setMap(false);
 }
 
+/** Only the on-screen buttons this screen uses: each minigame's own controls, the board's, A to continue. */
+function touchNeeds(): TouchNeed {
+  const s = session?.view();
+  const all = { stick: true, a: true, b: true, x: true, y: true };
+  if (!s) return all;
+  if (mapCam.on) return { stick: true, a: false, b: true, x: false, y: false };
+  if (s.pause) return { stick: true, a: true, b: true, x: false, y: false };
+  const finishing = s.phase === 'results' && s.phaseT < FINISH_T;
+  if (s.phase === 'play' && s.gameId) return needsFromControls(getGame(s.gameId).controls);
+  // stick to aim at forks and walk the menus, A to roll, B for items, Y for the map
+  if (s.phase === 'board') return { stick: true, a: true, b: true, x: false, y: true };
+  if (s.phase === 'intro') {
+    const h = hostId(s);
+    return { stick: false, a: true, b: false, x: !!h && !!session?.localIds().has(h), y: false };
+  }
+  if (finishing || s.phase === 'results' || s.phase === 'final') return { stick: false, a: true, b: false, x: false, y: false };
+  return all;
+}
+
 /** The local device that pauses from the keyboard or mouse: a keyboard player if there is one. */
 function pauseDevice(): string | null {
   const ids = [...(session?.localIds() ?? [])].filter((id) => !session?.view()?.players.find((p) => p.id === id)?.bot);
@@ -374,6 +393,7 @@ function frame(now: number) {
   const ph = session?.view()?.phase;
   const wasTouch = touch.visible;
   touch.setVisible(!!session && !customize && !!ph && ph !== 'lobby');
+  if (touch.visible) touch.setNeeds(touchNeeds());
   if (touch.visible !== wasTouch && input.touchSeen) resize();
   setPromptKind(input.kind, input.soloKeys, input.padStyle, touch.visible);
   // menu music on the title, main menu and lobby; it fades out when the party starts

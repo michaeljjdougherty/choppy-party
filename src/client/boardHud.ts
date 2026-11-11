@@ -8,6 +8,7 @@ import { TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
 import { ITEMS } from '../shared/board/items';
 import { WEATHER_COLOR, forecast } from '../shared/board/weather';
 import { playerById, popText, roundRect, text } from '../shared/draw';
+import { itemIcon } from './three/itemIcons';
 
 /** Moving the highlight in a board menu (items, targets, forks) ticks like the main menu. */
 let menuWas = '';
@@ -31,94 +32,82 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   const mine = b.players[cur];
   const fog = !!b.weather?.hiddenRoll;
 
-  // top-left: board, turn and what the map is up to
-  ctx.fillStyle = 'rgba(20,12,40,0.6)';
-  roundRect(ctx, 16, 14, 330, 92, 18);
-  ctx.fill();
-  text(ctx, def.name, 32, 36, 22, { align: 'left', color: '#ffd23f' });
-  let extra = '';
-  if (def.theme === 'hollow') extra = b.night ? '  ·  Night' : '  ·  Day';
-  if (def.theme === 'cosmo') extra = `  ·  Laser in ${b.counter}`;
-  text(ctx, `Turn ${b.turn} / ${b.maxTurns}${extra}`, 32, 62, 18, { align: 'left', weight: 600 });
+  const setup = b.sub === 'tour' || b.sub === 'orderRoll' || b.sub === 'orderShow';
+  if (b.sub !== 'orderRoll' && b.sub !== 'orderShow') drawStandings(ctx, s, cur, setup);
+
+  // top right: board, turn, turn order and what the board is up to
   const late = b.maxTurns - b.turn < pr.doubleTurns;
-  const warn =
+  let event =
     def.theme === 'cosmo'
-      ? 'Meteors hit the red rings this round'
+      ? `Laser in ${b.counter}  ·  meteors on red rings`
       : def.theme === 'hollow'
         ? b.night
-          ? 'A pine falls at round end!'
-          : 'Ring the bell for night'
+          ? 'Night: a pine falls at round end'
+          : 'Day: ring the bell for night'
         : `Boulder in the ${b.hazards.boulderLane ? 'east' : 'west'} canyon`;
-  text(ctx, late ? 'Final turns: Key and Heart Spaces pay double!' : warn, 32, 88, 15, { align: 'left', weight: 600, color: late ? '#ffd23f' : '#ffb3a8' });
+  if (late) event = 'Final turns: Key and Heart pay double!';
+  const pill = (y: number, w: number) => {
+    ctx.fillStyle = 'rgba(20,12,40,0.62)';
+    ctx.beginPath();
+    ctx.moveTo(1268 - w, y - 15);
+    ctx.lineTo(1270, y - 15);
+    ctx.lineTo(1270, y + 15);
+    ctx.lineTo(1258 - w, y + 15);
+    ctx.closePath();
+    ctx.fill();
+  };
+  pill(28, 250);
+  text(ctx, def.name, 1258, 29, 20, { align: 'right', color: '#ffd23f' });
+  pill(62, 170);
+  text(ctx, `Turn  ${b.turn} / ${b.maxTurns}`, 1258, 63, 20, { align: 'right', color: '#ffffff' });
+  const order = b.order;
+  const sq = Math.min(18, 170 / Math.max(1, order.length) - 3);
+  pill(96, 130 + order.length * (sq + 3));
+  text(ctx, 'Turn Order', 1250 - order.length * (sq + 3), 97, 20, { align: 'right', color: '#ffffff' });
+  order.forEach((id, i) => {
+    const p = playerById(s.players, id);
+    const x = 1258 - (order.length - i) * (sq + 3) + 3;
+    const on = id === cur && !setup;
+    ctx.fillStyle = p?.color ?? '#888';
+    ctx.fillRect(x, 96 - sq / 2 - (on ? 3 : 0), sq, sq);
+    if (on) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x - 1, 96 - sq / 2 - 4, sq + 2, sq + 2);
+    }
+  });
+  ctx.font = '700 17px system-ui, sans-serif';
+  pill(130, ctx.measureText(event).width + 20);
+  text(ctx, event, 1258, 131, 17, { align: 'right', color: late ? '#ffd23f' : '#ffd9cf' });
 
   // weather forecast under it: each zone, what it's doing now and next round
   const zones = def.weather ?? [];
-  if (zones.length && b.sub !== 'tour' && b.sub !== 'orderRoll' && b.sub !== 'orderShow') {
+  if (zones.length && !setup) {
     const h = 30 + zones.length * 46;
-    ctx.fillStyle = 'rgba(20,12,40,0.72)';
-    roundRect(ctx, 16, 112, 330, h, 16);
+    const x0 = 1270 - 300;
+    ctx.fillStyle = 'rgba(20,12,40,0.62)';
+    roundRect(ctx, x0, 156, 290, h, 14);
     ctx.fill();
-    text(ctx, 'Weather', 32, 130, 15, { align: 'left', color: '#c9bdf5', weight: 700 });
+    text(ctx, 'Weather', x0 + 14, 174, 15, { align: 'left', color: '#c9bdf5', weight: 700 });
     zones.forEach((z, i) => {
       const f = forecast(b, z);
-      const y = 154 + i * 46;
+      const y = 198 + i * 46;
       ctx.fillStyle = WEATHER_COLOR[z.kind];
       ctx.beginPath();
-      ctx.arc(38, y, 7, 0, Math.PI * 2);
+      ctx.arc(x0 + 20, y, 7, 0, Math.PI * 2);
       ctx.fill();
       const pulse = f.warn ? 0.75 + Math.sin(t * 6) * 0.25 : 1;
       ctx.save();
       ctx.globalAlpha = pulse;
-      text(ctx, z.name, 52, y, 16, { align: 'left', color: WEATHER_COLOR[z.kind] });
+      text(ctx, z.name, x0 + 34, y, 16, { align: 'left', color: WEATHER_COLOR[z.kind] });
       ctx.restore();
-      if (f.next) text(ctx, f.next, 334, y, 13, { align: 'right', color: '#ffffff', weight: 600 });
-      text(ctx, f.now, 52, y + 20, 12, { align: 'left', color: f.warn ? '#ffd9a0' : '#d8d2ee', weight: 600 });
+      if (f.next) text(ctx, f.next, x0 + 280, y, 13, { align: 'right', color: '#ffffff', weight: 600 });
+      text(ctx, f.now, x0 + 34, y + 20, 12, { align: 'left', color: f.warn ? '#ffd9a0' : '#d8d2ee', weight: 600 });
     });
   }
 
-  // bottom: player cards in turn order: crowns, keys, HP and items
-  const n = b.order.length;
-  const w = Math.min(150, (1240 - (n - 1) * 8) / n);
-  const x0 = 640 - (n * w + (n - 1) * 8) / 2;
-  b.order.forEach((id, i) => {
-    const p = playerById(s.players, id);
-    const bp = b.players[id];
-    if (!p || !bp) return;
-    const x = x0 + i * (w + 8);
-    const on = id === cur && b.sub !== 'orderRoll' && b.sub !== 'orderShow';
-    const y = on ? 600 : 612;
-    ctx.fillStyle = on ? 'rgba(255,225,77,0.95)' : 'rgba(20,12,40,0.72)';
-    roundRect(ctx, x, y, w, 104, 16);
-    ctx.fill();
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(x + 18, y + 20, 9, 0, Math.PI * 2);
-    ctx.fill();
-    const ink = on ? '#2a1b5e' : '#ffffff';
-    text(ctx, bp.ko ? `${p.name} 💤` : p.name, x + 32, y + 20, w < 120 ? 13 : 16, { align: 'left', color: ink, outline: false });
-    crownIcon(ctx, x + 16, y + 46, 0.85);
-    popText(ctx, `crowns:${id}`, bp.crowns, x + 30, y + 47, 18, { align: 'left', color: ink, outline: false });
-    keyIcon(ctx, x + w / 2 + 6, y + 46);
-    popText(ctx, `keys:${id}`, bp.keys, x + w / 2 + 20, y + 47, 18, { align: 'left', color: ink, outline: false });
-    // HP bar
-    const bw = w - 20;
-    ctx.fillStyle = on ? 'rgba(42,27,94,0.25)' : 'rgba(255,255,255,0.15)';
-    roundRect(ctx, x + 10, y + 64, bw, 10, 5);
-    ctx.fill();
-    const f = Math.max(0, bp.hp / pr.maxHp);
-    ctx.fillStyle = f > 0.5 ? '#4cd97b' : f > 0.25 ? '#ffb020' : '#ff4d5a';
-    roundRect(ctx, x + 10, y + 64, Math.max(6, bw * f), 10, 5);
-    ctx.fill();
-    text(ctx, `${bp.hp}`, x + w - 12, y + 69, 11, { align: 'right', color: ink, outline: false, weight: 800 });
-    // items
-    bp.items.forEach((it, k) => {
-      ctx.fillStyle = ITEMS[it].color;
-      roundRect(ctx, x + 10 + k * 22, y + 80, 18, 18, 5);
-      ctx.fill();
-      text(ctx, ITEMS[it].name[0], x + 19 + k * 22, y + 89, 12, { color: '#fff', weight: 900 });
-    });
-    if (bp.shield) text(ctx, '🛡', x + w - 16, y + 89, 14, { outline: false });
-  });
+  // bottom: the item grid for whoever's turn it is
+  if (!setup && mine) drawItemGrid(ctx, s, cur);
 
   // centre callouts
   const name = me?.name ?? '';
@@ -151,21 +140,21 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   } else if (b.sub === 'orderRoll' || b.sub === 'orderShow') {
     drawOrderRoll(ctx, s, t);
   } else if (b.sub === 'turnIntro') {
-    if (b.cur === 0) text(ctx, `Turn ${b.turn}`, 640, 220, 40, { color: '#ffffff' });
-    if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Won the minigame, so they go first!', 640, 336, 26, { color: '#ffd23f' });
-    text(ctx, `${name}'s turn!`, 640, 280, 64, { color: me?.color ?? '#fff' });
+    startBanner(ctx, `${name} start turn!`, b.t);
+    if (b.cur === 0) text(ctx, `Turn ${b.turn}`, 640, 168, 30, { color: '#ffffff' });
+    if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Won the minigame, so they go first!', 640, 204, 22, { color: '#ffd23f' });
   } else if (b.sub === 'roll') {
     const first = b.rolls.length === 0;
     const canItem = first && mine.items.length > 0 && mine.usedItemTurn !== b.turn;
     const n = first ? (mine.rollCap ? 1 : mine.dice) : b.diceN;
     const which = n > 1 ? ` die ${b.rolls.length + 1} of ${n}` : '';
-    text(ctx, `${name}: ${A()} to roll${which}${canItem ? `   ·   ${B()} to use an item` : ''}`, 640, 110, 32, { color: '#ffffff' });
+    promptPill(ctx, `${name}: ${A()} to roll${which}${canItem ? `   ·   ${B()} to use an item` : ''}`, 104);
     if (first) {
       const bonus = [mine.dice > 2 && !mine.rollCap ? '3 dice!' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `snared: 1 die, max ${mine.rollCap}` : ''].filter(Boolean).join('  ');
-      text(ctx, bonus || `Doubles pay +${DOUBLES_KEYS} keys`, 640, 150, 24, { color: '#ffd23f' });
-    } else text(ctx, `${b.rolls.map((r, i) => `Die ${i + 1}: ${fog ? '?' : r}`).join('   ')}`, 640, 150, 24, { color: '#ffd23f' });
+      text(ctx, bonus || `Doubles pay +${DOUBLES_KEYS} keys`, 640, 146, 22, { color: '#ffd23f' });
+    } else text(ctx, `${b.rolls.map((r, i) => `Die ${i + 1}: ${fog ? '?' : r}`).join('   ')}`, 640, 146, 22, { color: '#ffd23f' });
   } else if (b.sub === 'rolling') {
-    text(ctx, `${name} is rolling...`, 640, 110, 32, { color: '#ffffff' });
+    promptPill(ctx, `${name} is rolling...`, 104);
   } else if (b.sub === 'rolled') {
     const final = b.rolls.length === 0 || b.rolls.length >= b.diceN;
     const big = fog ? '?' : final ? b.roll : b.rolls[b.rolls.length - 1];
@@ -192,7 +181,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
       if (b.t > 0.35) text(ctx, fog ? `${name} moves ? spaces...` : `${name} moves ${b.roll} space${b.roll === 1 ? '' : 's'}!`, 640, b.doubles && !fog ? 404 : 330, 28, { color: me?.color ?? '#fff' });
     } else if (b.t > 0.25) text(ctx, `Die ${b.rolls.length}: ${big}`, 640, 290, 26, { color: '#ffffff' });
   } else if (b.sub === 'branch') {
-    text(ctx, `Pick a path: ${STICK()} to aim, ${A()} to go`, 640, 110, 32, { color: '#ffffff' });
+    promptPill(ctx, `Pick a path: ${STICK()} to aim, ${A()} to go`, 104);
   } else if (b.sub === 'wheel' && b.event?.wheel) {
     // the sit-out wheel flicks between first and last place, slowing down
     const k = Math.floor(Math.pow(b.t, 1.6) * 6) % b.event.wheel.length;
@@ -337,3 +326,146 @@ function drawOrderRoll(ctx: CanvasRenderingContext2D, s: PartyState, t: number):
   });
 }
 
+
+const ORD = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
+
+/** Left edge: everyone ranked by crowns then keys, with their keys and an HP bar. */
+function drawStandings(ctx: CanvasRenderingContext2D, s: PartyState, cur: string, setup: boolean): void {
+  const b = s.board!;
+  const ids = [...b.order].filter((id) => b.players[id]);
+  ids.sort((x, y) => b.players[y].crowns - b.players[x].crowns || b.players[y].keys - b.players[x].keys);
+  const n = ids.length;
+  const rowH = Math.min(62, 600 / Math.max(1, n));
+  const W = 250;
+  ids.forEach((id, i) => {
+    const p = playerById(s.players, id);
+    const bp = b.players[id];
+    if (!p) return;
+    // ties share a place
+    let place = i + 1;
+    while (place > 1) {
+      const o = b.players[ids[place - 2]];
+      if (o.crowns === bp.crowns && o.keys === bp.keys) place--;
+      else break;
+    }
+    const y = 10 + i * rowH;
+    const on = id === cur && !setup;
+    // name strip: a slanted tab in the player's colour fading into dark
+    const gr = ctx.createLinearGradient(0, 0, W, 0);
+    gr.addColorStop(0, p.color);
+    gr.addColorStop(0.35, on ? 'rgba(255,225,77,0.55)' : 'rgba(20,12,40,0.7)');
+    gr.addColorStop(1, on ? 'rgba(255,225,77,0.35)' : 'rgba(20,12,40,0.55)');
+    ctx.fillStyle = gr;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W + 10, y);
+    ctx.lineTo(W, y + rowH * 0.46);
+    ctx.lineTo(0, y + rowH * 0.46);
+    ctx.closePath();
+    ctx.fill();
+    const big = rowH > 50;
+    const nameY = y + rowH * 0.23;
+    text(ctx, bp.ko ? `${p.name} 💤` : p.name, 36, nameY, big ? 17 : 14, { align: 'left', color: '#ffffff' });
+    text(ctx, `${place}${ORD(place)}`, W - 4, nameY, big ? 17 : 14, { align: 'right', color: place === 1 ? '#ffd23f' : '#ffffff' });
+    if (on) text(ctx, '▶', 14, nameY, big ? 16 : 13, { color: '#ffd23f' });
+    // second line: crowns, keys, HP
+    const ly = y + rowH * 0.7;
+    ctx.fillStyle = 'rgba(20,12,40,0.62)';
+    ctx.fillRect(0, ly - rowH * 0.2, W, rowH * 0.4);
+    crownIcon(ctx, 16, ly, 0.75);
+    popText(ctx, `crowns:${id}`, bp.crowns, 30, ly + 1, big ? 17 : 14, { align: 'left', color: '#ffd23f' });
+    keyIcon(ctx, 62, ly);
+    popText(ctx, `keys:${id}`, bp.keys, 76, ly + 1, big ? 17 : 14, { align: 'left', color: '#ffffff' });
+    const hx = 120, hw = W - hx - 8, hh = Math.min(20, rowH * 0.32);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(hx, ly - hh / 2, hw, hh);
+    const f = Math.max(0, bp.hp / b.preset.maxHp);
+    ctx.fillStyle = f > 0.5 ? '#4cd97b' : f > 0.25 ? '#ffb020' : '#ff4d5a';
+    ctx.fillRect(hx, ly - hh / 2, hw * f, hh);
+    popText(ctx, `hp:${id}`, bp.hp, hx + hw / 2, ly + 1, big ? 16 : 13, { color: '#ffffff' });
+    if (bp.shield) text(ctx, '🛡', hx + hw - 10, ly, 12, { outline: false });
+  });
+}
+
+/** Bottom centre: every item in the game, with how many the current player holds. */
+function drawItemGrid(ctx: CanvasRenderingContext2D, s: PartyState, cur: string): void {
+  const b = s.board!;
+  const mine = b.players[cur];
+  const ids = Object.keys(ITEMS) as (keyof typeof ITEMS)[];
+  const cols = 5, cell = 56, gap = 6;
+  const rows = Math.ceil(ids.length / cols);
+  const w = cols * cell + (cols - 1) * gap;
+  const x0 = 640 - w / 2;
+  const y0 = 712 - rows * cell - (rows - 1) * gap;
+  const pm = b.prompt as { kind: string; sel?: number } | null;
+  const picking = b.sub === 'prompt' && pm?.kind === 'items' ? mine.items[pm.sel ?? 0] : null;
+  text(ctx, 'Items', 640, y0 - 16, 20, { color: '#7dff6a' });
+  ids.forEach((id, k) => {
+    const x = x0 + (k % cols) * (cell + gap);
+    const y = y0 + Math.floor(k / cols) * (cell + gap);
+    const count = mine.items.filter((it) => it === id).length;
+    ctx.fillStyle = 'rgba(20,12,40,0.62)';
+    ctx.fillRect(x, y, cell, cell);
+    ctx.lineWidth = picking === id ? 4 : 2;
+    ctx.strokeStyle = picking === id ? '#ffd23f' : count ? '#7dff6a' : 'rgba(255,255,255,0.28)';
+    ctx.strokeRect(x + 1, y + 1, cell - 2, cell - 2);
+    const icon = itemIcon(id);
+    ctx.save();
+    ctx.globalAlpha = count ? 1 : 0.4;
+    if (icon) ctx.drawImage(icon, x + 3, y + 3, cell - 6, cell - 6);
+    else {
+      ctx.fillStyle = ITEMS[id].color;
+      roundRect(ctx, x + 12, y + 12, cell - 24, cell - 24, 6);
+      ctx.fill();
+    }
+    ctx.restore();
+    text(ctx, String(count), x + cell - 8, y + cell - 11, 15, { align: 'right', color: count ? '#ffffff' : 'rgba(255,255,255,0.6)' });
+  });
+}
+
+/** The big "<name> start turn!" banner that slams in at the top of each turn. */
+function startBanner(ctx: CanvasRenderingContext2D, msg: string, age: number): void {
+  const k = Math.min(1, age / 0.25);
+  const s = k < 1 ? 1.6 - 0.6 * k : 1 + Math.sin(Math.min(1, (age - 0.25) / 0.3) * Math.PI) * 0.06;
+  ctx.save();
+  ctx.translate(640, 110);
+  ctx.transform(1, 0, -0.12, 1, 0, 0);
+  ctx.scale(s, s);
+  ctx.globalAlpha = k;
+  ctx.font = `56px 'Kenney Future Narrow', system-ui, sans-serif`;
+  const label = msg.toUpperCase();
+  let size = 56;
+  while (size > 30 && ctx.measureText(label).width > 900) {
+    size -= 2;
+    ctx.font = `${size}px 'Kenney Future Narrow', system-ui, sans-serif`;
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 12;
+  ctx.strokeStyle = '#123d12';
+  ctx.strokeText(label, 0, 4);
+  ctx.lineWidth = 8;
+  ctx.strokeText(label, 0, 0);
+  const g = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
+  g.addColorStop(0, '#c8ff7a');
+  g.addColorStop(1, '#3fd94a');
+  ctx.fillStyle = g;
+  ctx.fillText(label, 0, 0);
+  ctx.restore();
+}
+
+/** A one-line instruction in a dark pill, sized to fit between the standings and the top-right panel. */
+function promptPill(ctx: CanvasRenderingContext2D, msg: string, y: number): void {
+  let size = 24;
+  ctx.font = `800 ${size}px system-ui, sans-serif`;
+  while (size > 15 && ctx.measureText(msg).width > 620) {
+    size -= 1;
+    ctx.font = `800 ${size}px system-ui, sans-serif`;
+  }
+  const w = ctx.measureText(msg).width + 40;
+  ctx.fillStyle = 'rgba(20,12,40,0.7)';
+  roundRect(ctx, 640 - w / 2, y - 22, w, 44, 22);
+  ctx.fill();
+  text(ctx, msg, 640, y, size, { color: '#ffffff', weight: 800 });
+}

@@ -14,6 +14,7 @@ import { loadSamples, sfx, unlockAudio } from './sfx';
 import { kickMusic, menuMusic } from './music';
 import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
+import { bakeItemIcons } from './three/itemIcons';
 import { MainMenu } from './menu';
 import { roundRect, text } from '../shared/draw';
 import { Stage, type Tag } from './three/stage';
@@ -503,8 +504,9 @@ function renderScreens(wallT: number, dt: number) {
       lobbyButtons(s);
       break;
     case 'board':
+      bakeItemIcons(stage.renderer);
       drawBoardHud(ctx, s, wallT);
-      hostCorner(ctx, hostLine, wallT, 'tr', 470);
+      hostCorner(ctx, hostLine, wallT, 'br', 340);
       break;
     case 'intro': {
       drawIntro(ctx, s, wallT);

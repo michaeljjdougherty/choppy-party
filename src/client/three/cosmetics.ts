@@ -1283,7 +1283,7 @@ const ACCS: AccDef[] = [
       return g;
     },
   },
-  { id: 'sword', name: 'Sword', cat: 'acc', slot: 'hand', build: () => held(kenney('proto/weapon-sword', 1.1)) },
+  { id: 'sword', name: 'Sword', cat: 'acc', slot: 'hand', build: () => held(kenney('proto/weapon-sword', 0.95)) },
   { id: 'shield', name: 'Shield', cat: 'acc', slot: 'hand', build: () => {
     // stand it up on the outside of the arm, face out
     const s = upright(kenney('proto/weapon-shield', 0.8, 'centre'));
@@ -1310,6 +1310,7 @@ const ACCS: AccDef[] = [
     const lamp = group(part(new THREE.TorusGeometry(0.07, 0.015, 6, 12), iron, [0, -0.06, 0]), part(new THREE.ConeGeometry(0.17, 0.1, 6), iron, [0, -0.16, 0]), glass, flame, cyl(0.16, 0.16, 0.04, iron, [0, -0.43, 0], [0, 0, 0], 6));
     for (let i = 0; i < 3; i++) lamp.add(cyl(0.012, 0.012, 0.22, iron, [Math.sin((i * Math.PI * 2) / 3) * 0.13, -0.3, Math.cos((i * Math.PI * 2) / 3) * 0.13], [0, 0, 0], 4));
     animate(flame, (t) => (lamp.rotation.x = Math.sin(t * 2.2) * 0.15));
+    lamp.position.y = 0.12;
     return group(lamp);
   } },
   { id: 'mug', name: 'Coffee Mug', cat: 'acc', slot: 'hand', build: () => {
@@ -1341,10 +1342,11 @@ const ACCS: AccDef[] = [
         ctx.fillStyle = '#ffffff';
         ctx.fillText('#1', s / 2, s / 2);
       }, 'foam1', 0.3, 0.3);
-      one.position.set(0, 0.16, 0.095);
+      // held pointing forward, so the "#1" goes on the side that faces up
+      one.position.set(0, 0.16, -0.095);
+      one.rotation.y = Math.PI;
       g.add(one);
-      g.rotation.y = -Math.PI / 2;
-      return group(g);
+      return held(g);
     },
   },
   {

@@ -34,11 +34,19 @@ const colors = ['#b06cff', '#ff7bd5', '#ffd23f', '#2ee6d6', '#ff9f1c', '#4cd97b'
 const labels: { name: string; x: number; y: number }[] = [];
 const models: FolkModel[] = [];
 await preloadAll(() => {});
-const items = CATALOG[cat].slice(page * per, page * per + per);
+const SHOW = [
+  ['Rik', 'crown.tux.cape'], ['Pete', 'cowboy.flannel.lantern'], ['Fucci', 'wizard.robe.wand'], ['Zach', 'propeller.hawaiian.icecream'],
+  ['KG', 'viking.knight.sword'], ['Chops', 'chef.chef.cleaver'], ['MM', 'space.spacesuit.jetpack'], ['Regs', 'party.varsity.foamfinger'],
+];
+const show = q.has('show');
+const items = show ? SHOW.map(([name, l]) => ({ id: l, name })) : CATALOG[cat].slice(page * per, page * per + per);
 items.forEach((it, i) => {
-  const spec = FOLKS[i % FOLKS.length];
+  const spec = show ? FOLKS.find((f) => f.name === it.name) ?? FOLKS[i] : FOLKS[i % FOLKS.length];
   const m = new FolkModel(spec, colors[i % colors.length], 1);
-  applyLook(m, { ...DEFAULT_LOOK, [cat]: it.id });
+  if (show) {
+    const [hat, shirt, acc] = it.id.split('.');
+    applyLook(m, { hat, shirt, acc });
+  } else applyLook(m, { ...DEFAULT_LOOK, [cat]: it.id });
   const col = i % 4, row = Math.floor(i / 4);
   m.group.position.set((col - 1.5) * 3.6, row ? -3.2 : 1.9, 0);
   m.group.rotation.y = viewAng;

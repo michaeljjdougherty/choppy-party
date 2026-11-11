@@ -1,7 +1,7 @@
 import type { Inputs, PlayerInfo, ResultRow, TickInput } from './types';
 import { NO_INPUT } from './types';
 import { GAMES, getGame } from './games';
-import { PLAYER_COLORS, DEFAULT_NAMES } from './players';
+import { CHARACTERS, PLAYER_COLORS, DEFAULT_NAMES } from './players';
 import { shuffle, type Rng } from './rng';
 import { BOARDS, getBoard, recommendedBoard } from './board/boards';
 import { awardMinigame, boardRanking, createBoard, endTour, finishEvent, stepBoard, winnerGoesFirst } from './board/engine';
@@ -192,9 +192,9 @@ export function addPlayer(s: PartyState, id: string, name?: string): PlayerInfo 
   // start on the first character and colour nobody has
   const chars = new Set(s.players.map((p) => p.char ?? p.slot));
   const colors = new Set(s.players.map((p) => p.color));
-  let char = slot;
-  while (chars.has(char)) char = (char + 1) % PLAYER_COLORS.length;
-  let ci = char;
+  let char = slot % CHARACTERS.length;
+  while (chars.has(char)) char = (char + 1) % CHARACTERS.length;
+  let ci = slot % PLAYER_COLORS.length;
   while (colors.has(PLAYER_COLORS[ci])) ci = (ci + 1) % PLAYER_COLORS.length;
   const p: PlayerInfo = {
     id,
@@ -217,14 +217,23 @@ export function addBot(s: PartyState, level: BotLevel): PlayerInfo | null {
   do id = `bot${++botCount}`;
   while (s.players.some((p) => p.id === id));
   const p = addPlayer(s, id);
-  if (p) p.bot = level;
+  if (p) {
+    p.bot = level;
+    // CPUs start as the aliens, so the crew is left for the people playing
+    const taken = new Set(s.players.filter((q) => q !== p).map((q) => q.char ?? q.slot));
+    const alien = CHARACTERS.findIndex((c, i) => !c.folk && !taken.has(i));
+    if (alien >= 0) {
+      if (p.name === DEFAULT_NAMES[p.char ?? p.slot]) p.name = DEFAULT_NAMES[alien];
+      p.char = alien;
+    }
+  }
   return p;
 }
 
 /** Lobby: switch to the next character nobody else is using (the name follows if it was the default). */
 export function cycleCharacter(s: PartyState, p: PlayerInfo): void {
   const taken = new Set(s.players.filter((q) => q !== p).map((q) => q.char ?? q.slot));
-  const n = PLAYER_COLORS.length;
+  const n = CHARACTERS.length;
   const from = p.char ?? p.slot;
   let c = from;
   do c = (c + 1) % n;

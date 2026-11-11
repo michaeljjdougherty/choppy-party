@@ -3,6 +3,7 @@ import { CHARACTERS, PLAYER_COLORS } from '../../shared/players';
 import { character } from './assets';
 import { recolor } from './recolor';
 import { mesh, toy } from './kit';
+import { FolkModel, folk } from './folks';
 
 /**
  * Which character each colour is wearing right now. Players pick their character and colour
@@ -16,6 +17,24 @@ export function setCharacters(players: { color: string; char?: number; slot: num
 /** World height of a character at scale 1 (matches the old blob mascots, so gameplay scales still fit). */
 const BASE = 2.3;
 
+/** Crew models are built at their own size; scale them so they stand as tall as the aliens. */
+let folkK = 0;
+function folkScale(): number {
+  if (folkK) return folkK;
+  const alien = CHARACTERS.find((c) => c.model);
+  let target = 2.0;
+  if (alien?.model) {
+    const g = character(alien.model).scene.clone();
+    g.scale.setScalar(BASE);
+    const h = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3()).y;
+    if (h > 0.2) target = h;
+  }
+  const probe = new FolkModel(folk('rik'), '#ffffff', 1);
+  const fh = new THREE.Box3().setFromObject(probe.group).getSize(new THREE.Vector3()).y;
+  folkK = fh > 0.2 ? (target * 1.2) / fh : 1;
+  return folkK;
+}
+
 /**
  * A playable character: an animated Kenney model plus a coloured ring at its feet so
  * every player can spot themselves. The constructor takes the player's colour (which maps to
@@ -24,7 +43,9 @@ const BASE = 2.3;
 export class ChoppyModel {
   readonly group = new THREE.Group();
   private body = new THREE.Group();
-  private mixer: THREE.AnimationMixer;
+  private mixer: THREE.AnimationMixer | null = null;
+  /** Our crew characters are built in code rather than loaded. */
+  readonly folk: FolkModel | null = null;
   private actions = new Map<string, THREE.AnimationAction>();
   private current = '';
   private dizzy = new THREE.Group();
@@ -40,16 +61,22 @@ export class ChoppyModel {
 
   constructor(color: string, scale = 1) {
     const slot = COLOR_CHAR.get(color) ?? Math.max(0, PLAYER_COLORS.indexOf(color));
-    const c = CHARACTERS[slot];
-    const { scene, animations } = character(c.model);
-    // a colour that isn't the character's own: palette-swap its signature colour
-    if (color.toLowerCase() !== c.color.toLowerCase()) recolor(scene, color, c.model);
-    scene.scale.setScalar(BASE);
-    this.body.add(scene);
+    const c = CHARACTERS[slot] ?? CHARACTERS[0];
+    if (c.folk) {
+      // one of our people: shirt in the player's colour, sized to stand as tall as the aliens
+      this.folk = new FolkModel(folk(c.folk), color, folkScale());
+      this.body.add(this.folk.group);
+    } else if (c.model) {
+      const { scene, animations } = character(c.model);
+      // a colour that isn't the character's own: palette-swap its signature colour
+      if (color.toLowerCase() !== c.color.toLowerCase()) recolor(scene, color, c.model);
+      scene.scale.setScalar(BASE);
+      this.body.add(scene);
+      this.mixer = new THREE.AnimationMixer(scene);
+      for (const clip of animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
+      this.play('idle');
+    }
     this.group.add(this.body);
-    this.mixer = new THREE.AnimationMixer(scene);
-    for (const clip of animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
-    this.play('idle');
 
     const ringMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.45, roughness: 0.4 });
     this.ring = mesh(new THREE.TorusGeometry(0.62, 0.07, 8, 32), ringMat, { cast: false });
@@ -95,7 +122,13 @@ export class ChoppyModel {
   update(dt: number, o: { speed?: number; stunned?: boolean; jump?: number; happy?: boolean; t?: number } = {}): void {
     const speed = o.speed ?? 0;
     const jump = o.jump ?? 0;
-    if (o.stunned) this.play('emote-no');
+    if (this.folk) {
+      const f = this.folk;
+      const want = o.stunned ? 'hurt' : o.happy ? 'happy' : null;
+      if (want && f.expr !== want) f.react(want, 0.4);
+      else if (want) f.react(want, 0.4);
+      f.update(dt, o.t ?? performance.now() / 1000, { speed: speed * 6, cheer: !!o.happy });
+    } else if (o.stunned) this.play('emote-no');
     else if (o.happy) this.play('emote-yes');
     else if (jump > 0.05) this.play('jump');
     else if (speed > 0.65) this.play('sprint', 0.8 + speed * 0.4);
@@ -147,7 +180,7 @@ export class ChoppyModel {
     const sq = THREE.MathUtils.clamp(this.sq, -0.4, 0.4);
     this.body.scale.set(1 - sq * 0.55, 1 + sq, 1 - sq * 0.55);
     this.body.position.y = jump + bob + drop;
-    this.mixer.update(dt);
+    this.mixer?.update(dt);
     this.dizzy.visible = !!o.stunned;
     if (o.stunned) this.dizzy.rotation.y += dt * 6;
     (this.ring.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.35 + Math.sin((o.t ?? 0) * 4) * 0.1;

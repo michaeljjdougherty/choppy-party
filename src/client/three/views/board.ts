@@ -23,6 +23,7 @@ export function setMapLook(f: typeof mapLook): void {
 import type { Tag, View } from '../stage';
 import { sandMap, sandMaterial } from '../nature';
 import { buildWeather } from '../weatherView';
+import { grassDetail, roadTexture, roadUVs } from '../surfaces';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
   key: '#2f7dff',
@@ -139,8 +140,7 @@ const hollowDecor: Dresser = (scene, def) => {
   };
   const grassA = new THREE.Color('#5d9a44'), grassB = new THREE.Color('#4f8a3c'), moss = new THREE.Color('#3e6e3a');
   const dusk = new THREE.Color('#5a4a7a'), dirt = new THREE.Color('#8a6a4a');
-  scene.add(
-    terrainMesh({
+  const valleyMesh = terrainMesh({
       w: 170, d: 150, seg: 120, cz: -10,
       height: valley,
       color: (x, z, y, slope, c) => {
@@ -149,8 +149,13 @@ const hollowDecor: Dresser = (scene, def) => {
         c.copy(Math.floor((x + z) / 3) % 2 ? grassA : grassB).lerp(moss, Math.min(1, y / 9)).lerp(dusk, far * 0.55);
         if (slope > 0.45) c.lerp(dirt, 0.6);
       },
-    }),
-  );
+    });
+  // painted grass tufts, clover and flowers over the whole valley
+  const tuft = grassDetail().clone();
+  tuft.repeat.set(170 / 4.5, 150 / 4.5);
+  tuft.needsUpdate = true;
+  (valleyMesh.material as THREE.MeshStandardMaterial).map = tuft;
+  scene.add(valleyMesh);
   // the pond under the Moon Bridge
   const pond = toonWater('#3f7fd6', 2);
   const pondMesh = mesh(new THREE.CircleGeometry(1, 40), pond.material, { cast: false, receive: true });
@@ -931,7 +936,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     }
     if (n.type === 'duel') {
       for (const side of [-1, 1]) {
-        const sw = fitProp('proto/weapon-sword', 1.1, 'y');
+        const sw = fitProp('proto/weapon-sword', 1.1, 'max');
         sw.position.set(n.x, 0.6, n.z);
         sw.rotation.z = side * 0.6;
         scene.add(sw);
@@ -971,7 +976,9 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   }
 
   // paths between spaces: planks on the ground, raised walkways with glowing rails up high
-  const pathMat = toy(PATH_COLOR[def.theme], 0.7);
+  // roads: cobbles in the village, a lit walkway on the station, a wagon trail in the gulch
+  const pathMat = new THREE.MeshStandardMaterial({ map: roadTexture(def.theme), roughness: 0.8, color: '#ffffff' });
+  void PATH_COLOR;
   const railMat = new THREE.MeshStandardMaterial({ color: RAIL_COLOR[def.theme], emissive: RAIL_COLOR[def.theme], emissiveIntensity: 0.6, roughness: 0.4 });
   const gatedPaths: { mesh: THREE.Mesh; to: string; from: string }[] = [];
   for (const n of Object.values(def.nodes)) {
@@ -984,8 +991,10 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       const mid = a3.clone().add(b3).multiplyScalar(0.5);
       // raised when it floats clear of the ground under its middle
       const raised = mid.y - gy(mid.x, mid.z) > 0.6;
-      const w = raised ? 0.95 : 0.42;
-      const p = mesh(new THREE.BoxGeometry(w, raised ? 0.16 : 0.12, len), n.gate ? pathMat.clone() : pathMat, { cast: raised, receive: true });
+      const w = raised ? 0.95 : 0.9;
+      const geo = new THREE.BoxGeometry(w, raised ? 0.16 : 0.12, len);
+      roadUVs(geo, len, w * 1.1);
+      const p = mesh(geo, n.gate ? pathMat.clone() : pathMat, { cast: raised, receive: true });
       p.position.copy(mid);
       if (!raised) p.position.y = Math.max(mid.y, gy(mid.x, mid.z) + 0.1);
       p.lookAt(b3.x, b3.y + (p.position.y - mid.y), b3.z);
@@ -1000,6 +1009,10 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       if (n.gate) gatedPaths.push({ mesh: p, from: n.id, to });
     }
   }
+
+  // scenery that can get between the camera and the action fades out of the way
+  const occluders = sceneryOccluders(scene);
+  let occT = 0;
 
   // Crown Chests: a pirate chest with a golden crown spinning over it
   const crownPool: THREE.Group[] = [];
@@ -1048,6 +1061,24 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     dice.push(g);
   }
   let wasRolls = 0;
+  // the turn-order roll: a 12-sided die per player, in that player's colour, lined up under the
+  // 2D panel (they ride on the camera so they always sit in the same spot on screen)
+  scene.add(camera);
+  const d12s = players.map((p) => {
+    const g = new THREE.Group();
+    const m = prop('misc/d12', 1);
+    const body = toy(p.color, 0.25);
+    const nums = toy('#ffffff', 0.35);
+    body.fog = nums.fog = false;
+    m.traverse((o) => {
+      const me = o as THREE.Mesh;
+      if (me.isMesh) me.material = me.name.includes('pips') || o.parent?.name.includes('pips') ? nums : body;
+    });
+    g.add(m);
+    g.visible = false;
+    camera.add(g);
+    return { id: p.id, g, shown: 0, pop: 0 };
+  });
   const yawQ = new THREE.Quaternion();
   const tiltQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.42);
   const faceQ = (n: number, yaw: number, out: THREE.Quaternion) =>
@@ -1387,6 +1418,43 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       if (b.sub !== 'rolled') wasRolls = b.sub === 'roll' || b.sub === 'rolling' ? Math.min(wasRolls, b.rolls.length) : 0;
       else wasRolls = b.rolls.length;
 
+      // turn-order dice
+      const ordering = b.sub === 'orderRoll' || b.sub === 'orderShow';
+      if (ordering) {
+        const ids = b.sub === 'orderShow' ? b.order : players.map((p) => p.id).filter((id) => b.order.includes(id));
+        const n = ids.length;
+        const size = Math.min(104, (1100 - (n - 1) * 14) / n);
+        const x0 = 640 - (n * size + (n - 1) * 14) / 2;
+        const dist = 12;
+        const halfH = dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        const px = halfH / 360; // world units per HUD pixel at that distance
+        for (const d of d12s) {
+          const i = ids.indexOf(d.id);
+          d.g.visible = i >= 0;
+          if (i < 0) continue;
+          const sx = x0 + i * (size + 14) + size / 2;
+          const sy = 260 + size / 2;
+          d.g.position.set((sx - 640) * px, (360 - sy) * px, -dist);
+          const v = b.orderRolls[d.id] ?? 0;
+          if (v && d.shown !== v) {
+            d.shown = v;
+            d.pop = 0;
+          }
+          d.pop = Math.min(1, d.pop + dt / 0.45);
+          const base = (size * 0.46 * px) / 1;
+          if (v) {
+            d12Q(v, tmpQ);
+            d.g.quaternion.slerp(tmpQ, Math.min(1, dt * 12));
+            d.g.scale.setScalar(base * (1 + Math.sin(d.pop * Math.PI) * 0.35));
+          } else {
+            d.shown = 0;
+            tumble.set(t * 6 + i, t * 7.3 + i * 2, t * 4.1);
+            d.g.quaternion.setFromEuler(tumble);
+            d.g.scale.setScalar(base * (1 + Math.sin(t * 14 + i) * 0.05));
+          }
+        }
+      } else for (const d of d12s) d.g.visible = false;
+
       // branch arrows
       arrows.forEach((a) => (a.visible = false));
       if (b.sub === 'branch' && b.branch) {
@@ -1473,6 +1541,31 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       camLook.lerp(goalLook, Math.min(1, dt * (follow + 0.8)));
       camera.position.copy(camPos);
       camera.lookAt(camLook);
+      // fade any tree, building or prop standing between the camera and what it's looking at
+      occT -= dt;
+      if (occT <= 0) {
+        occT = 0.1;
+        const hit = new Set<Occluder>();
+        const targets = [camLook.clone().setY(camLook.y + 0.6)];
+        if (!mapCam.on && !step) targets.push(cp.clone().setY(cp.y + 1.2));
+        // anything near the line from the camera to what it's looking at (a fat line, not a thin ray,
+        // so a big rock just beside the view still gets out of the way)
+        const from = camera.position;
+        for (const tgt of targets) {
+          const seg = tgt.clone().sub(from);
+          const len2 = seg.lengthSq();
+          for (const o of occluders) {
+            const k = THREE.MathUtils.clamp(o.sphere.center.clone().sub(from).dot(seg) / len2, 0, 1);
+            if (k > 0.92) continue; // behind or right at the target: fine
+            const d = o.sphere.center.distanceTo(from.clone().addScaledVector(seg, k));
+            if (d < o.sphere.radius * 0.75 + 1.4) hit.add(o);
+            // big things right in front of the lens, even if they're off to one side
+            else if (k < 0.4 && d < o.sphere.radius + 3) hit.add(o);
+          }
+        }
+        for (const o of occluders) o.want = hit.has(o) ? 0.18 : 1;
+      }
+      for (const o of occluders) fadeOccluder(o, dt);
     },
     tags(): Tag[] {
       const b = last;
@@ -1511,3 +1604,86 @@ const DIE_FACE: Record<number, THREE.Vector3> = {
   5: new THREE.Vector3(-1, 0, 0),
   6: new THREE.Vector3(0, 1, 0),
 };
+
+interface Occluder {
+  obj: THREE.Object3D;
+  sphere: OccluderSphere;
+  mats: THREE.Material[] | null;
+  opacity: number;
+  want: number;
+}
+interface OccluderSphere extends THREE.Sphere {
+  intersectsRay(r: THREE.Ray): boolean;
+}
+
+/** Everything taller than a space tile that was placed as scenery (trees, houses, rocks, space props). */
+function sceneryOccluders(scene: THREE.Scene): (Occluder & { sphere: OccluderSphere })[] {
+  const out: (Occluder & { sphere: OccluderSphere })[] = [];
+  scene.updateMatrixWorld(true);
+  for (const obj of scene.children) {
+    if ((obj as THREE.Light).isLight || (obj as THREE.InstancedMesh).isInstancedMesh) continue;
+    const box = new THREE.Box3().setFromObject(obj);
+    if (box.isEmpty()) continue;
+    const size = box.getSize(new THREE.Vector3());
+    // skip flat things (tiles, ground, water) and whole-map things (terrain, sea, sky domes)
+    if (size.y < 1.2 || Math.max(size.x, size.z) > 30) continue;
+    const sphere = box.getBoundingSphere(new THREE.Sphere()) as OccluderSphere;
+    sphere.intersectsRay = (r: THREE.Ray) => r.intersectsSphere(sphere);
+    out.push({ obj, sphere, mats: null, opacity: 1, want: 1 });
+  }
+  return out;
+}
+
+function fadeOccluder(o: Occluder, dt: number): void {
+  if (Math.abs(o.opacity - o.want) < 0.01) return;
+  o.opacity += (o.want - o.opacity) * Math.min(1, dt * 8);
+  if (Math.abs(o.opacity - o.want) < 0.01) o.opacity = o.want;
+  if (!o.mats) {
+    // own copies of the materials, so fading one tree doesn't fade every tree
+    o.mats = [];
+    o.obj.traverse((m) => {
+      const me = m as THREE.Mesh;
+      if (!me.isMesh) return;
+      const list = Array.isArray(me.material) ? me.material : [me.material];
+      const copies = list.map((x) => {
+        const c = x.clone();
+        c.userData.baseTransparent = x.transparent;
+        c.userData.baseOpacity = x.opacity;
+        o.mats!.push(c);
+        return c;
+      });
+      me.material = Array.isArray(me.material) ? copies : copies[0];
+    });
+  }
+  const solid = o.opacity > 0.99;
+  for (const m of o.mats) {
+    const tr = solid ? m.userData.baseTransparent : true;
+    if (m.transparent !== tr || m.depthWrite !== solid) {
+      m.transparent = tr;
+      m.depthWrite = solid;
+      m.needsUpdate = true;
+    }
+    m.opacity = (m.userData.baseOpacity ?? 1) * o.opacity;
+  }
+}
+
+/** Which way each number faces on the 12-sided die model. */
+const D12_FACE: Record<number, [number, number, number]> = {
+  1: [-0.2756, -0.4472, -0.8509],
+  2: [0.7241, -0.4472, -0.5251],
+  3: [0.2771, 0.4472, -0.8504],
+  4: [0.8944, 0.4472, 0.0008],
+  5: [0.7231, -0.4472, 0.5264],
+  6: [-0.8944, -0.4472, -0.0008],
+  7: [-0.2771, -0.4472, 0.8504],
+  8: [-0.7241, 0.4472, 0.5251],
+  9: [0.2756, 0.4472, 0.8509],
+  10: [-0.7231, 0.4472, -0.5264],
+  11: [0, 1, 0],
+  12: [0, -1, 0],
+};
+const d12Tilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.25);
+function d12Q(v: number, out: THREE.Quaternion): THREE.Quaternion {
+  const f = D12_FACE[v] ?? D12_FACE[1];
+  return out.setFromUnitVectors(new THREE.Vector3(f[0], f[1], f[2]), Z_AXIS).premultiply(d12Tilt);
+}

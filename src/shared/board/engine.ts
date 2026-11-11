@@ -280,7 +280,7 @@ function stepOrderRoll(s: BoardState, inputs: Inputs): void {
     const inp = inputs[id] ?? NO_INPUT;
     if ((inp.aPressed && s.t > 0.6) || s.t > AUTO_ROLL) {
       const used = new Set(Object.values(s.orderRolls));
-      const free = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter((n) => !used.has(n));
+      const free = Array.from({ length: 12 }, (_, i) => i + 1).filter((n) => !used.has(n));
       s.orderRolls[id] = free[Math.floor(rand(s.rng) * free.length)] ?? 1;
     }
   }

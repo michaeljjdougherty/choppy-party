@@ -60,11 +60,11 @@ export function crew(scene: THREE.Scene, players: PlayerInfo[], list: Mover[], f
 }
 
 /** A prop scaled so its largest footprint side (x or z) is `size` world units. */
-export function fitProp(name: string, size: number, axis: 'x' | 'y' | 'z' | 'xz' = 'xz'): THREE.Object3D {
+export function fitProp(name: string, size: number, axis: 'x' | 'y' | 'z' | 'xz' | 'max' = 'xz'): THREE.Object3D {
   const o = prop(name, 1);
   const b = new THREE.Box3().setFromObject(o);
   const d = b.getSize(new THREE.Vector3());
-  const ref = axis === 'xz' ? Math.max(d.x, d.z) : d[axis];
+  const ref = axis === 'max' ? Math.max(d.x, d.y, d.z) : axis === 'xz' ? Math.max(d.x, d.z) : d[axis];
   if (ref > 0) o.scale.setScalar(size / ref);
   return o;
 }

@@ -64,6 +64,8 @@ export const PROPS = [
   'modspace/cables',
   // board dice (Geug, CC BY 4.0, simplified)
   'misc/dice',
+  // turn-order die (CdR, CC BY 4.0)
+  'misc/d12',
 ];
 
 /** Equirectangular skies (Kenney Skyboxes), in public/sky. */
@@ -98,7 +100,7 @@ const cache = new Map<string, GLTF>();
 const loader = new GLTFLoader();
 
 export async function preloadAll(onProgress: (done: number, total: number) => void): Promise<void> {
-  const files = [...PROPS.map((p) => `${p}.glb`), ...CHARACTERS.map((c) => c.model)];
+  const files = [...PROPS.map((p) => `${p}.glb`), ...CHARACTERS.flatMap((c) => (c.model ? [c.model] : []))];
   const tl = new THREE.TextureLoader();
   const extra = SKIES.length + TEXTURES.length;
   let done = 0;

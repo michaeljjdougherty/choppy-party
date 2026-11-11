@@ -9,6 +9,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { disposeTree } from './kit';
 import { shakeOffset } from './fx';
 import type { SquareBrian } from './brian';
+import { Ambience } from './ambience';
 
 export interface Tag {
   /** Player id, when the tag belongs to a player. */
@@ -44,6 +45,8 @@ export class Stage {
   private composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
   private bloom: UnrealBloomPass | null = null;
+  /** Minigame arenas get drifting dust, swaying plants and a slow camera sway. */
+  private ambience: Ambience | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -78,8 +81,17 @@ export class Stage {
   /** Switch to the view for `key`, building it with `make` only when the key changes. */
   show(key: string, make: () => View): View {
     if (key !== this.key || !this.view) {
+      this.ambience?.dispose();
+      this.ambience = null;
       if (this.view) disposeTree(this.view.scene);
       this.view = make();
+      if (key.startsWith('game:')) {
+        try {
+          this.ambience = new Ambience(this.view.scene);
+        } catch (e) {
+          console.warn('No ambience for', key, e);
+        }
+      }
       this.view.camera.aspect = VIEW_W / VIEW_H;
       this.view.camera.updateProjectionMatrix();
       this.key = key;
@@ -93,11 +105,16 @@ export class Stage {
     const cam = this.view.camera;
     const off = shakeOffset(dt, t);
     cam.position.add(off);
+    if (this.ambience) {
+      this.ambience.update(dt, t);
+      this.ambience.swayCamera(cam, t);
+    }
     if (this.composer && this.renderPass) {
       this.renderPass.scene = this.view.scene;
       this.renderPass.camera = cam;
       this.composer.render(dt);
     } else this.renderer.render(this.view.scene, cam);
+    if (this.ambience) this.ambience.unswayCamera(cam);
     cam.position.sub(off);
   }
 

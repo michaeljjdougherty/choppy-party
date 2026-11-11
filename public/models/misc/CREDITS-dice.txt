@@ -2,3 +2,8 @@
 https://sketchfab.com/3d-models/dice-4091e2ef8de54644a5ab68a646d8d9ca
 Licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
 Changes: textures removed and recoloured, glass material replaced with plain glossy plastic.
+
+"12 sides Dodecahedron Dice" by CdR
+https://sketchfab.com/3d-models/12-sides-dodecahedron-dice-afbcd0424fa7475d8d24141c6d88c052
+Licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+Changes: recentred, scaled, numbers split from the body so they can be coloured.

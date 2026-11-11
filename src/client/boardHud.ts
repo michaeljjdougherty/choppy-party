@@ -314,7 +314,7 @@ function drawOrderRoll(ctx: CanvasRenderingContext2D, s: PartyState, t: number):
   const size = Math.min(104, (1100 - (n - 1) * 14) / n);
   const x0 = 640 - (n * size + (n - 1) * 14) / 2;
   ctx.fillStyle = 'rgba(20,12,40,0.62)';
-  roundRect(ctx, x0 - 30, 150, n * size + (n - 1) * 14 + 60, size + 190, 28);
+  roundRect(ctx, x0 - 30, 150, n * size + (n - 1) * 14 + 60, size + 210, 28);
   ctx.fill();
   text(ctx, show ? 'Turn order' : 'Roll for turn order!', 640, 190, 40, { color: '#ffd23f' });
   text(ctx, show ? 'Highest roll goes first' : `Everyone press ${A()} to roll`, 640, 230, 20, { color: '#ffffff', weight: 600 });
@@ -324,21 +324,16 @@ function drawOrderRoll(ctx: CanvasRenderingContext2D, s: PartyState, t: number):
     const x = x0 + i * (size + 14);
     const y = 260;
     const v = b.orderRolls[id];
-    const wob = v ? 0 : Math.sin(t * 14 + i) * 0.12;
+    // the 12-sided die itself is drawn in 3D over this spot; a glow behind it and the number under it
     ctx.save();
-    ctx.translate(x + size / 2, y + size / 2);
-    ctx.rotate(wob);
-    ctx.fillStyle = v ? '#fff7c2' : '#ffd23f';
-    roundRect(ctx, -size / 2, -size / 2, size, size, size * 0.2);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(x + size / 2, y + size / 2, size * 0.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = p.color;
-    ctx.lineWidth = 6;
-    ctx.stroke();
-    const face = v ? String(v) : String(1 + (Math.floor(t * 18 + i * 3) % 10));
-    text(ctx, face, 0, 2, size * 0.55, { color: v ? '#ff3b4e' : 'rgba(255,59,78,0.45)', outline: false, weight: 900 });
     ctx.restore();
-    text(ctx, p.name, x + size / 2, y + size + 22, size < 80 ? 13 : 17, { color: p.color });
-    if (show) text(ctx, ['1st', '2nd', '3rd'][i] ?? `${i + 1}th`, x + size / 2, y + size + 48, 18, { color: '#ffffff', weight: 800 });
+    if (v) text(ctx, String(v), x + size / 2, y + size + 2, size * 0.32, { color: '#ffd23f', weight: 900 });
+    text(ctx, p.name, x + size / 2, y + size + 34, size < 80 ? 13 : 17, { color: p.color });
+    if (show) text(ctx, ['1st', '2nd', '3rd'][i] ?? `${i + 1}th`, x + size / 2, y + size + 58, 18, { color: '#ffffff', weight: 800 });
   });
 }
 

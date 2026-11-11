@@ -235,7 +235,7 @@ export interface BoardState {
   order: string[];
   /** Turn order from the opening roll; the minigame winner jumps ahead of it each turn. */
   baseOrder: string[];
-  /** Opening roll per player (1 to 10, no two the same). Missing until they roll. */
+  /** Opening roll per player on the 12-sided die (no two the same). Missing until they roll. */
   orderRolls: Record<string, number>;
   /** Board tour before the first roll (null once it's over or when skipped). */
   tour: { steps: import('./tour').TourStep[]; i: number } | null;

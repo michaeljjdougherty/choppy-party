@@ -1,3 +1,4 @@
+import { BOARDS } from '../shared/board/boards';
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
 import { FINISH_T, FIRST_GAME, PAUSE_OPTIONS, countTotal, FIRST_MIX, MAX_PLAYERS, OPTIONS, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
@@ -790,6 +791,7 @@ Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px '
   menu,
   stage,
   OPTIONS,
+  BOARDS,
   /** Test helper: fill local lobby seats with idle players. */
   addBots(n: number) {
     const st = (session as any)?.state;

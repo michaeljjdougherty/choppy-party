@@ -113,6 +113,8 @@ export class InputManager {
   capture = false;
   look = { panX: 0, panY: 0, orbit: 0, tilt: 0, zoom: 0 };
   onCaptureExit: () => void = () => {};
+  /** X in map view (the map key toggle). */
+  onCaptureX: () => void = () => {};
   /** Y pressed (pad Y, keyboard V / Period): the board uses it to open the map. */
   onYPress: (d: Device) => void = () => {};
   private padHeld = new Map<string, boolean>();
@@ -356,6 +358,10 @@ export class InputManager {
         const any = pressed(BTN_A) || pressed(BTN_B) || pressed(BTN_Y);
         if (any && !this.padHeld.get(key)) this.onCaptureExit();
         this.padHeld.set(key, any);
+        // X toggles the map key
+        const xk = pressed(BTN_X);
+        if (xk && !this.padHeld.get(key + 'x')) this.onCaptureX();
+        this.padHeld.set(key + 'x', xk);
         d.raw.x = d.raw.y = 0;
         d.raw.a = d.raw.b = false;
         continue;

@@ -34,8 +34,9 @@ import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
 import { clearGamePreview, gamePreview } from './three/views/gamePreview';
 import { NameEntry } from './nameEntry';
 import { attachUi, beginUi, button, clicked, endUi, inside, pointerAt, takeStrayClick, uiSound } from './ui';
-import { A, B, START, STICK, Y, localizeControls, setPromptKind } from './prompts';
+import { A, B, START, STICK, X, Y, localizeControls, setPromptKind } from './prompts';
 import { closeMap, mapCam, openMap } from './mapCam';
+import { drawSpaceKey, mapKey } from './spaceKey';
 import { setMapLook } from './three/views/board';
 import { TouchControls, isTouchDevice, needsFromControls, safeInsets, type TouchNeed } from './touch';
 import { PAUSE_ROW_H, PAUSE_ROW_Y, boardPointer, pauseHover, pausePointer, stepSeek } from './pointerNav';
@@ -206,6 +207,7 @@ input.onYPress = () => {
   if (!mapCam.on && canMap()) setMap(true);
 };
 input.onCaptureExit = () => setMap(false);
+input.onCaptureX = () => mapKey.toggle();
 setMapLook(() => {
   const l = { ...input.look };
   input.look = { panX: 0, panY: 0, orbit: 0, tilt: 0, zoom: 0 };
@@ -214,6 +216,7 @@ setMapLook(() => {
 window.addEventListener('keydown', (e) => {
   if (names.open || settings.open || ost.open) return;
   if (e.code === 'KeyM' && !e.repeat && (e.target as HTMLElement)?.tagName !== 'INPUT') setMap(!mapCam.on);
+  if (e.code === 'KeyK' && !e.repeat && mapCam.on) mapKey.toggle();
 });
 // mouse: drag to orbit and tilt, wheel to zoom. touch: drag to orbit, pinch to zoom
 let dragAt: { x: number; y: number } | null = null;
@@ -269,13 +272,15 @@ function mapLayer(s: PartyState) {
   text(ctx, 'MAP VIEW', 640, 536, 26, { color: '#ffd23f' });
   const hint =
     input.kind === 'pad'
-      ? `Left stick: move · Right stick: turn · Bumpers: zoom · ${A()} / ${B()}: close`
+      ? `Left stick: move · Right stick: turn · Bumpers: zoom · ${X()}: key · ${B()}: close`
       : input.kind === 'touch'
         ? 'Stick: move · Drag: turn · Pinch: zoom · tap Close'
         : input.kind === 'mouse'
         ? 'Drag: turn · Wheel: zoom · WASD: move · click Close'
-        : 'WASD: move · Q/E: turn · R/F: tilt · Z/X: zoom · Space: close';
+        : 'WASD: move · Q/E: turn · R/F: tilt · Z/X: zoom · K: key · Space: close';
   text(ctx, hint, 640, 566, 15, { color: '#ffffff', weight: 600 });
+  drawSpaceKey(ctx, s);
+  if (button(ctx, mapKey.shown ? 'Hide key' : 'Show key', 990, 668, 106, 40, { color: '#8b5cf6', size: 16, sound: 'none' })) mapKey.toggle();
   if (button(ctx, 'Close map', 1106, 668, 106, 40, { color: '#ff8a1f', size: 16, sound: 'none' })) setMap(false);
 }
 

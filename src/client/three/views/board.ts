@@ -7,13 +7,13 @@ import { BOSS_INTRO, SPIN_STOP, currentPlayer, exits, slowFace } from '../../../
 import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
 import { roundedRect } from '../../../shared/board/layout';
 import { groundAt } from '../../../shared/board/terrain';
-import { ChoppyModel } from '../choppy';
+import { ChoppyModel, LOCAL } from '../choppy';
 import { Fx, shake } from '../fx';
 import { darken, makeScene, mesh, toonWater, toy } from '../kit';
 import { ramp, terrainMesh, waves } from '../terrain';
 import { place, prop, sky, texture } from '../assets';
 import { fitProp } from './crew';
-import { TILE_H, spaceGeo } from '../spaceShapes';
+import { TILE_H, spaceGeo, SIZE } from '../spaceShapes';
 import { mapCam, steerMap } from '../../mapCam';
 
 /** This frame's map-view controls; main.ts points it at the input manager. */
@@ -29,7 +29,27 @@ import { sfx } from '../../sfx';
 import { postPulse } from '../look/post';
 import { courtDecor, setCourtNames } from '../stewCourtDecor';
 
-const SPACE_COLORS: Record<SpaceType, string> = {
+/** A soft ring of light: clear in the middle (under the tile), bright at the tile's edge, fading out. */
+let glowTex: THREE.Texture | null = null;
+function glowTexture(): THREE.Texture {
+  if (glowTex) return glowTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, 'rgba(255,255,255,0)');
+  r.addColorStop(0.42, 'rgba(255,255,255,0.1)');
+  r.addColorStop(0.55, 'rgba(255,255,255,0.95)');
+  r.addColorStop(0.72, 'rgba(255,255,255,0.3)');
+  r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r;
+  g.fillRect(0, 0, 128, 128);
+  glowTex = new THREE.CanvasTexture(c);
+  glowTex.colorSpace = THREE.SRGBColorSpace;
+  return glowTex;
+}
+
+export const SPACE_COLORS: Record<SpaceType, string> = {
   key: '#2f7dff',
   heart: '#21c45a',
   thorn: '#ff3b4e',
@@ -53,7 +73,7 @@ const SPACE_COLORS: Record<SpaceType, string> = {
   camp: '#a16207',
   shop: '#0ea5a4',
 };
-const SPACE_ICON: Record<SpaceType, string> = {
+export const SPACE_ICON: Record<SpaceType, string> = {
   key: '+',
   heart: '♥',
   thorn: '−',
@@ -1047,6 +1067,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const rimMat = toy('#ffffff', 0.35);
   const capMats = new Map<SpaceType, THREE.Material>();
   const tileMats = new Map<SpaceType, THREE.Material>();
+  const glowMats = new Map<SpaceType, THREE.MeshBasicMaterial>();
+  const glowGeo = new THREE.PlaneGeometry(SIZE * 4.2, SIZE * 4.2);
   const steamSpots: THREE.Vector3[] = [];
   const postFlags = new Map<string, THREE.Mesh>();
   // every space is a little spring: it dips when someone lands on it and wobbles back
@@ -1056,8 +1078,11 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       // Gold Strikes are a gamble: a gold "?" space instead of the plain event diamond
       const gold = def.theme === 'gulch' && n.type === 'event';
       const col = gold ? '#e8a400' : SPACE_COLORS[n.type];
-      capMats.set(n.type, new THREE.MeshStandardMaterial({ map: iconTexture(gold ? '?' : SPACE_ICON[n.type], col), roughness: 0.3, metalness: gold ? 0.35 : 0 }));
+      // the face glows a little on its own so each kind reads from across the board
+      const icon = iconTexture(gold ? '?' : SPACE_ICON[n.type], col);
+      capMats.set(n.type, new THREE.MeshStandardMaterial({ map: icon, emissiveMap: icon, emissive: '#ffffff', emissiveIntensity: 0.35, roughness: 0.3, metalness: gold ? 0.35 : 0 }));
       tileMats.set(n.type, toy(darken(col, 0.15), 0.4));
+      glowMats.set(n.type, new THREE.MeshBasicMaterial({ color: col, map: glowTexture(), transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
     }
     // each kind of space has its own silhouette (coins round, lucky stars, battle shields...)
     const sg = spaceGeo(n.type);
@@ -1070,7 +1095,14 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     const cap = mesh(sg.face, capMats.get(n.type)!, { cast: false, receive: true });
     cap.position.set(n.x, n.y + TILE_H + 0.055, n.z);
     scene.add(cap);
-    springs.set(nodeId, { parts: [tile, rim, cap], base: [n.y, n.y + TILE_H + 0.045, n.y + TILE_H + 0.055], y: 0, v: 0 });
+    // an outer glow in the space's colour, spilling onto the ground around it
+    const halo = new THREE.Mesh(glowGeo, glowMats.get(n.type)!);
+    halo.rotation.x = -Math.PI / 2;
+    halo.position.set(n.x, n.y + 0.04, n.z);
+    halo.renderOrder = 2;
+    halo.userData.noDetail = true;
+    scene.add(halo);
+    springs.set(nodeId, { parts: [tile, rim, cap, halo], base: [n.y, n.y + TILE_H + 0.045, n.y + TILE_H + 0.055, n.y + 0.04], y: 0, v: 0 });
     if (def.theme === 'cosmo' && !(Math.hypot(n.x, n.z) < 6 * COSMO_SPREAD && n.y > 4)) {
       // every pad stands on a strut down to the deck
       const onDeck = (n.x / (22 * COSMO_SPREAD)) ** 2 + (n.z / (14.5 * COSMO_SPREAD)) ** 2 < 1;
@@ -1427,10 +1459,98 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     return new THREE.Vector3(n.x + Math.cos(a) * 0.75, n.y + 0.33, n.z + Math.sin(a) * 0.75);
   }
 
+  // a faint sparkly trail from your space to the nearest chest, shown on your own turn
+  const trailTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d')!;
+    const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    r.addColorStop(0, 'rgba(255,255,255,1)');
+    r.addColorStop(0.3, 'rgba(255,215,90,0.9)');
+    r.addColorStop(0.6, 'rgba(255,170,40,0.35)');
+    r.addColorStop(1, 'rgba(255,170,40,0)');
+    g.fillStyle = r;
+    g.fillRect(0, 0, 64, 64);
+    const tx = new THREE.CanvasTexture(c);
+    tx.colorSpace = THREE.SRGBColorSpace;
+    return tx;
+  })();
+  const trailMat = new THREE.SpriteMaterial({ map: trailTex, color: '#fff3b0', transparent: true, depthWrite: false, toneMapped: false });
+  const trailGroup = new THREE.Group();
+  scene.add(trailGroup);
+  let trailKey = '';
+  let trailPts: THREE.Vector3[] = [];
+  /** Shortest way along the board's open paths from a space to the nearest chest. */
+  function pathToChest(b: BoardState, from: string): string[] {
+    // the way that's open right now; failing that, any way (a gate may open later)
+    return bfsChest(b, from, (id) => exits(def, b, id)) || bfsChest(b, from, (id) => {
+      const n = def.nodes[id];
+      return [...n.next, ...(n.gate ? [...n.gate.day, ...n.gate.night] : [])];
+    }) || [];
+  }
+  function bfsChest(b: BoardState, from: string, step: (id: string) => string[]): string[] | null {
+    const prev = new Map<string, string>([[from, '']]);
+    const q = [from];
+    while (q.length) {
+      const id = q.shift()!;
+      if (id !== from && b.crowns.includes(id)) {
+        const out = [id];
+        let k = prev.get(id)!;
+        while (k) {
+          out.unshift(k);
+          k = prev.get(k)!;
+        }
+        return out;
+      }
+      for (const nx of step(id)) if (!prev.has(nx)) {
+        prev.set(nx, id);
+        q.push(nx);
+      }
+    }
+    return null;
+  }
+  function updateTrail(b: BoardState, cur: string, show: boolean, t: number): void {
+    const me = b.players[cur];
+    const key = show && me ? `${cur}:${me.node}:${b.crowns.join(',')}` : '';
+    if (key !== trailKey) {
+      trailKey = key;
+      trailPts = [];
+      if (key) {
+        const path = pathToChest(b, me.node);
+        for (let i = 0; i + 1 < path.length; i++) {
+          const a = def.nodes[path[i]], c = def.nodes[path[i + 1]];
+          const len = Math.hypot(c.x - a.x, c.z - a.z);
+          const n = Math.max(2, Math.round(len / 0.55));
+          for (let k = 0; k < n; k++) {
+            const u = k / n;
+            trailPts.push(new THREE.Vector3(a.x + (c.x - a.x) * u, a.y + (c.y - a.y) * u + TILE_H + 0.25, a.z + (c.z - a.z) * u));
+          }
+        }
+      }
+      while (trailGroup.children.length < trailPts.length) {
+        const sp = new THREE.Sprite(trailMat);
+        sp.renderOrder = 3;
+        trailGroup.add(sp);
+      }
+    }
+    trailGroup.children.forEach((o, i) => {
+      const p = trailPts[i];
+      o.visible = !!p;
+      if (!p) return;
+      // a soft pulse runs along the trail toward the chest, with a twinkle on each dot
+      const wave = 0.5 + 0.5 * Math.sin(i * 0.55 - t * 5);
+      const tw = 0.75 + 0.25 * Math.sin(t * 9 + i * 2.3);
+      o.position.set(p.x, p.y + Math.sin(t * 2 + i * 0.7) * 0.05, p.z);
+      o.scale.setScalar((0.42 + wave * 0.34) * tw);
+    });
+    trailMat.opacity = 0.9;
+  }
   return {
     scene,
     camera,
     update(s: PartyState, _ps, t, dt) {
+      let gi = 0;
+      for (const m of glowMats.values()) m.opacity = 0.75 + Math.sin(t * 2.2 + gi++ * 0.9) * 0.15;
       const b = s.board;
       if (!b) return;
       last = b;
@@ -1449,6 +1569,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       weather.update(b, t, dt);
       // sandblind players can't see the chests on their own turn
       const blind = weather.chestsHidden(b, currentPlayer(b));
+      const quiet = b.sub === 'tour' || b.sub === 'orderRoll' || b.sub === 'orderShow' || b.sub === 'done';
+      updateTrail(b, cur, !blind && !quiet && (LOCAL.has(cur) || !!(window as unknown as { __forceTrail?: boolean }).__forceTrail), t);
       if (!blind) b.crowns.forEach((nodeId, i) => {
         while (crownPool.length <= i) {
           const g = new THREE.Group();

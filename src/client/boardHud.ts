@@ -3,7 +3,7 @@ import { slam, sunburst } from './showtime';
 import { sfx } from './sfx';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
-import { currentPlayer } from '../shared/board/engine';
+import { DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, currentPlayer } from '../shared/board/engine';
 import { TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
 import { ITEMS } from '../shared/board/items';
 import { playerById, popText, roundRect, text } from '../shared/draw';
@@ -128,20 +128,41 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Won the minigame, so they go first!', 640, 336, 26, { color: '#ffd23f' });
     text(ctx, `${name}'s turn!`, 640, 280, 64, { color: me?.color ?? '#fff' });
   } else if (b.sub === 'roll') {
-    const canItem = mine.items.length > 0 && mine.usedItemTurn !== b.turn;
-    text(ctx, `${name}: ${A()} to roll${canItem ? `   ·   ${B()} to use an item` : ''}`, 640, 110, 32, { color: '#ffffff' });
-    const bonus = [mine.dice > 1 ? '2 dice' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `max ${mine.rollCap}` : ''].filter(Boolean).join('  ');
-    if (bonus) text(ctx, bonus, 640, 150, 26, { color: '#ffd23f' });
+    const first = b.rolls.length === 0;
+    const canItem = first && mine.items.length > 0 && mine.usedItemTurn !== b.turn;
+    const n = first ? (mine.rollCap ? 1 : mine.dice) : b.diceN;
+    const which = n > 1 ? ` die ${b.rolls.length + 1} of ${n}` : '';
+    text(ctx, `${name}: ${A()} to roll${which}${canItem ? `   ·   ${B()} to use an item` : ''}`, 640, 110, 32, { color: '#ffffff' });
+    if (first) {
+      const bonus = [mine.dice > 2 && !mine.rollCap ? '3 dice!' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `snared: 1 die, max ${mine.rollCap}` : ''].filter(Boolean).join('  ');
+      text(ctx, bonus || `Doubles pay +${DOUBLES_KEYS} keys`, 640, 150, 24, { color: '#ffd23f' });
+    } else text(ctx, `${b.rolls.map((r, i) => `Die ${i + 1}: ${r}`).join('   ')}`, 640, 150, 24, { color: '#ffd23f' });
   } else if (b.sub === 'rolling') {
     text(ctx, `${name} is rolling...`, 640, 110, 32, { color: '#ffffff' });
   } else if (b.sub === 'rolled') {
+    const final = b.rolls.length === 0 || b.rolls.length >= b.diceN;
+    const big = final ? b.roll : b.rolls[b.rolls.length - 1];
+    const col = b.doubles && final ? '#7cf3ff' : '#ffd23f';
     // the number slams in big, with a sunburst behind it
-    sunburst(ctx, 640, 190, 260, b.t * 3, me?.color ?? '#ffd23f', 0.45 * Math.max(0, 1 - b.t / 1.6), 16);
+    sunburst(ctx, 640, 190, final ? 260 : 180, b.t * 3, final && b.doubles ? '#7cf3ff' : me?.color ?? '#ffd23f', 0.45 * Math.max(0, 1 - b.t / 1.6), 16);
     ctx.save();
-    ctx.globalAlpha = Math.min(1, Math.max(0, (1.7 - b.t) * 3));
-    slam(ctx, String(b.roll), 640, 190, 170, b.t, '#ffd23f');
+    const hold = final ? ROLL_SHOW + (b.doubles ? DOUBLES_EXTRA : 0) : DIE_SHOW;
+    ctx.globalAlpha = Math.min(1, Math.max(0, (hold - b.t) * 3));
+    slam(ctx, String(big), 640, 190, final ? 170 : 120, b.t, col);
     ctx.restore();
-    if (b.t > 0.35) text(ctx, `${name} moves ${b.roll} space${b.roll === 1 ? '' : 's'}!`, 640, 300, 28, { color: me?.color ?? '#fff' });
+    if (final) {
+      if (b.rolls.length > 1 && b.t > 0.2) text(ctx, b.rolls.join('  +  ') + (b.roll !== b.rolls.reduce((x, y) => x + y, 0) ? '  + bonus' : ''), 640, 290, 26, { color: '#ffffff' });
+      if (b.doubles && b.t > 0.35) {
+        const p = Math.min(1, (b.t - 0.35) / 0.25);
+        ctx.save();
+        ctx.translate(640, 350);
+        ctx.rotate(-0.06);
+        ctx.scale(0.6 + p * 0.4 + Math.sin(t * 8) * 0.03, 0.6 + p * 0.4 + Math.sin(t * 8) * 0.03);
+        text(ctx, `DOUBLES!  +${DOUBLES_KEYS} keys`, 0, 0, 44, { color: '#7cf3ff' });
+        ctx.restore();
+      }
+      if (b.t > 0.35) text(ctx, `${name} moves ${b.roll} space${b.roll === 1 ? '' : 's'}!`, 640, b.doubles ? 404 : 330, 28, { color: me?.color ?? '#fff' });
+    } else if (b.t > 0.25) text(ctx, `Die ${b.rolls.length}: ${big}`, 640, 290, 26, { color: '#ffffff' });
   } else if (b.sub === 'branch') {
     text(ctx, `Pick a path: ${STICK()} to aim, ${A()} to go`, 640, 110, 32, { color: '#ffffff' });
   } else if (b.sub === 'wheel' && b.event?.wheel) {
@@ -292,3 +313,4 @@ function drawOrderRoll(ctx: CanvasRenderingContext2D, s: PartyState, t: number):
     if (show) text(ctx, ['1st', '2nd', '3rd'][i] ?? `${i + 1}th`, x + size / 2, y + size + 48, 18, { color: '#ffffff', weight: 800 });
   });
 }
+

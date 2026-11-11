@@ -62,6 +62,8 @@ export const PROPS = [
   'holiday/snow-bunker', 'holiday/snow-pile', 'holiday/snowman', 'holiday/tree-snow-a', 'holiday/tree-snow-b', 'holiday/cabin-wall', 'holiday/lantern',
   'holiday/bench', 'holiday/sled', 'furniture/kitchenBar', 'furniture/kitchenFridgeLarge', 'furniture/rugRectangle', 'furniture/table', 'furniture/chair',
   'modspace/cables',
+  // board dice (Geug, CC BY 4.0, simplified)
+  'misc/dice',
 ];
 
 /** Equirectangular skies (Kenney Skyboxes), in public/sky. */

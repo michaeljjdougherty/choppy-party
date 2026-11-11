@@ -151,3 +151,50 @@ describe('board party', () => {
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
   });
 });
+
+describe('two dice', () => {
+  const press: Inputs = { a: { ...NO_INPUT, aPressed: true } };
+  const run = (s: ReturnType<typeof createBoard>, sub: string, max = 600) => {
+    for (let i = 0; i < max && s.sub !== sub; i++) stepBoard(s, {}, DT);
+  };
+
+  it('rolls two dice one at a time, then moves the total', () => {
+    const s = createBoard('lantern-hollow', ['a'], 5, 3);
+    run(s, 'roll');
+    for (let i = 0; i < 20; i++) stepBoard(s, {}, DT);
+    stepBoard(s, press, DT);
+    expect(s.sub).toBe('rolling');
+    expect(s.rolls.length).toBe(1);
+    run(s, 'rolled');
+    run(s, 'roll'); // waits for the second press
+    expect(s.rolls.length).toBe(1);
+    for (let i = 0; i < 20; i++) stepBoard(s, {}, DT);
+    expect(s.sub).toBe('roll');
+    stepBoard(s, press, DT);
+    expect(s.rolls.length).toBe(2);
+    expect(s.rolls.every((n) => n >= 1 && n <= 6)).toBe(true);
+    expect(s.roll).toBe(s.rolls[0] + s.rolls[1]);
+    run(s, 'move');
+    expect(s.stepsLeft).toBe(s.roll);
+  });
+
+  it('doubles pay 5 bonus keys', () => {
+    let found = false;
+    for (let seed = 1; seed < 80 && !found; seed++) {
+      const s = createBoard('lantern-hollow', ['a'], 5, seed);
+      run(s, 'roll');
+      const keys = s.players.a.keys;
+      for (let k = 0; k < 2; k++) {
+        for (let i = 0; i < 20; i++) stepBoard(s, {}, DT);
+        stepBoard(s, press, DT);
+        if (k === 0) run(s, 'roll');
+      }
+      expect(s.doubles).toBe(s.rolls[0] === s.rolls[1]);
+      if (s.doubles) {
+        found = true;
+        expect(s.players.a.keys).toBe(keys + 5);
+      } else expect(s.players.a.keys).toBe(keys);
+    }
+    expect(found).toBe(true);
+  });
+});

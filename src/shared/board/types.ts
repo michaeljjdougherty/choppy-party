@@ -165,7 +165,7 @@ export interface BoardPlayer {
   shield: boolean;
   /** Turn number when this player last used an item. */
   usedItemTurn: number;
-  stats: { damageTaken: number; damageDealt: number; kos: number; spaces: number; sevens: number; wins: number };
+  stats: { damageTaken: number; damageDealt: number; kos: number; spaces: number; sevens: number; wins: number; doubles?: number };
 }
 
 export interface ClaimPost {
@@ -243,7 +243,12 @@ export interface BoardState {
   sub: BoardSub;
   t: number;
   roll: number;
+  /** Dice rolled so far this turn, one per A press. */
   rolls: number[];
+  /** How many dice this roll has (2 normally, 3 with Double Barrel, 1 when snared). */
+  diceN: number;
+  /** The dice matched: +5 keys. */
+  doubles: boolean;
   stepsLeft: number;
   hop: { from: string; to: string; t: number; back?: boolean } | null;
   /** Steps still to slide backward (airlock vents). */

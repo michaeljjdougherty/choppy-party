@@ -19,6 +19,28 @@ const BANNER = 2;
 /** The die spins this long before the number shows, then the number stays up for ROLL_SHOW. */
 export const ROLL_SPIN = 1.3;
 export const ROLL_SHOW = 1.7;
+/** How long a single die stays up before the next one can be rolled. */
+export const DIE_SHOW = 0.9;
+/** Extra beat on the total when it's doubles. */
+export const DOUBLES_EXTRA = 1.1;
+export const DOUBLES_KEYS = 5;
+
+/** Last die is down: add it up, pay out doubles, clear the one-roll boosts. */
+function finishRoll(s: BoardState, me: BoardPlayer): void {
+  const sum = s.rolls.reduce((a, b) => a + b, 0);
+  if (sum === 7) me.stats.sevens++;
+  s.doubles = s.rolls.length >= 2 && new Set(s.rolls).size < s.rolls.length;
+  if (s.doubles) {
+    me.keys += DOUBLES_KEYS;
+    me.stats.doubles = (me.stats.doubles ?? 0) + 1;
+  }
+  s.roll = Math.max(1, sum + me.rollBonus);
+  s.stepsLeft = s.roll;
+  s.bounced = false;
+  me.rollCap = 0;
+  me.rollBonus = 0;
+  me.dice = 2;
+}
 const WHEEL_TIME = 3;
 
 export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number, tour = false): BoardState {
@@ -40,6 +62,8 @@ export function createBoard(boardId: string, playerIds: string[], maxTurns: numb
     t: 0,
     roll: 0,
     rolls: [],
+    diceN: 0,
+    doubles: false,
     stepsLeft: 0,
     hop: null,
     pushBack: 0,
@@ -72,7 +96,7 @@ export function createBoard(boardId: string, playerIds: string[], maxTurns: numb
       ko: false,
       rollCap: 0,
       rollBonus: 0,
-      dice: 1,
+      dice: 2,
       shield: false,
       usedItemTurn: 0,
       stats: { damageTaken: 0, damageDealt: 0, kos: 0, spaces: 0, sevens: 0, wins: 0 },
@@ -346,6 +370,9 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
 
   switch (s.sub) {
     case 'turnIntro':
+      s.rolls = [];
+      s.diceN = 0;
+      s.doubles = false;
       if (me.ko) {
         // knocked out last time: rest at camp this turn
         if (s.t < dt * 1.5) say(s, 'Resting at the Respawn Camp', '#ffb347');
@@ -365,18 +392,11 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         break;
       }
       if ((inp.aPressed && s.t > 0.3) || s.t > AUTO_ROLL) {
-        s.rolls = [];
-        for (let i = 0; i < me.dice; i++) s.rolls.push(randInt(s.rng, 1, 10));
-        let roll = s.rolls.reduce((a, b) => a + b, 0) + me.rollBonus;
-        if (s.rolls.includes(7)) me.stats.sevens++;
-        // Sticky Cube and Root Snare: the roll is 1 to 3 no matter what
-        if (me.rollCap) roll = randInt(s.rng, 1, me.rollCap);
-        s.roll = roll;
-        s.stepsLeft = roll;
-        s.bounced = false;
-        me.rollCap = 0;
-        me.rollBonus = 0;
-        me.dice = 1;
+        // dice come out one at a time: A for the first die, A again for the next
+        if (s.rolls.length === 0) s.diceN = me.rollCap ? 1 : Math.max(1, me.dice);
+        // Sticky Cube and Root Snare: a single die that only shows 1 to 3
+        s.rolls.push(randInt(s.rng, 1, me.rollCap || 6));
+        if (s.rolls.length >= s.diceN) finishRoll(s, me);
         set(s, 'rolling');
       }
       break;
@@ -387,7 +407,10 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       break;
 
     case 'rolled':
-      if (s.t > ROLL_SHOW) set(s, 'move');
+      if (s.rolls.length > 0 && s.rolls.length < s.diceN) {
+        // one die is down; wait for the next press
+        if (s.t > DIE_SHOW) set(s, 'roll');
+      } else if (s.t > ROLL_SHOW + (s.doubles ? DOUBLES_EXTRA : 0)) set(s, 'move');
       break;
 
     case 'move': {
@@ -595,8 +618,8 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
       say(s, 'Spring Boots! +5 to your roll', info.color);
       break;
     case 'double-barrel':
-      me.dice = 2;
-      say(s, 'Double Barrel! Roll 2 dice', info.color);
+      me.dice = 3;
+      say(s, 'Double Barrel! Roll 3 dice', info.color);
       break;
     case 'heart-snack':
       heal(s, me, 20);

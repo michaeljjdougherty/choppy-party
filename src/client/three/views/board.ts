@@ -10,7 +10,7 @@ import { ChoppyModel } from '../choppy';
 import { Fx, shake } from '../fx';
 import { darken, makeScene, mesh, toonWater, toy } from '../kit';
 import { ramp, terrainMesh, waves } from '../terrain';
-import { place, sky, texture } from '../assets';
+import { place, prop, sky, texture } from '../assets';
 import { fitProp } from './crew';
 import { TILE_H, spaceGeo } from '../spaceShapes';
 import { mapCam, steerMap } from '../../mapCam';
@@ -1029,16 +1029,30 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     scene.add(a);
     arrows.push(a);
   }
-  // dice block
-  const blank = [diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?'), diceFace('?')];
-  const dice = mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), blank);
-  // spinning faces flicker through numbers; the result face goes on every side when it lands
-  const faces = new Map<string, THREE.Material>();
-  const face = (n: number) => faces.get(String(n)) ?? faces.set(String(n), diceFace(String(n))).get(String(n))!;
-  let diceShown = -1;
-  let wasSub = '';
-  dice.visible = false;
-  scene.add(dice);
+  // the dice: Geug's red die model, up to three of them in a row over the current player
+  const dieBody = toy('#d81e2c', 0.22);
+  const diePips = toy('#ffffff', 0.35);
+  const dice: THREE.Group[] = [];
+  for (let i = 0; i < 3; i++) {
+    const g = new THREE.Group();
+    const m = prop('misc/dice', 0.55);
+    m.traverse((o) => {
+      const me = o as THREE.Mesh;
+      if (me.isMesh) me.material = me.name.includes('pips') || o.parent?.name.includes('pips') ? diePips : dieBody;
+    });
+    if (!m.children.length) g.add(mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), dieBody));
+    else g.add(m);
+    g.visible = false;
+    scene.add(g);
+    dice.push(g);
+  }
+  let wasRolls = 0;
+  const yawQ = new THREE.Quaternion();
+  const tiltQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.42);
+  const faceQ = (n: number, yaw: number, out: THREE.Quaternion) =>
+    out.setFromUnitVectors(DIE_FACE[n] ?? DIE_FACE[1], Z_AXIS).premultiply(tiltQ).premultiply(yawQ.setFromAxisAngle(Y_AXIS, yaw));
+  const tmpQ = new THREE.Quaternion();
+  const tumble = new THREE.Euler();
 
   // tour highlights: a glowing ring and a soft beam of light over each feature Brian shows
   const tourLights: THREE.Group[] = [];
@@ -1304,43 +1318,63 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         m.update(dt, { speed: 0, jump: Math.max(hit, lift / 0.55), happy: id === cur && b.sub === 'rolled', t });
       }
 
-      // dice above the current player while rolling
+      // dice above the current player: they come out one at a time. The next die bobs and
+      // tumbles, the one just thrown spins hard and rises, and each lands showing its number.
       const cp = pos.get(cur) ?? new THREE.Vector3();
-      // roll: the die bobs; rolling: it spins hard, rises and shakes; rolled: it snaps to the number and pops
-      dice.visible = b.sub === 'roll' || b.sub === 'rolling' || b.sub === 'rolled';
       const camYaw = Math.atan2(camera.position.x - cp.x, camera.position.z - cp.z);
-      if (b.sub === 'roll') {
-        if (diceShown !== 0) (dice.material = blank), (diceShown = 0);
-        dice.position.set(cp.x, cp.y + 2.4 + Math.sin(t * 5) * 0.1, cp.z);
-        dice.rotation.set(t * 1.4, t * 1.9, t * 1.1);
-        dice.scale.setScalar(1);
-      } else if (b.sub === 'rolling') {
-        const k = Math.min(1, b.t / 1.3);
-        const spin = 9 + k * 14;
-        const n = 1 + (Math.floor(t * (10 + k * 10)) % 10);
-        if (diceShown !== -n) (dice.material = [face(n), face(n), face(n), face(n), face(n), face(n)]), (diceShown = -n);
-        dice.position.set(cp.x + Math.sin(t * 61) * 0.05 * k, cp.y + 2.5 + k * 0.9, cp.z + Math.cos(t * 53) * 0.05 * k);
-        dice.rotation.set(t * spin, t * spin * 1.3, t * spin * 0.7);
-        dice.scale.setScalar(1 + k * 0.25);
-      } else if (b.sub === 'rolled') {
-        if (diceShown !== 100 + b.roll) {
-          const f = face(b.roll);
-          dice.material = [f, f, f, f, f, f];
-          diceShown = 100 + b.roll;
+      const showDice = b.sub === 'roll' || b.sub === 'rolling' || b.sub === 'rolled';
+      const me = b.players[cur];
+      const nDice = b.rolls.length ? b.diceN : me?.rollCap ? 1 : Math.max(1, me?.dice ?? 2);
+      const rx = Math.cos(camYaw), rz = -Math.sin(camYaw); // camera right
+      const final = b.sub === 'rolled' && b.rolls.length >= b.diceN;
+      const landed = b.sub === 'rolled' && b.rolls.length !== wasRolls;
+      dice.forEach((d, i) => {
+        d.visible = showDice && i < Math.max(nDice, 1);
+        if (!d.visible) return;
+        const off = (i - (nDice - 1) / 2) * (final ? 2.3 : 1.6);
+        const done = i < b.rolls.length;
+        const throwing = i === b.rolls.length - 1;
+        let y = cp.y + 2.6;
+        let sc = 1;
+        if (b.sub === 'rolling' && throwing) {
+          const k = Math.min(1, b.t / 1.3);
+          const spin = 9 + k * 14;
+          tumble.set(t * spin + i, t * spin * 1.3, t * spin * 0.7);
+          d.quaternion.setFromEuler(tumble);
+          y += k * 0.9;
+          sc = 1 + k * 0.25;
+          d.position.set(cp.x + rx * off + Math.sin(t * 61) * 0.05 * k, y, cp.z + rz * off + Math.cos(t * 53) * 0.05 * k);
+          d.scale.setScalar(sc);
+          return;
         }
-        if (wasSub !== 'rolled') {
-          fx.party(dice.position.clone());
-          fx.sparkle(dice.position.clone(), '#ffe066', 22);
-          shake(0.25);
+        if (done) {
+          // landed: face the camera with its number, a pop when it first hits
+          faceQ(b.rolls[i], camYaw, tmpQ);
+          d.quaternion.slerp(tmpQ, Math.min(1, dt * 14));
+          const pop = (b.sub === 'rolled' && (throwing || final)) ? Math.min(1, b.t / 0.45) : 1;
+          sc = 1.15 + Math.sin(pop * Math.PI) * 0.55 * (1 - pop * 0.5) + (final && b.doubles ? Math.sin(t * 9) * 0.06 : 0);
+          y = cp.y + 3.1;
+        } else {
+          // waiting to be rolled: lazy tumble and bob
+          tumble.set(t * 1.4 + i * 2, t * 1.9 + i, t * 1.1);
+          d.quaternion.setFromEuler(tumble);
+          y += Math.sin(t * 5 + i) * 0.1;
         }
-        // overshoot pop, then settle facing the camera
-        const e = Math.min(1, b.t / 0.45);
-        const pop = 1.25 + Math.sin(e * Math.PI) * 0.7 * (1 - e * 0.5) + (1 - e) * 0.2;
-        dice.scale.setScalar(pop);
-        dice.position.set(cp.x, cp.y + 3.4, cp.z);
-        dice.rotation.set(0, camYaw, 0);
+        d.position.set(cp.x + rx * off, y, cp.z + rz * off);
+        d.scale.setScalar(sc);
+      });
+      if (landed && b.rolls.length) {
+        const d = dice[b.rolls.length - 1];
+        fx.sparkle(d.position.clone(), '#ffe066', 14);
+        shake(0.18);
+        if (final) {
+          fx.party(dice[0].position.clone().lerp(d.position, 0.5));
+          if (b.doubles) dice.slice(0, b.rolls.length).forEach((dd) => fx.sparkle(dd.position.clone(), '#7cf3ff', 30));
+          shake(0.3);
+        }
       }
-      wasSub = b.sub;
+      if (b.sub !== 'rolled') wasRolls = b.sub === 'roll' || b.sub === 'rolling' ? Math.min(wasRolls, b.rolls.length) : 0;
+      else wasRolls = b.rolls.length;
 
       // branch arrows
       arrows.forEach((a) => (a.visible = false));
@@ -1438,24 +1472,14 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   };
 }
 
-function diceFace(label: string): THREE.Material {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d')!;
-  const grad = g.createLinearGradient(0, 0, 128, 128);
-  grad.addColorStop(0, '#fff7c2');
-  grad.addColorStop(1, '#ffd23f');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  g.strokeStyle = '#ff8a1f';
-  g.lineWidth = 10;
-  g.strokeRect(5, 5, 118, 118);
-  g.fillStyle = '#ff3b4e';
-  g.font = '900 84px system-ui, sans-serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(label, 64, 70);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.MeshStandardMaterial({ map: t, roughness: 0.3 });
-}
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
+/** Which way each number faces on the die model. */
+const DIE_FACE: Record<number, THREE.Vector3> = {
+  1: new THREE.Vector3(0, -1, 0),
+  2: new THREE.Vector3(0, 0, 1),
+  3: new THREE.Vector3(1, 0, 0),
+  4: new THREE.Vector3(0, 0, -1),
+  5: new THREE.Vector3(-1, 0, 0),
+  6: new THREE.Vector3(0, 1, 0),
+};

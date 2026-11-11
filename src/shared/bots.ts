@@ -571,7 +571,7 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
   const def = getBoard(b.boardId);
   const me = b.players[id];
   const pr = b.prompt;
-  remember(mem, `${b.turn}:${b.cur}:${b.sub}:${pr?.kind ?? ''}:${pr && 'node' in pr ? pr.node : ''}`, randRange(r, 0.45, 0.95));
+  remember(mem, `${b.turn}:${b.cur}:${b.sub}:${b.rolls.length}:${pr?.kind ?? ''}:${pr && 'node' in pr ? pr.node : ''}`, randRange(r, 0.45, 0.95));
   const ready = mem.t > mem.wait && b.t > 0.35;
   const smart = () => rand(r) < sk.smart;
 

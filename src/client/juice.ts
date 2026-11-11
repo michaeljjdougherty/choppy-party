@@ -151,7 +151,15 @@ export function watch(s: PartyState): void {
 
   if (b) {
     if (now.sub === 'rolling' && was.sub !== 'rolling') sfx.diceSpin();
-    if (now.sub === 'rolled' && was.sub !== 'rolled') sfx.diceHit();
+    if (now.sub === 'rolled' && was.sub !== 'rolled') {
+      sfx.diceHit();
+      const bd = s.board;
+      if (bd?.doubles && bd.rolls.length >= bd.diceN) {
+        sfx.fanfare();
+        sfx.coin();
+        burst(40);
+      }
+    }
     for (const id of Object.keys(now.nodes)) {
       if (was.nodes[id] !== undefined && was.nodes[id] !== now.nodes[id]) sfx.step();
       if ((now.crowns[id] ?? 0) > (was.crowns[id] ?? 0)) {

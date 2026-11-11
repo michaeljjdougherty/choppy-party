@@ -15,7 +15,7 @@ export interface ItemDef {
 /** Starter set from the items doc. The rest of the 27 (and the shop) come in the next build. */
 export const ITEMS: Record<ItemId, ItemDef> = {
   'spring-boots': { id: 'spring-boots', name: 'Spring Boots', desc: 'Add 5 to your roll', target: false, model: 'platformer/spring', color: '#4cd97b' },
-  'double-barrel': { id: 'double-barrel', name: 'Double Barrel', desc: 'Roll 2 dice and move the total', target: false, model: 'pirate/barrel', color: '#c98a4b' },
+  'double-barrel': { id: 'double-barrel', name: 'Double Barrel', desc: 'Roll 3 dice this turn and move the total', target: false, model: 'pirate/barrel', color: '#c98a4b' },
   'heart-snack': { id: 'heart-snack', name: 'Heart Snack', desc: 'Heal 20 HP', target: false, model: 'platformer/heart', color: '#ff5a6e' },
   'hunting-bow': { id: 'hunting-bow', name: 'Hunting Bow', desc: '10 damage to any player', target: true, model: 'forest/weapon-bow', color: '#a8743c' },
   'pirate-cannon': { id: 'pirate-cannon', name: 'Pirate Cannon', desc: '15 damage to the first player up to 10 spaces ahead', target: false, model: 'pirate/cannon', color: '#555b6e' },

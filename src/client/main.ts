@@ -909,7 +909,8 @@ function drawWipe(dt: number) {
     // each band leaves a little after the one before it, with an ease-in so they whoosh away
     const p = Math.min(1, Math.max(0, (wipeT - i * 0.05) / 0.5));
     const e = p * p * (3 - 2 * p);
-    const x0 = -200 + i * bandW * 0.5 - e * (VIEW_W + 900);
+    // far enough that even the last band ends fully off the left edge
+    const x0 = -200 + i * bandW * 0.5 - e * (VIEW_W + 1150);
     ctx.fillStyle = c;
     ctx.beginPath();
     ctx.moveTo(x0, 0);

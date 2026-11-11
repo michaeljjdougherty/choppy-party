@@ -5,7 +5,7 @@ import { BASE_W, CX0, CX1, CY0, CY1, type CrateGrabState } from '../../../shared
 import { ChoppyModel } from '../choppy';
 import { place, texture } from '../assets';
 import { Fx, shake } from '../fx';
-import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
+import { PX, makeScene, mesh, toy, wx, wz, frameRect } from '../kit';
 import type { Tag, View } from '../stage';
 import { crew, fitProp, pool } from './crew';
 
@@ -108,8 +108,7 @@ export function ropeView(env: THREE.Texture, state: RopeState, players: PlayerIn
 export function crateView(env: THREE.Texture, state: CrateGrabState, players: PlayerInfo[]): View {
   const scene = makeScene(env, { sky: 'day', skyTop: '#7cc8ff', skyBottom: '#ffe9c4', fog: ['#f2dcb4', 40, 100], shadowSize: 20 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
-  camera.position.set(0, 16, 14);
-  camera.lookAt(0, 0, 1.4);
+  frameRect(camera, CX0, CX1, CY0, CY1, 0.9);
   const fw = (CX1 - CX0) * PX;
   const fd = (CY1 - CY0) * PX;
   const cz = wz((CY0 + CY1) / 2);

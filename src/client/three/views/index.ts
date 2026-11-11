@@ -15,6 +15,7 @@ import { hotPotatoView, kitchenView } from './wave3a';
 import { lanternView, memoryView, snowView } from './wave3b';
 import { laserView } from './laser';
 import { alienView, bowlView, crownView, lightsView, plazaView, seatView } from './wave5';
+import { chiliView, moonView, movingView, shantyView, sushiView, zombieView } from './wave6';
 import { burgerView, cannonView, crazeView, digView, raftView, repairView } from './wave4';
 
 type Factory = (env: THREE.Texture, state: any, players: PlayerInfo[]) => View;
@@ -51,6 +52,12 @@ export const GAME_VIEWS: Record<string, Factory> = {
   'pumpkin-bowling': bowlView,
   'capture-the-crown': crownView,
   'last-seat': seatView,
+  'zombie-tag': zombieView,
+  'chili-challenge': chiliView,
+  moonball: moonView,
+  'shanty-shuffle': shantyView,
+  'sushi-belt': sushiView,
+  'moving-day': movingView,
 };
 
 export { menuView } from './menu';

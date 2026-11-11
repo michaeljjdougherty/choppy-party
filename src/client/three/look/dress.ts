@@ -96,6 +96,18 @@ export const GAME_LOOKS: Record<string, Look> = {
   'burger-builder': { theme: 'indoor' },
   'color-craze': { theme: 'plaza', palette: { greenUp: ['toy', 0.5, 2.5], greenSide: ['toy', 0.5, 2.5] }, noScenery: true },
   'station-repair': { theme: 'space' },
+  'paint-the-plaza': { theme: 'plaza' },
+  'alien-count': { theme: 'prairie' },
+  'lights-out-freeze': { theme: 'meadow' },
+  'pumpkin-bowling': { theme: 'spooky' },
+  'capture-the-crown': { theme: 'meadow' },
+  'last-seat': { theme: 'indoor' },
+  'zombie-tag': { theme: 'spooky' },
+  'chili-challenge': { theme: 'desert', keepOut: [{ rect: [-15, -6, 15, 8] }] },
+  moonball: { theme: 'space', keepOut: [{ rect: [-18, -7, 18, 9] }] },
+  'shanty-shuffle': { theme: 'sea', keepOut: [{ rect: [-17, -8, 17, 8] }] },
+  'sushi-belt': { theme: 'indoor' },
+  'moving-day': { theme: 'meadow', keepOut: [{ rect: [-15.5, -6, 15.5, 9.5] }] },
 };
 
 const BOARD_LOOKS: Record<BoardDef['theme'], Look> = {

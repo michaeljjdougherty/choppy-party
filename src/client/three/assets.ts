@@ -73,6 +73,10 @@ export const PROPS = [
   'misc/d12',
   // Mister Chunk (Poopo192, CC BY 4.0)
   'misc/mister-chunk',
+  // batch 3: sushi bar, chili bowls, moving day
+  'food/maki-roe', 'food/maki-salmon', 'food/maki-vegetable', 'food/sushi-egg', 'food/sushi-salmon', 'food/pepper', 'food/bowl', 'food/soy',
+  'food/chopstick', 'food/plate-rectangle', 'furniture/loungeSofa', 'furniture/loungeSofaLong', 'furniture/tableCoffee',
+  'furniture/cardboardBoxClosed', 'furniture/cardboardBoxOpen', 'furniture/lampRoundFloor', 'furniture/rugRound', 'furniture/bookcaseOpen',
 ];
 
 /** Equirectangular skies (Kenney Skyboxes), in public/sky. */

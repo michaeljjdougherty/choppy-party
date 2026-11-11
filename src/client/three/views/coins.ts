@@ -4,7 +4,7 @@ import { ANVIL_HIT, AX0, AX1, AY0, AY1, FALL_TIME, type CloudburstState } from '
 import { ChoppyModel } from '../choppy';
 import { place, prop } from '../assets';
 import { Fx, shake } from '../fx';
-import { PX, makeScene, mesh, stripeTexture, toy, wx, wz, yaw } from '../kit';
+import { PX, makeScene, mesh, stripeTexture, toy, wx, wz, yaw, frameRect } from '../kit';
 import type { Tag, View } from '../stage';
 
 const DROP_HEIGHT = 13;
@@ -12,8 +12,7 @@ const DROP_HEIGHT = 13;
 export function coinsView(env: THREE.Texture, state: CloudburstState, players: PlayerInfo[]): View {
   const scene = makeScene(env, { sky: 'day', skyTop: '#6ccaff', skyBottom: '#e6f7ff', fog: ['#cdeeff', 35, 80], shadowSize: 22 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
-  camera.position.set(0, 15.5, 15.5);
-  camera.lookAt(0, 0, 1.2);
+  frameRect(camera, AX0, AX1, AY0, AY1, 0.85);
 
   const fw = (AX1 - AX0) * PX;
   const fd = (AY1 - AY0) * PX;

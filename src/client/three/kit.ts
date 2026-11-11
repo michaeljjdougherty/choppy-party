@@ -126,6 +126,29 @@ export const wz = (y: number) => (y - 360) * PX;
 /** 2D facing angle (x right, y down) to a Y rotation for a model that looks down +Z. */
 export const yaw = (face: number) => Math.atan2(Math.cos(face), Math.sin(face));
 
+/**
+ * Point the camera at an arena rectangle (arena px) from a fixed angle and back it off until every corner
+ * (plus a margin for heads and name tags) is on screen. `pitch` is the angle down from horizontal.
+ */
+export function frameRect(camera: THREE.PerspectiveCamera, x0: number, x1: number, y0: number, y1: number, pitch = 0.82, margin = 0.9): void {
+  const cx = wx((x0 + x1) / 2), cz = wz((y0 + y1) / 2);
+  const dir = new THREE.Vector3(0, Math.sin(pitch), Math.cos(pitch));
+  const corners = [
+    [x0, y0, 0], [x1, y0, 0], [x0, y1, 0], [x1, y1, 0], [x0, y0, 1.6], [x1, y0, 1.6], [x0, y1, 1.6], [x1, y1, 1.6],
+  ].map(([x, y, h]) => new THREE.Vector3(wx(x), h, wz(y)));
+  camera.updateProjectionMatrix();
+  const v = new THREE.Vector3();
+  for (let d = 8; d < 120; d *= 1.04) {
+    camera.position.set(cx, 0, cz).addScaledVector(dir, d);
+    camera.lookAt(cx, 0, cz);
+    camera.updateMatrixWorld(true);
+    if (corners.every((c) => {
+      v.copy(c).project(camera);
+      return Math.abs(v.x) <= margin && Math.abs(v.y) <= margin && v.z < 1;
+    })) return;
+  }
+}
+
 export function disposeTree(o: THREE.Object3D): void {
   o.traverse((c) => {
     const m = c as THREE.Mesh;

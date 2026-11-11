@@ -62,6 +62,7 @@ interface Seen {
   coins: Record<string, number>;
   crowns: Record<string, number>;
   sub: string;
+  cur: number;
   gameCoins: Record<string, number>;
   air: Record<string, boolean>;
   pops: Record<string, number>;
@@ -98,6 +99,7 @@ export function watch(s: PartyState): void {
     coins: {},
     crowns: {},
     sub: b?.sub ?? '',
+    cur: b?.cur ?? -1,
     gameCoins: Object.fromEntries(runners.map((r) => [r.id, r.coins])),
     air: Object.fromEntries([...runners, ...skaters].map((r) => [r.id, ((r as { z?: number }).z ?? 0) > 1])),
     pops: Object.fromEntries(skaters.map((k) => [k.id, k.vz])),
@@ -150,6 +152,7 @@ export function watch(s: PartyState): void {
   if (now.phase === 'lobby' && now.sel !== was.sel) sfx.move();
 
   if (b) {
+    if (now.sub === 'turnIntro' && (was.sub !== 'turnIntro' || now.cur !== was.cur) && !s.board?.tour) sfx.turn();
     if (now.sub === 'rolling' && was.sub !== 'rolling') sfx.diceSpin();
     if (now.sub === 'rolled' && was.sub !== 'rolled') {
       sfx.diceHit();

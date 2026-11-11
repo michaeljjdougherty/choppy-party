@@ -1,5 +1,5 @@
 import { A, B, STICK, X } from './prompts';
-import { slam, sunburst } from './showtime';
+import { slam, sunburst, vignette } from './showtime';
 import { sfx } from './sfx';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
@@ -144,6 +144,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   } else if (b.sub === 'orderRoll' || b.sub === 'orderShow') {
     drawOrderRoll(ctx, s, t);
   } else if (b.sub === 'turnIntro') {
+    turnSweep(ctx, me?.color ?? '#ffd23f', b.t);
     startBanner(ctx, `${name} start turn!`, b.t);
     if (b.cur === 0) text(ctx, `Turn ${b.turn}`, 640, 168, 30, { color: '#ffffff' });
     if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Turn order follows the last minigame\'s finish!', 640, 204, 22, { color: '#ffd23f' });
@@ -501,6 +502,33 @@ function bagHint(ctx: CanvasRenderingContext2D, count: number, canOpen: boolean)
 }
 
 /** The big "<name> start turn!" banner that slams in at the top of each turn. */
+/** A new turn: the edges darken and a band in the player's colour sweeps across behind the banner. */
+function turnSweep(ctx: CanvasRenderingContext2D, color: string, age: number): void {
+  const fade = Math.min(1, age / 0.2) * Math.max(0, Math.min(1, (2.1 - age) / 0.4));
+  vignette(ctx, 0.55 * fade);
+  const k = Math.min(1, age / 0.35);
+  const w = 1500 * (1 - Math.pow(1 - k, 3));
+  ctx.save();
+  ctx.globalAlpha = 0.85 * fade;
+  ctx.translate(640, 112);
+  ctx.transform(1, 0, -0.35, 1, 0, 0);
+  ctx.fillStyle = color;
+  ctx.fillRect(-w / 2, -46, w, 92);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(-w / 2, -46, w, 8);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(-w / 2, 38, w, 8);
+  // a glint that runs along the band
+  const gx = -750 + ((age * 1400) % 1800);
+  const g = ctx.createLinearGradient(gx - 80, 0, gx + 80, 0);
+  g.addColorStop(0, 'rgba(255,255,255,0)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(Math.max(-w / 2, gx - 80), -46, Math.min(160, w), 92);
+  ctx.restore();
+}
+
 function startBanner(ctx: CanvasRenderingContext2D, msg: string, age: number): void {
   const k = Math.min(1, age / 0.25);
   const s = k < 1 ? 1.6 - 0.6 * k : 1 + Math.sin(Math.min(1, (age - 0.25) / 0.3) * Math.PI) * 0.06;

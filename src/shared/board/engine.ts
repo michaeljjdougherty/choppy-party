@@ -410,7 +410,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         }
         break;
       }
-      if (s.t > (s.cur === 0 ? 3 : 1.6)) set(s, 'roll');
+      if (s.t > (s.cur === 0 ? 3 : 2.1)) set(s, 'roll');
       break;
 
     case 'roll': {

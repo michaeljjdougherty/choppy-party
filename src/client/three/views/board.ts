@@ -1256,6 +1256,20 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   chunkFace.rotation.x = -Math.PI / 2;
   chunkFace.visible = false;
   scene.add(chunkFace);
+  // turn cinematics: a spotlight on whoever's turn it is, and a shockwave when they land
+  const spot = new THREE.SpotLight('#fff3d0', 0, 26, 0.32, 0.55, 1.2);
+  spot.castShadow = false;
+  scene.add(spot, spot.target);
+  const pool2 = new THREE.Mesh(new THREE.CircleGeometry(1.5, 40), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  pool2.rotation.x = -Math.PI / 2;
+  scene.add(pool2);
+  const wave = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.05, 48), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
+  wave.rotation.x = -Math.PI / 2;
+  scene.add(wave);
+  let waveT = 9;
+  let cineSub = '';
+  let cineT = 0;
+  let cineCur = '';
   let chunkAt: THREE.Vector3 | null = null;
   let chunkLanded = false;
   let chunkLeave = -1;
@@ -1710,6 +1724,44 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         });
       }
 
+      // turn cinematics: track how long we've been in this part of the turn
+      if (b.sub !== cineSub || cur !== cineCur) {
+        cineSub = b.sub;
+        cineCur = cur;
+        cineT = 0;
+        if (b.sub === 'land') {
+          // the landing lands: a shockwave in the space's colour, a puff of dust and a thump
+          const n = def.nodes[b.players[cur]?.node];
+          if (n) {
+            waveT = 0;
+            wave.position.set(n.x, n.y + 0.4, n.z);
+            (wave.material as THREE.MeshBasicMaterial).color.set(SPACE_COLORS[n.type] ?? '#ffffff');
+            fx.dust(new THREE.Vector3(n.x, n.y + 0.3, n.z), 1.1);
+            shake(0.22);
+            sfx.land();
+            // TODO(graphics thread): postPulse('impact', 0.5) once look/post.ts lands
+          }
+        }
+        // TODO(graphics thread): postPulse('vignette', 0.6) on turnIntro once look/post.ts lands
+      } else cineT += dt;
+      waveT += dt;
+      {
+        const k = Math.min(1, waveT / 0.55);
+        wave.scale.setScalar(0.6 + k * 2.6);
+        (wave.material as THREE.MeshBasicMaterial).opacity = k >= 1 ? 0 : 0.85 * (1 - k);
+      }
+      const lit = !b.tour && ['turnIntro', 'roll', 'rolling', 'rolled', 'land', 'prompt', 'branch', 'itemSpin', 'gamble', 'chunk'].includes(b.sub);
+      const sp = pos.get(cur);
+      if (sp) {
+        const want = lit ? (b.sub === 'turnIntro' ? 90 * Math.min(1, cineT / 0.35) : 45) : 0;
+        spot.intensity += (want - spot.intensity) * Math.min(1, dt * 6);
+        spot.position.set(sp.x + 1.5, sp.y + 11, sp.z + 3);
+        spot.target.position.copy(sp);
+        pool2.position.set(sp.x, sp.y + 0.36, sp.z);
+        (pool2.material as THREE.MeshBasicMaterial).color.set(players.find((p) => p.id === cur)?.color ?? '#ffffff');
+        (pool2.material as THREE.MeshBasicMaterial).opacity = (spot.intensity / 90) * 0.35 * (0.85 + Math.sin(t * 5) * 0.15);
+      }
+
       // Mister Chunk: drops out of the sky beside the victim, slams down, glares through his reel, then leaps away
       for (const c of chunkStatues) {
         c.o.rotation.y = Math.sin(t * 1.3 + c.k) * 0.35;
@@ -1773,9 +1825,22 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       // camera: overview at the top of a turn, then follow whoever is moving
       const step = b.sub === 'tour' && b.tour ? b.tour.steps[b.tour.i] : null;
       const wantOverview = b.sub === 'orderRoll' || b.sub === 'orderShow' || (!!step && !step.node);
-      let goalPos = wantOverview ? overview : new THREE.Vector3(cp.x, cp.y + 14.5, cp.z + 13);
+      // the follow camera breathes with the turn: it swoops in at the start of a turn, punches in when the
+      // dice land, and leans in on the landing
+      let zoom = 1;
+      let swing = 0;
+      if (!b.tour && b.sub === 'turnIntro') {
+        const p = Math.min(1, cineT / 1.1);
+        const e = 1 - Math.pow(1 - p, 3);
+        zoom = 1.55 - 0.8 * e + (cineT > 1.1 ? Math.min(0.25, (cineT - 1.1) * 0.4) : 0);
+        swing = (1 - e) * 0.7;
+      } else if (b.sub === 'rolled' && b.rolls.length >= b.diceN && b.rolls.length > 0) {
+        zoom = 1 - 0.16 * Math.exp(-cineT * 3) * Math.min(1, cineT / 0.08);
+      } else if (b.sub === 'land') zoom = 1 - 0.22 * Math.min(1, cineT / 0.25) * Math.max(0, 1 - Math.max(0, cineT - 0.9) / 0.6);
+      const off = new THREE.Vector3(Math.sin(swing) * 13 * zoom, 14.5 * zoom, Math.cos(swing) * 13 * zoom);
+      let goalPos = wantOverview ? overview : new THREE.Vector3(cp.x + off.x, cp.y + off.y, cp.z + off.z);
       let goalLook = wantOverview ? new THREE.Vector3(0, 0, midZ + 1) : new THREE.Vector3(cp.x, cp.y + 0.6, cp.z);
-      let follow = 2.2;
+      let follow = !b.tour && b.sub === 'turnIntro' ? 3.2 : b.sub === 'rolled' || b.sub === 'land' ? 5 : 2.2;
       // board tour: fly to the feature Brian is talking about and light it up
       tourLights.forEach((l) => (l.visible = false));
       if (step?.node) {

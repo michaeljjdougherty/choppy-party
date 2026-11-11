@@ -190,6 +190,12 @@ export const sfx = {
     notes.forEach((f, i) => tone(f, f, i === notes.length - 1 ? 0.8 : 0.14, 'square', 0.12, i * 0.13));
     notes.forEach((f, i) => tone(f / 2, f / 2, i === notes.length - 1 ? 0.8 : 0.14, 'triangle', 0.1, i * 0.13));
   },
+  /** A new turn: a rising brass stab and a whoosh. */
+  turn: () => {
+    noise(0.3, 0.14, 1800);
+    [392, 523, 659].forEach((f, i) => tone(f, f * 1.005, i === 2 ? 0.32 : 0.1, 'square', 0.09, 0.05 + i * 0.07));
+    tone(196, 196, 0.4, 'triangle', 0.12, 0.19);
+  },
   fanfare: () => {
     [523, 659, 784, 1047].forEach((f, i) => tone(f, f, i === 3 ? 0.45 : 0.13, 'square', 0.13, i * 0.12));
   },

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { BoardDef, BoardState } from '../../shared/board/types';
 import { COURT } from '../../shared/board/boards';
 import { mesh, toy } from './kit';
-import { place, sky } from './assets';
+import { character, place, sky } from './assets';
 import { BOSS_INTRO, BOSS_SLAM, SPIN_STOP } from '../../shared/board/engine';
 import { shake } from './fx';
 import { sfx } from '../sfx';
@@ -153,6 +153,26 @@ function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
   return t;
 }
 
+function signTexture(txt: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#1b0d10';
+  g.fillRect(0, 0, 512, 128);
+  g.strokeStyle = '#ff2a10';
+  g.lineWidth = 8;
+  g.strokeRect(6, 6, 500, 116);
+  g.font = '900 80px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#ff3b1a';
+  g.fillText(txt, 256, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /** A basketball: orange with black seams. */
 function ballTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -282,6 +302,42 @@ export function makeTyrant(h: number): { g: THREE.Group; ball: THREE.Object3D; a
   }
   inner.scale.setScalar(h / 6.3);
   return { g, ball, armR, eyes, flame };
+}
+
+/**
+ * Evil LeBron, from Michael's model (lebron_james.glb, CC BY-NC-ND, private play only: see
+ * public/models/misc/CREDITS-evil-lebron.txt). Winged, crowned, glowing; a flaming ball rides on
+ * a pivot at his shoulder so the slam can swing it down. Same parts as makeTyrant, so either drops in.
+ */
+export function makeLebron(h: number): ReturnType<typeof makeTyrant> {
+  const g = new THREE.Group();
+  const o = character('misc/evil-lebron').scene;
+  o.traverse((m) => {
+    if (m.name === 'Object_14') m.visible = false; // the staff he holds out to one side in the T-pose
+    if ((m as THREE.Mesh).isMesh) {
+      m.castShadow = true;
+      m.frustumCulled = false;
+    }
+  });
+  const box = new THREE.Box3().setFromObject(o);
+  const k = h / 1.84;
+  o.scale.setScalar(k);
+  o.position.set(0, -box.min.y * k, 0);
+  g.add(o);
+  // a red glow from inside him, so he reads as evil from far up
+  const aura = new THREE.PointLight('#ff2a10', 18, h * 2.2, 1.5);
+  aura.position.set(0, h * 0.7, h * 0.25);
+  g.add(aura);
+  const armR = new THREE.Group();
+  armR.position.set(-0.22 * k, 1.42 * k, 0);
+  g.add(armR);
+  const ball = basketball(0.16 * k);
+  ball.position.set(0, 0.9 * k, 0);
+  armR.add(ball);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.15 * k, 0.4 * k, 12, 1, true), new THREE.MeshBasicMaterial({ color: '#ff6a00', transparent: true, opacity: 0.75, depthWrite: false }));
+  flame.position.set(0, 0.2 * k, 0);
+  ball.add(flame);
+  return { g, ball, armR, eyes: new THREE.MeshStandardMaterial(), flame };
 }
 
 interface Hoop {
@@ -550,6 +606,46 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
     scene.add(edge);
   }
 
+  // the Chop Pit: an iron cage walkway hanging off the east corner, lit red
+  const pitIds = def.pit ?? [];
+  const iron = toy('#26222e', 0.45);
+  const pitGlow = new THREE.MeshStandardMaterial({ color: '#ff2a10', emissive: '#ff2000', emissiveIntensity: 1.2 });
+  pitIds.forEach((id, i) => {
+    const n = def.nodes[id];
+    const slab = mesh(new THREE.CylinderGeometry(1.5, 1.3, 0.5, 8), iron);
+    slab.position.set(n.x, n.y - 0.27, n.z);
+    slab.userData.keep = true;
+    scene.add(slab);
+    const ring = mesh(new THREE.TorusGeometry(1.5, 0.07, 6, 8), pitGlow, { cast: false });
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(n.x, n.y - 0.03, n.z);
+    ring.userData.keep = true;
+    scene.add(ring);
+    // bars on both sides of the walkway (the board view nudges them clear of the path)
+    const nx = def.nodes[pitIds[Math.min(pitIds.length - 1, i + 1)]];
+    const px = def.nodes[pitIds[Math.max(0, i - 1)]];
+    const dx = nx.x - px.x, dz = nx.z - px.z;
+    const l = Math.hypot(dx, dz) || 1;
+    for (const side of [-1, 1]) {
+      const bar = mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 6), iron);
+      bar.position.set(n.x + (-dz / l) * 1.4 * side, n.y + 1.6, n.z + (dx / l) * 1.4 * side);
+      bar.userData.keep = true;
+      scene.add(bar);
+      const spike = mesh(new THREE.ConeGeometry(0.16, 0.4, 6), pitGlow);
+      spike.position.set(bar.position.x, n.y + 3.35, bar.position.z);
+      spike.userData.keep = true;
+      scene.add(spike);
+    }
+  });
+  if (pitIds.length) {
+    const n = def.nodes[pitIds[Math.floor(pitIds.length / 2)]];
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.8), new THREE.MeshBasicMaterial({ map: signTexture('CHOP PIT'), transparent: true }));
+    sign.position.set(n.x + 3.2, n.y + 4.2, n.z);
+    sign.rotation.y = -Math.PI / 2.6;
+    sign.userData.keep = true;
+    scene.add(sign);
+  }
+
   // the jumbotron over centre court
   const jumbo = new THREE.Group();
   jumbo.userData.sky = true;
@@ -621,7 +717,7 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
   let wasChoppy: boolean | null = null;
 
   // the villain waits off-screen, high above the court
-  const ty = makeTyrant(9);
+  const ty = makeLebron(8.5);
   ty.g.visible = false;
   ty.g.userData.sky = true;
   scene.add(ty.g);

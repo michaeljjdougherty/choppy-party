@@ -30,6 +30,7 @@ export const SPACE_SHAPE: Record<SpaceType, ShapeName> = {
   counter: 'hexagon',
   camp: 'house',
   shop: 'house',
+  oop: 'star',
 };
 
 function poly(pts: [number, number][]): THREE.Shape {

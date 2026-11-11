@@ -373,9 +373,16 @@ function stewCourt(): BoardDef {
   put('stew', [0.5]);
   put('fountain', [0.43]);
   put('spring', [0.08, 0.58]);
+  put('oop', [0.24, 0.76]);
   b.set(laneW[4], 'stew');
   b.set(laneE[4], 'duel');
   b.set(bleach[Math.floor(bleach.length / 2)], 'lucky');
+  // the Chop Pit: a caged walkway floating off the east corner. Nothing leads in; Alley-Oop Pads in the
+  // Choppy Verse throw you in. Three spaces in four hurt, and it lets out onto the bottom sideline
+  const pitPts = trail([[34, 4, 0], [38.5, 8, 0], [38.5, 14, 0], [35, 19, 0], [29, 22, 0], [22.5, 21.5, 0]], 2.5, undefined, { ends: true });
+  const pit = b.chain('sp', pitPts, 'RCRBDRBR');
+  pit.forEach((id, i) => (i % 8 === 4 ? b.set(id, 'dynamite') : i % 8 === 1 ? b.set(id, 'chunk') : 0));
+  b.link(pit[pit.length - 1], nearest(b, loop, 15, 15));
   // four Verse Flip spaces, one on each side of the oval, swap the Fucci Verse and the Choppy Verse
   const flips = [0.17, 0.4, 0.66, 0.9].map((f) => {
     let i = Math.round(f * loop.length) % loop.length;
@@ -394,13 +401,14 @@ function stewCourt(): BoardDef {
     name: 'Stew Court',
     players: [4, 8],
     tagline: 'A basketball court that flips between the Fucci Verse and the evil Choppy Verse.',
-    gimmick: 'The glowing hoop holds the Chobglob, and it switches ends every time someone buys it. Four Verse Flip spaces swap the normal Fucci Verse for the Choppy Verse, a burning court floating in space, where The Dunk Tyrant drops in at the end of every round to knock someone out.',
+    gimmick: 'The glowing hoop holds the Chobglob, and it switches ends every time someone buys it. Four Verse Flip spaces swap the normal Fucci Verse for the Choppy Verse, a burning court floating in space, where Evil LeBron drops in at the end of every round to knock someone out.',
     theme: 'court',
     nodes: b.nodes,
     start,
     camp: start,
     crownSpots,
-    boss: { name: 'The Dunk Tyrant', every: 1 },
+    pit,
+    boss: { name: 'Evil LeBron', every: 1 },
     weather: [
       { kind: 'lowgrav', name: 'Hang Time', area: 'the floating Bleacher Run', nodes: bleach, tour: `The Bleacher Run floats in low gravity: Hang Time! Roll from up there and you get +2, but at every fork you float off down a random path.` },
       { kind: 'wind', name: 'Solar Wind', area: 'the far sideline', nodes: loop.filter((id) => b.nodes[id].z < -12 && Math.abs(b.nodes[id].x) < 13 && !forks.includes(id)), tour: 'A Solar Wind blows across the far sideline. At the end of each round it pushes everyone there 2 spaces, and it changes direction every round.' },

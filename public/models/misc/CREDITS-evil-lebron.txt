@@ -1,0 +1,5 @@
+Evil LeBron (Stew Court villain)
+Source model: "Lebron James" by TheSitthikorn, https://sketchfab.com/3d-models/lebron-james-5473770c7be44f7bbda023bc5214a41f
+License: CC BY-NC-ND 4.0 (http://creativecommons.org/licenses/by-nc-nd/4.0/)
+Supplied by Michael for private play with friends. Textures were shrunk to 512px WebP to fit the build.
+Not cleared for a public release: replace this model before sharing the game publicly.

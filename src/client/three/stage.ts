@@ -139,7 +139,9 @@ export class Stage {
       this.ambience.update(dt, t);
       this.ambience.swayCamera(cam, t);
     }
+    const undo = applyLightLook(this.view.scene);
     if (!this.post.frame(this.view.scene, cam, dt, t)) this.renderer.render(this.view.scene, cam);
+    undo();
     if (this.ambience) this.ambience.unswayCamera(cam);
     cam.position.sub(off);
   }
@@ -188,4 +190,46 @@ function keepInView(root: THREE.Object3D): void {
     const m = o as THREE.InstancedMesh & THREE.Points & THREE.SkinnedMesh;
     if (m.frustumCulled && (m.isInstancedMesh || m.isPoints || m.isSkinnedMesh)) m.frustumCulled = false;
   });
+}
+
+/** Developer mode: a lighting look laid over whatever the scene does itself (auto = leave it alone). */
+export type LightLook = 'auto' | 'day' | 'dusk' | 'night';
+export const lightLook = { mode: 'auto' as LightLook, active: true };
+const LOOKS: Record<Exclude<LightLook, 'auto'>, { k: number; tint: string; mix: number; bg: number }> = {
+  day: { k: 1.25, tint: '#fff4dc', mix: 0.35, bg: 1.15 },
+  dusk: { k: 0.7, tint: '#ff9a5c', mix: 0.55, bg: 0.6 },
+  night: { k: 0.32, tint: '#7d8cff', mix: 0.7, bg: 0.28 },
+};
+const tmpColor = new THREE.Color();
+/** Dim and tint every light for one frame; returns a function that puts them back. */
+function applyLightLook(scene: THREE.Scene): () => void {
+  if (lightLook.mode === 'auto' || !lightLook.active) return () => {};
+  const L = LOOKS[lightLook.mode];
+  const saved: [THREE.Light, number, number][] = [];
+  scene.traverse((o) => {
+    const l = o as THREE.Light;
+    if (!l.isLight) return;
+    saved.push([l, l.intensity, l.color.getHex()]);
+    l.intensity *= L.k;
+    l.color.lerp(tmpColor.set(L.tint), L.mix);
+  });
+  const bgI = scene.backgroundIntensity;
+  const envI = scene.environmentIntensity;
+  const fog = scene.fog as THREE.Fog | null;
+  const fogHex = fog?.color.getHex();
+  scene.backgroundIntensity = bgI * L.bg;
+  scene.environmentIntensity = envI * L.k;
+  if (fog) fog.color.multiplyScalar(Math.min(1, L.bg)).lerp(tmpColor.set(L.tint), L.mix * 0.3);
+  const bgCol = scene.background instanceof THREE.Color ? scene.background.getHex() : null;
+  if (scene.background instanceof THREE.Color) scene.background.multiplyScalar(Math.min(1, L.bg));
+  return () => {
+    for (const [l, i, c] of saved) {
+      l.intensity = i;
+      l.color.setHex(c);
+    }
+    scene.backgroundIntensity = bgI;
+    scene.environmentIntensity = envI;
+    if (fog && fogHex !== undefined) fog.color.setHex(fogHex);
+    if (bgCol !== null && scene.background instanceof THREE.Color) scene.background.setHex(bgCol);
+  };
 }

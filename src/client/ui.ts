@@ -112,3 +112,8 @@ export function button(ctx: CanvasRenderingContext2D, label: string, x: number, 
   ctx.restore();
   return hit;
 }
+
+/** Put a click taken with takeStrayClick() back, so a panel drawn later in the frame can use it. */
+export function putClick(p: Pt | null): void {
+  click = p;
+}

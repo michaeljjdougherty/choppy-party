@@ -322,6 +322,8 @@ export interface BoardState {
   fxSeq: number;
   log: string[];
   rng: Rng;
+  /** Developer mode: loaded dice faces (each die takes the next one). Empty or missing = fair dice. */
+  devDice?: number[];
 }
 
 export const WISP_PRICE = 10;

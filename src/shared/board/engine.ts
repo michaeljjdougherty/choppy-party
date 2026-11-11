@@ -471,7 +471,9 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
           s.weather.hiddenRoll = s.night && inZone(def, me.node, 'fog');
         }
         // Sticky Cube and Root Snare: a single die that only shows 1 to 3
-        s.rolls.push(me.slowRoll ? slowFace(s, me) : randInt(s.rng, dieLow(me), dieHigh(me)));
+        // developer mode can load the dice (every die shows the faces it was given, in turn)
+        const rigged = s.devDice?.length ? s.devDice[s.rolls.length % s.devDice.length] : 0;
+        s.rolls.push(rigged || (me.slowRoll ? slowFace(s, me) : randInt(s.rng, dieLow(me), dieHigh(me))));
         if (s.rolls.length >= s.diceN) finishRoll(s, def, me);
         set(s, 'rolling');
       }
@@ -1041,7 +1043,7 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
   }
 }
 
-function onLand(s: BoardState, def: BoardDef, id: string): void {
+export function onLand(s: BoardState, def: BoardDef, id: string): void {
   const me = s.players[id];
   s.weather.hiddenRoll = false;
   clearBlind(s, def);
@@ -1233,7 +1235,7 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
 }
 
 /** CHUNK SPACE: Mister Chunk drops in and spins a reel of his surprises. */
-function chunkSpace(s: BoardState, id: string): void {
+export function chunkSpace(s: BoardState, id: string): void {
   const me = s.players[id];
   const kinds = (Object.keys(CHUNK_EVENTS) as ChunkKind[]).filter((k) => k !== 'crown' || me.crowns > 0).filter((k) => k !== 'shake' || me.items.length > 0);
   const bag: ChunkKind[] = [];
@@ -1338,7 +1340,7 @@ function boardEvent(s: BoardState, def: BoardDef, id: string): void {
 
 // ---- duels and Stew Battles ------------------------------------------------------------------------
 
-function startDuel(s: BoardState, id: string, rival: string): void {
+export function startDuel(s: BoardState, id: string, rival: string): void {
   const gameId = DUEL_GAMES[Math.floor(rand(s.rng) * DUEL_GAMES.length)];
   s.event = { kind: 'duel', gameId, lander: id, players: [id, rival] };
   say(s, 'DUEL!', '#ff9f1c');
@@ -1353,7 +1355,7 @@ function standingOrder(s: BoardState): string[] {
   });
 }
 
-function beginStew(s: BoardState, def: BoardDef, lander: string): void {
+export function beginStew(s: BoardState, def: BoardDef, lander: string): void {
   const gameId = STEW_GAMES[Math.floor(rand(s.rng) * STEW_GAMES.length)];
   const ev: BoardEvent = { kind: 'stew', gameId, lander, players: [], teams: {}, sitOut: null };
   s.event = ev;
@@ -1517,7 +1519,7 @@ function stepBoss(s: BoardState, def: BoardDef): void {
   }
 }
 
-function roundEnd(s: BoardState, def: BoardDef): void {
+export function roundEnd(s: BoardState, def: BoardDef): void {
   if (startBoss(s, def)) return;
   set(s, 'roundEnd');
   const lines: string[] = [];

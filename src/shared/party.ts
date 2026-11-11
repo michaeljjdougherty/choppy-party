@@ -99,6 +99,10 @@ export interface PartyState {
   quit: { id: string; n: number } | null;
   /** Local lobbies stay on the mode picked in the main menu; an online room can switch modes with Start. */
   lockMode?: boolean;
+  /** Developer mode: the minigame the next end-of-turn pick is forced to. */
+  devNext?: string | null;
+  /** Developer mode started this minigame from the board: afterwards, go back to the board mid-turn. */
+  devBack?: boolean;
 }
 
 export const PAUSE_OPTIONS = ['Resume', 'How to play', 'Settings', 'End party (back to lobby)', 'Quit to main menu'] as const;
@@ -112,6 +116,8 @@ export function endParty(s: PartyState): void {
   s.playlist = [];
   s.board = null;
   s.pause = null;
+  s.devBack = false;
+  s.devNext = null;
   setPhase(s, 'lobby');
 }
 
@@ -347,7 +353,7 @@ export function inGame(s: PartyState): PlayerInfo[] {
   return s.gamePlayers ?? s.players;
 }
 
-function setPhase(s: PartyState, phase: Phase): void {
+export function setPhase(s: PartyState, phase: Phase): void {
   s.phase = phase;
   s.phaseT = 0;
   s.ready = [];
@@ -389,7 +395,7 @@ function makePlaylist(s: PartyState, pool: string[], rounds: number): string[] {
   return list.slice(0, rounds);
 }
 
-function beginRound(s: PartyState): void {
+export function beginRound(s: PartyState): void {
   const id = s.playlist[s.round];
   const g = getGame(id);
   s.gameId = id;
@@ -491,7 +497,10 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
         const fresh = pool.filter((g) => !recent.includes(g));
         const pickFrom = fresh.length ? fresh : pool;
         s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
-        s.playlist.push(pickFrom[Math.abs(s.rng.seed) % pickFrom.length]);
+        // developer mode can force the next minigame
+        const forced = s.devNext;
+        s.devNext = null;
+        s.playlist.push(forced || pickFrom[Math.abs(s.rng.seed) % pickFrom.length]);
         s.round = s.playlist.length - 1;
         beginRound(s);
       }
@@ -516,28 +525,20 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
       // every minigame opens with 3, 2, 1, GO!: hold the game still until the count reaches GO
       if (s.phaseT < countLead(g)) break;
       g.step(s.game, inputs, dt);
-      if (g.isOver(s.game)) {
-        const rows = g.results(s.game);
-        s.placements = placementsFrom(rows);
-        if (s.board && s.boardEvent) {
-          s.eventLine = finishEvent(s.board, rows);
-          for (const pl of s.placements) pl.points = 0;
-          for (const p of Object.values(s.board.players)) s.scores[p.id] = p.keys;
-        } else if (s.board) {
-          // on a board, minigames pay out keys instead of party points
-          const keys = awardMinigame(s.board, s.placements);
-          winnerGoesFirst(s.board, s.placements);
-          for (const pl of s.placements) pl.points = keys[pl.id] ?? 0;
-          for (const p of Object.values(s.board.players)) s.scores[p.id] = p.keys;
-        } else {
-          for (const pl of s.placements) s.scores[pl.id] = (s.scores[pl.id] ?? 0) + pl.points;
-        }
-        setPhase(s, 'results');
-      }
+      if (g.isOver(s.game)) finishGame(s);
       break;
     }
     case 'results': {
       if ((hostIn.aPressed && s.phaseT > FINISH_T + 1.4) || s.phaseT > FINISH_T + 8) {
+        if (s.board && s.devBack) {
+          // a minigame developer mode started mid-turn: back to the board right where it was
+          s.devBack = false;
+          s.gamePlayers = null;
+          s.gameId = null;
+          s.game = null;
+          setPhase(s, 'board');
+          break;
+        }
         if (s.board && s.boardEvent) {
           // back to the board: the player who landed on the space finishes their turn
           s.boardEvent = null;
@@ -573,6 +574,27 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
       break;
     }
   }
+}
+
+/** The minigame is over (or developer mode ended it): rank everyone and pay out. */
+export function finishGame(s: PartyState): void {
+  const g = getGame(s.gameId!);
+  const rows = g.results(s.game);
+  s.placements = placementsFrom(rows);
+  if (s.board && s.boardEvent) {
+    s.eventLine = finishEvent(s.board, rows);
+    for (const pl of s.placements) pl.points = 0;
+    for (const p of Object.values(s.board.players)) s.scores[p.id] = p.keys;
+  } else if (s.board) {
+    // on a board, minigames pay out keys instead of party points
+    const keys = awardMinigame(s.board, s.placements);
+    if (!s.devBack) winnerGoesFirst(s.board, s.placements);
+    for (const pl of s.placements) pl.points = keys[pl.id] ?? 0;
+    for (const p of Object.values(s.board.players)) s.scores[p.id] = p.keys;
+  } else {
+    for (const pl of s.placements) s.scores[pl.id] = (s.scores[pl.id] ?? 0) + pl.points;
+  }
+  setPhase(s, 'results');
 }
 
 /** Final standings, best first, with shared places for ties. */

@@ -235,7 +235,7 @@ export function mineCartView(env: THREE.Texture, state: CartState, players: Play
 /* ---------------------------------------------------------------- Rising Tide Tower */
 
 export function risingTideView(env: THREE.Texture, state: TideState, players: PlayerInfo[]): View {
-  const scene = makeScene(env, { sky: 'day', skyTop: '#62b9ff', skyBottom: '#fff1d6', fog: ['#cde7ff', 40, 120], shadowSize: 22, sunDir: [6, 18, 14] });
+  const scene = makeScene(env, { sky: 'day', skyTop: '#62b9ff', skyBottom: '#fff1d6', fog: ['#cde7ff', 70, 200], shadowSize: 22, sunDir: [6, 18, 14] });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 300);
   const W = state.w * PX;
   const H = (ROWS + 4) * ROW * PX;
@@ -350,7 +350,8 @@ export function risingTideView(env: THREE.Texture, state: TideState, players: Pl
       const live = s.climbers.filter((c) => !c.out);
       const hs = (live.length ? live : s.climbers).map((c) => c.h * PX);
       const top = Math.max(...hs) + 2.2;
-      const bottom = Math.max(Math.min(...hs) - 0.6, wy - 1.2, -1.5);
+      // keep the leaders in shot; anyone far below is about to get wet anyway
+      const bottom = Math.max(Math.min(...hs) - 0.6, wy - 1.2, -1.5, top - 17);
       const span = Math.max(top - bottom, 7);
       const wantY = (top + bottom) / 2;
       const wantDist = Math.max(span * 1.55, (W + 3) * 0.9);
@@ -460,6 +461,7 @@ export function sledView(env: THREE.Texture, state: SledState, players: PlayerIn
     return { g, m };
   });
   let camZ = 6;
+  let camSpread = 0;
   let last = state;
   return {
     scene,
@@ -490,11 +492,14 @@ export function sledView(env: THREE.Texture, state: SledState, players: PlayerIn
         if (u) fx.sparkle(new THREE.Vector3(wx(u.x), 1, SZ(u.y)), '#7cf3ff', 6);
       }
       const ys = s.sleds.map((u) => u.y).sort((a, b) => b - a);
-      const target = SZ(ys[0] * 0.6 + ys[ys.length - 1] * 0.4);
+      // keep the last sled in shot: anchor on them and rise up as the field spreads out
+      const spread = Math.min(30, (ys[0] - ys[ys.length - 1]) * PX);
+      const target = SZ(ys[ys.length - 1]);
       camZ += (target - camZ) * Math.min(1, dt * 3);
-      const h = 7 + W * 0.18;
-      camera.position.set(0, h, camZ + h * 0.95);
-      camera.lookAt(0, 0, camZ - 7);
+      camSpread += (spread - camSpread) * Math.min(1, dt * 2);
+      const h = 7 + W * 0.18 + camSpread * 0.45;
+      camera.position.set(0, h, camZ + 3 + h * 0.6);
+      camera.lookAt(0, 0, camZ - 5 - camSpread * 0.55);
       fx.update(dt);
     },
     tags(): Tag[] {
@@ -789,7 +794,7 @@ export function mimicView(env: THREE.Texture, state: MimicState, players: Player
       for (const l of s.looters) {
         const m = looters.get(l.id)!;
         const p = who(players, l.id);
-        out.push({ id: l.id, pos: m.group.position.clone().setY(m.group.position.y + 2), text: p?.name ?? '', color: p?.color, sub: l.out ? 'BITTEN' : s.phase === 'pick' && l.locked ? 'locked in' : undefined, subColor: l.out ? '#ff5a5f' : '#4cd97b' });
+        out.push({ id: l.id, pos: m.group.position.clone().setY(m.group.position.y + 2), text: p?.name ?? '', color: p?.color, sub: !l.out && s.phase === 'pick' && l.locked ? 'locked in' : undefined, subColor: '#4cd97b' });
       }
       return out;
     },

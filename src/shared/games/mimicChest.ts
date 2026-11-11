@@ -209,7 +209,7 @@ export const mimicChest: Minigame<MimicState> = {
       if (k.mem.t < k.mem.wait) return NO_INPUT;
       if (k.mem.n < 0 || s.mimics.includes(k.mem.n)) {
         // favour the chests looters went for last time, and the rich ones
-        const score = (c: number) => (s.mimics.includes(c) ? -99 : s.gold[c] * 0.4 + s.lastPicks.filter((p) => p === c).length * 4 * k.sk.smart + rand(k.r) * 6);
+        const score = (c: number) => (s.mimics.includes(c) ? -99 : s.gold[c] * 0.3 + s.lastPicks.filter((p) => p === c).length * 3 * k.sk.smart + rand(k.r) * 9);
         let best = 0;
         for (let c = 1; c < CHESTS; c++) if (score(c) > score(best)) best = c;
         k.mem.n = best;
@@ -224,7 +224,8 @@ export const mimicChest: Minigame<MimicState> = {
     if (k.mem.t < k.mem.wait) return NO_INPUT;
     if (k.mem.n < 0) {
       // rich chests are tempting, but smart looters avoid where the crowd went last round and the richest
-      const score = (c: number) => s.gold[c] * (k.sk.smart > 0.6 ? 0.6 : 1) - (k.level === 'hard' ? s.lastPicks.filter((p) => p === c).length * 3 : 0) + rand(k.r) * 10;
+      const rich = [...s.gold].sort((a, b) => b - a)[1];
+      const score = (c: number) => s.gold[c] * 0.5 - (k.sk.smart > 0.6 && s.gold[c] >= rich ? 4 : 0) - (k.level === 'hard' ? s.lastPicks.filter((p) => p === c).length * 2 : 0) + rand(k.r) * 14;
       let best = 0;
       for (let c = 1; c < CHESTS; c++) if (score(c) > score(best)) best = c;
       k.mem.n = best;

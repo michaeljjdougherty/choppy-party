@@ -94,7 +94,7 @@ export const GAME_LOOKS: Record<string, Look> = {
   'cannon-king': { theme: 'beach' },
   'raft-rowing': { theme: 'sea', density: 0.6 },
   'burger-builder': { theme: 'indoor' },
-  'color-craze': { theme: 'plaza' },
+  'color-craze': { theme: 'plaza', palette: { greenUp: ['toy', 0.5, 2.5], greenSide: ['toy', 0.5, 2.5] }, noScenery: true },
   'station-repair': { theme: 'space' },
 };
 

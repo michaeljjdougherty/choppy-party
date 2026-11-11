@@ -32,6 +32,7 @@ const RECORDED: Record<string, string> = {
   'board:cosmo-junction': 'music/cosmo-junction.mp3',
   'board:stew-court': 'music/stew-court-fucci.mp3',
   'board:stew-court-choppy': 'music/stew-court-choppy.mp3',
+  'board:stew-court-pit': 'music/stew-court-pit.mp3',
 };
 /** Where a song with no working file and no spec of its own falls back to (followed until one plays). */
 const FALLBACK: Record<string, string> = {

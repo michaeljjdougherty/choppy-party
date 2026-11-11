@@ -21,4 +21,16 @@ describe('board music', () => {
     expect(trackFor(court(true, 's0'))).toBe('board:stew-court-choppy');
     expect(trackFor(court(true, pit[2]))).toBe('board:stew-court-pit');
   });
+  it('Mister Chunk brings his theme on any board', () => {
+    const s = { phase: 'board', board: { boardId: 'cosmo-junction', sub: 'chunk' } } as unknown as PartyState;
+    expect(trackFor(s)).toBe('mister-chunk');
+  });
+  it('a Duel space plays the duel theme from picking a rival to the duel', () => {
+    const pick = { phase: 'board', board: { boardId: 'cosmo-junction', sub: 'prompt', prompt: { kind: 'target', purpose: 'duel' } } } as unknown as PartyState;
+    const wait = { phase: 'board', board: { boardId: 'cosmo-junction', sub: 'event', event: { kind: 'duel' } } } as unknown as PartyState;
+    const item = { phase: 'board', board: { boardId: 'cosmo-junction', sub: 'prompt', prompt: { kind: 'target', purpose: 'item' } } } as unknown as PartyState;
+    expect(trackFor(pick)).toBe('duel-space');
+    expect(trackFor(wait)).toBe('duel-space');
+    expect(trackFor(item)).toBe('board:cosmo-junction');
+  });
 });

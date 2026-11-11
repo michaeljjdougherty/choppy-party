@@ -146,7 +146,7 @@ export class MusicEngine {
   }
 
   /** Crossfade to a recorded track (an mp3 / ogg file next to the game). */
-  playFile(id: string, src: string, gain = 1, fade = 0.8): void {
+  playFile(id: string, src: string, gain = 1, fade = 0.8, restart = true): void {
     const ac = this.ensure();
     if (!ac) return;
     if (this.fileId === id) return;
@@ -173,8 +173,21 @@ export class MusicEngine {
     f.out.gain.cancelScheduledValues(ac.currentTime);
     f.out.gain.setValueAtTime(0.0001, ac.currentTime);
     f.out.gain.linearRampToValueAtTime(0.6 * gain, ac.currentTime + fade);
-    f.el.currentTime = 0;
+    if (restart) f.el.currentTime = 0;
     f.el.play().catch(() => {});
+  }
+
+  /** Where the recorded track on now is, in seconds (null for a generated song or before it loads). */
+  fileProgress(): { t: number; dur: number } | null {
+    const f = this.fileId ? this.files.get(this.fileId) : undefined;
+    if (!f || !Number.isFinite(f.el.duration) || f.el.duration <= 0) return null;
+    return { t: f.el.currentTime, dur: f.el.duration };
+  }
+
+  /** Jump the recorded track on now to a point (0..1). */
+  seekFile(frac: number): void {
+    const f = this.fileId ? this.files.get(this.fileId) : undefined;
+    if (f && Number.isFinite(f.el.duration)) f.el.currentTime = Math.max(0, Math.min(0.999, frac)) * f.el.duration;
   }
 
   stopAll(fade = 0.8): void {

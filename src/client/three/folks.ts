@@ -274,6 +274,21 @@ export const FOLKS: FolkSpec[] = [
     idle: { open: 0.15, brows: [4, -2, 4, -2], mouth: 'flat', mw: 0.95, tilt: -3 },
     faces: { blink: { mouth: 'flat', mw: 0.95, tilt: -3 } },
   },
+  {
+    id: 'abi',
+    name: 'Abi Buell',
+    tagline: 'Sunny, sharp and secretly competitive',
+    skin: '#f3c7aa',
+    hair: '#8a4b2c',
+    hairStyle: 'wavy-tousle',
+    eyes: '#6b7f4a',
+    browW: 9,
+    facialHair: 'none',
+    cheeks: 0.6,
+    freckles: true,
+    idle: { open: 1, brows: [6, -2, 6, -2], mouth: 'grin', mw: 1.15 },
+    faces: { blink: { mouth: 'grin', mw: 1.15 } },
+  },
 ];
 
 const KG_VARIANTS: Record<string, { name: string; tagline: string }> = {
@@ -1021,6 +1036,7 @@ const HAIR: Record<string, Omit<HairParams, 'color'>> = {
   shmama: { top: 0.4, sides: 0.45, sideLen: 0.1, flow: 'back', lift: 0.7, fringe: 0.16, fringeSide: -0.3, wave: 0.9, curl: 0.5, curlSize: 0.11, volume: 1.2 },
   aids: { top: 0.22, sides: 0.32, sideLen: 0.04, flow: 'up', lift: 0.9, wave: 0.6, volume: 0.8, thick: 0.065, grid: 10 },
   fick: { top: 0.0, sides: 0.42, sideLen: 0.14, flow: 'back', wave: 0.5, volume: 0.5 },
+  abi: { top: 0.44, sides: 0.75, sideLen: 0.42, flow: 'back', part: 0.22, fringe: 0.24, wave: 0.35, volume: 1.0, thick: 0.095 },
 };
 
 // ------------------------------------------------------------------ the model

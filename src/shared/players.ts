@@ -31,6 +31,7 @@ export const CHARACTERS: Character[] = [
   crew('shmama', 'Shmama'),
   crew('aids', 'Aids'),
   crew('fick', 'Fick'),
+  crew('abi', 'Abi Buell'),
   { name: 'Oobi', color: '#b06cff', model: 'platformer/character-oobi.glb' },
   { name: 'Oodi', color: '#ff7bd5', model: 'platformer/character-oodi.glb' },
   { name: 'Ooli', color: '#ffd23f', model: 'platformer/character-ooli.glb' },

@@ -123,7 +123,11 @@ export class Stage {
         console.warn('Could not dress', this.key, e);
       }
       detailTree(this.view.scene);
-    } else if (++this.frames % 45 === 0) detailTree(this.view.scene); // things spawned mid-game
+      keepInView(this.view.scene);
+    } else if (++this.frames % 45 === 0) {
+      detailTree(this.view.scene); // things spawned mid-game
+      keepInView(this.view.scene);
+    }
     tickDetail(t);
     tickScenery(t);
     if (this.dressed) for (const l of this.dressed.lives) l.update(t, dt);
@@ -153,6 +157,7 @@ export class Stage {
     if (!this.insets.has(view.scene)) {
       this.insets.add(view.scene);
       detailTree(view.scene);
+      keepInView(view.scene);
     }
     r.setScissorTest(true);
     r.setScissor(vx, vy, vw, vh);
@@ -168,4 +173,17 @@ export class Stage {
     const p = v.clone().project(this.view.camera);
     return { x: (p.x + 1) * 0.5 * VIEW_W, y: (1 - p.y) * 0.5 * VIEW_H, visible: p.z < 1 };
   }
+}
+
+/**
+ * three.js works out an object's bounds once and culls it when those bounds leave the camera. Instanced
+ * meshes, point clouds and skinned characters change shape after that (a pancake stack grows, an asteroid
+ * belt orbits, an animation stretches a rig), so their stale bounds made them vanish mid-game. These are
+ * few and cheap, so they're simply always drawn.
+ */
+function keepInView(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const m = o as THREE.InstancedMesh & THREE.Points & THREE.SkinnedMesh;
+    if (m.frustumCulled && (m.isInstancedMesh || m.isPoints || m.isSkinnedMesh)) m.frustumCulled = false;
+  });
 }

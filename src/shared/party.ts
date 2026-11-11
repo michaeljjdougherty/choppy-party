@@ -4,7 +4,7 @@ import { GAMES, getGame } from './games';
 import { CHARACTERS, PLAYER_COLORS, DEFAULT_NAMES } from './players';
 import { shuffle, type Rng } from './rng';
 import { BOARDS, getBoard, recommendedBoard } from './board/boards';
-import { STEW_GAMES, awardMinigame, boardRanking, createBoard, endTour, finishEvent, stepBoard, winnerGoesFirst } from './board/engine';
+import { DUEL_GAMES, STEW_GAMES, awardMinigame, boardRanking, createBoard, endTour, finishEvent, stepBoard, winnerGoesFirst } from './board/engine';
 import type { BoardState } from './board/types';
 import { addBotInputs, type BotLevel } from './bots';
 import type { BotMem } from './botkit';
@@ -15,6 +15,8 @@ export const READY_HOLD = 1;
 /** Nobody can stall a minigame intro longer than this. */
 export const INTRO_MAX = 90;
 export const ROUND_OPTIONS = [3, 5, 10];
+/** Minigame Mix flavours: everyone in every game, 1-on-1 duels, or 2-team Stew Battles. */
+export const MIX_MODES = ['Classic', 'Duel', 'Stew Battle'] as const;
 export const TURN_OPTIONS = [5, 10, 15, 20];
 
 /** Everything the host can pick in the lobby, in order. */
@@ -62,6 +64,10 @@ export interface PartyState {
   /** Index into OPTIONS. */
   selection: number;
   roundsIdx: number;
+  /** Index into MIX_MODES. */
+  mixMode?: number;
+  /** Mix: how many games each player has been in, so duels and sit-outs rotate fairly. */
+  mixPlays?: Record<string, number>;
   turnsIdx: number;
   mode: PartyOption['kind'];
   board: BoardState | null;
@@ -162,6 +168,7 @@ export function createParty(seed: number): PartyState {
     scores: {},
     selection: 0,
     roundsIdx: 1,
+    mixMode: 0,
     turnsIdx: 1,
     mode: 'board',
     board: null,
@@ -297,12 +304,36 @@ export function removePlayer(s: PartyState, id: string): boolean {
 export function selectionLabel(s: PartyState): string {
   const o = OPTIONS[s.selection];
   if (o.kind === 'board') return `${getBoard(o.id).name}: ${TURN_OPTIONS[s.turnsIdx]} turns`;
-  if (o.kind === 'mix') return `Minigame Mix: ${ROUND_OPTIONS[s.roundsIdx]} rounds`;
+  if (o.kind === 'mix') return `Minigame Mix (${MIX_MODES[s.mixMode ?? 0]}): ${ROUND_OPTIONS[s.roundsIdx]} rounds`;
   return getGame(o.id).name;
 }
 
 function eligibleGames(n: number): string[] {
   return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && g.mode !== 'Duel' && !STEW_GAMES.includes(g.id)).map((g) => g.id);
+}
+
+/** The games a Minigame Mix deals, for its mode. */
+export function mixPool(mode: number, n: number): string[] {
+  if (mode === 1) return n >= 2 ? [...DUEL_GAMES] : [];
+  if (mode === 2) return n >= 2 ? [...STEW_GAMES] : [];
+  return eligibleGames(n);
+}
+
+/** Who plays this mix round: everyone, or a fair pick of two duellists / two even teams. */
+function mixLineup(s: PartyState): PlayerInfo[] | null {
+  const mode = s.mixMode ?? 0;
+  if (mode === 0 || s.players.length < 2) return null;
+  const plays = (s.mixPlays ??= {});
+  const n = s.players.length;
+  // fewest games played goes first; a shuffle breaks ties so the pairings mix up
+  const order = shuffle(s.rng, s.players.map((p) => p.id)).sort((a, b) => (plays[a] ?? 0) - (plays[b] ?? 0));
+  const take = mode === 1 ? 2 : n % 2 === 1 ? n - 1 : n;
+  const ids = order.slice(0, take);
+  for (const id of ids) plays[id] = (plays[id] ?? 0) + 1;
+  if (mode === 1) return ids.map((id) => ({ ...s.players.find((p) => p.id === id)! }));
+  // Stew Battle: deal by points so far, A B B A, so the teams come out even
+  const ranked = [...ids].sort((a, b) => (s.scores[b] ?? 0) - (s.scores[a] ?? 0));
+  return ranked.map((id, i) => ({ ...s.players.find((p) => p.id === id)!, team: [0, 1, 1, 0][i % 4] }));
 }
 
 export function totalRounds(s: PartyState): number {
@@ -336,7 +367,8 @@ export function startParty(s: PartyState): void {
     return;
   }
   if (o.kind === 'mix') {
-    s.playlist = makePlaylist(s, eligibleGames(n), ROUND_OPTIONS[s.roundsIdx]);
+    s.mixPlays = {};
+    s.playlist = makePlaylist(s, mixPool(s.mixMode ?? 0, n), ROUND_OPTIONS[s.roundsIdx]);
   } else {
     s.playlist = [o.id];
   }
@@ -359,10 +391,10 @@ function beginRound(s: PartyState): void {
   const id = s.playlist[s.round];
   const g = getGame(id);
   s.gameId = id;
-  s.gamePlayers = null;
+  s.gamePlayers = s.mode === 'mix' ? mixLineup(s) : null;
   s.boardEvent = null;
   s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
-  s.game = g.setup(s.players, s.rng.seed);
+  s.game = g.setup(s.gamePlayers ?? s.players, s.rng.seed);
   setPhase(s, 'intro');
 }
 
@@ -406,8 +438,9 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
       } else if (s.navCooldown === 0 && (dx || dy)) {
         s.navCooldown = 0.22;
         if (kind === 'mix') {
-          const d = dx || -dy;
-          s.roundsIdx = Math.max(0, Math.min(ROUND_OPTIONS.length - 1, s.roundsIdx + d));
+          // left/right: rounds; up/down: Classic, Duel or Stew Battle
+          if (dx) s.roundsIdx = Math.max(0, Math.min(ROUND_OPTIONS.length - 1, s.roundsIdx + dx));
+          else s.mixMode = ((s.mixMode ?? 0) + dy + MIX_MODES.length) % MIX_MODES.length;
         } else if (kind === 'board') {
           if (dx) {
             s.selection = list[(pos + dx + list.length) % list.length];

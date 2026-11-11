@@ -1,5 +1,5 @@
 import { GAMES, getGame } from '../shared/games';
-import { GRID_COLS, MAX_PLAYERS, OPTIONS, ROUND_OPTIONS, optionsOfKind, selectionLabel, standings, type PartyOption, type PartyState } from '../shared/party';
+import { GRID_COLS, MAX_PLAYERS, MIX_MODES, OPTIONS, ROUND_OPTIONS, mixPool, optionsOfKind, selectionLabel, standings, type PartyOption, type PartyState } from '../shared/party';
 import { getBoard, recommendedBoard } from '../shared/board/boards';
 import { crownIcon } from './boardHud';
 import { playerById, roundRect, text } from '../shared/draw';
@@ -204,8 +204,10 @@ function mixCard(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void 
   g.addColorStop(1, '#2f8cff');
   ctx.fillStyle = g;
   ctx.fillRect(x, y, w, h);
-  // three reels spinning through the minigames
-  const pool = GAMES.filter((q) => q.mode !== 'Duel');
+  // three reels spinning through the minigames this mode deals
+  const mode = s.mixMode ?? 0;
+  const ids = mixPool(mode, Math.max(2, s.players.length));
+  const pool = GAMES.filter((q) => ids.includes(q.id));
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y + 50, w, h - 60);
@@ -227,10 +229,15 @@ function mixCard(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void 
   ctx.restore();
   ctx.fillStyle = 'rgba(255,255,255,0.18)';
   ctx.fillRect(x, y + 108, w, 44);
-  ribbon(ctx, x + w / 2, y + 4, 260, 40, '#2f8cff', 'Minigame Mix', 22);
-  const count = (m: string) => GAMES.filter((q) => q.mode === m).length;
+  ribbon(ctx, x + w / 2, y + 4, 300, 40, MIX_COLOR[mode], mode ? `Mix: ${MIX_MODES[mode]}` : 'Minigame Mix', 22);
+  const count = (m: string) => pool.filter((q) => q.mode === m).length;
   text(ctx, `${pool.length} minigames shuffled in, never the same twice in a row`, x + w / 2, y + h + 22, 16, { color: '#ffffff', weight: 700, outline: false });
-  const label = `${count('Free-for-all')} free-for-all  ·  ${count('Team')} team  ·  ${count('1-vs-many')} 1-vs-many`;
+  const label =
+    mode === 1
+      ? 'Two players face off each round, taking turns so everyone duels'
+      : mode === 2
+        ? 'Two even teams every round (odd numbers take turns sitting out)'
+        : `${count('Free-for-all')} free-for-all  ·  ${count('Team')} team  ·  ${count('1-vs-many')} 1-vs-many`;
   text(ctx, label, x + w / 2, y + h + 52, 15, { color: '#bfe0ff', weight: 700, outline: false });
 }
 
@@ -299,29 +306,40 @@ export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: Scre
     text(ctx, hostHint('{keys} left/right for a board, up/down for turns'), 640, 664, 17, { color: '#ffd23f', weight: 700, outline: false });
   } else if (o.kind === 'mix') {
     mixCard(ctx, s, t);
-    panel(ctx, 220, 556, 840, 130);
-    text(ctx, 'HOW MANY ROUNDS?', 640, 576, 18, { color: '#bfe0ff', weight: 800, outline: false });
+    panel(ctx, 220, 540, 840, 150);
+    // the mode switch: Classic, Duel or Stew Battle
+    MIX_MODES.forEach((m, i) => {
+      const on = i === (s.mixMode ?? 0);
+      const r = MIX_TABS[i];
+      ctx.fillStyle = on ? MIX_COLOR[i] : 'rgba(255,255,255,0.14)';
+      roundRect(ctx, r.x, r.y, r.w, r.h, 14);
+      ctx.fill();
+      ctx.lineWidth = on ? 4 : 2;
+      ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.45)';
+      ctx.stroke();
+      text(ctx, m, r.x + r.w / 2, r.y + r.h / 2 + 1, on ? 20 : 17, { color: '#fff', weight: 900 });
+    });
     ROUND_OPTIONS.forEach((n, i) => {
       const on = i === s.roundsIdx;
       const cx = 640 + (i - 1) * 150;
-      const sz = on ? 1.12 + Math.sin(t * 6) * 0.03 : 1;
+      const sz = on ? 1.06 + Math.sin(t * 6) * 0.03 : 0.9;
       ctx.save();
-      ctx.translate(cx, 620);
+      ctx.translate(cx, 632);
       ctx.scale(sz, sz);
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      roundRect(ctx, -58 + 3, -26 + 6, 116, 52, 16);
+      roundRect(ctx, -58 + 3, -24 + 6, 116, 48, 16);
       ctx.fill();
       ctx.fillStyle = on ? '#2f8cff' : 'rgba(255,255,255,0.18)';
-      roundRect(ctx, -58, -26, 116, 52, 16);
+      roundRect(ctx, -58, -24, 116, 48, 16);
       ctx.fill();
       ctx.lineWidth = on ? 5 : 2;
       ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.5)';
       ctx.stroke();
       ctx.restore();
-      text(ctx, `${n}`, cx - 22, 620, 30, { color: '#fff' });
-      text(ctx, 'rounds', cx + 26, 622, 14, { color: '#fff', weight: 800, outline: false });
+      text(ctx, `${n}`, cx - 22, 632, 28, { color: '#fff' });
+      text(ctx, 'rounds', cx + 26, 634, 14, { color: '#fff', weight: 800, outline: false });
     });
-    text(ctx, hostHint('{keys} to pick the rounds'), 640, 670, 17, { color: '#ffd23f', weight: 700, outline: false });
+    text(ctx, hostHint('{keys} up/down for the mode, left/right for rounds'), 640, 676, 16, { color: '#ffd23f', weight: 700, outline: false });
   } else {
     gameCard(ctx, s, o.id);
     freeGrid(ctx, s, t);
@@ -380,6 +398,9 @@ function shadeHex(hex: string, amt: number): string {
   return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
+const MIX_COLOR = ['#2f8cff', '#ff4d5a', '#ff9f1c'];
+/** Where the Mix mode tabs sit (main.ts makes them clickable). */
+export const MIX_TABS = [0, 1, 2].map((i) => ({ x: 640 - 330 + i * 225, y: 554, w: 210, h: 44 }));
 const MODE_COLOR: Record<string, string> = { 'Free-for-all': '#ff8a1f', Team: '#3fa9f5', '1-vs-many': '#b06cff', Duel: '#ff4d5a' };
 
 /** Where the minigame intro's live preview is drawn (HUD coordinates). */

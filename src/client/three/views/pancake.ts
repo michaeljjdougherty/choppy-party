@@ -83,6 +83,9 @@ export function pancakeView(env: THREE.Texture, state: PancakeState, players: Pl
       scene.add(disc);
     }
     const stack = new THREE.InstancedMesh(cakeGeo, cakeMat, MAX_CAKES);
+    // the stack grows every frame, so its cached bounds go stale and three.js would cull it once the
+    // camera rises past the plate: draw it always
+    stack.frustumCulled = false;
     stack.castShadow = true;
     stack.receiveShadow = true;
     stack.count = 0;

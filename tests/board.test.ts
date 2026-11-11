@@ -198,3 +198,29 @@ describe('two dice', () => {
     expect(found).toBe(true);
   });
 });
+
+describe('item crate reel', () => {
+  it('spins before giving the item', () => {
+    const ids = ['a', 'b'];
+    const s = createBoard('lantern-hollow', ids, 5, 3);
+    const def = BOARDS.find((d) => d.id === s.boardId)!;
+    const crate = Object.values(def.nodes).find((n) => n.type === 'crate')!;
+    const me = s.order[0];
+    s.cur = 0;
+    s.players[me].node = crate.id;
+    s.players[me].items = [];
+    s.stepsLeft = 0;
+    s.hop = null;
+    s.sub = 'move';
+    s.t = 0;
+    const none: Inputs = { a: { ...NO_INPUT }, b: { ...NO_INPUT } };
+    stepBoard(s, none, DT);
+    expect(s.sub).toBe('itemSpin');
+    expect(s.players[me].items.length).toBe(0);
+    const pick = s.spin!.pick;
+    expect(s.spin!.reel[s.spin!.at]).toBe(pick);
+    for (let i = 0; i < 400 && (s.sub as string) === 'itemSpin'; i++) stepBoard(s, none, DT);
+    expect(s.sub).toBe('land');
+    expect(s.players[me].items).toEqual([pick]);
+  });
+});

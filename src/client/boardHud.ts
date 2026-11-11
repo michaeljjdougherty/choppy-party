@@ -3,7 +3,7 @@ import { slam, sunburst } from './showtime';
 import { sfx } from './sfx';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
-import { DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, currentPlayer } from '../shared/board/engine';
+import { SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, currentPlayer } from '../shared/board/engine';
 import { TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
 import { ITEMS } from '../shared/board/items';
 import { WEATHER_COLOR, forecast } from '../shared/board/weather';
@@ -226,6 +226,8 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
       box(what, '◀ Stick ▶   A: confirm' + (pm.purpose === 'item' ? '   B: back' : ''), 180);
       text(ctx, tp?.name ?? '', 640, 226, 48, { color: tp?.color ?? '#000', outline: false });
     }
+  } else if (b.sub === 'itemSpin' && b.spin) {
+    drawItemReel(ctx, b.spin, b.t, t);
   } else if (b.sub === 'roundEnd') {
     text(ctx, 'End of round', 640, 220, 40, { color: '#ff9f1c' });
   } else if (b.sub === 'event' && b.event) {
@@ -468,4 +470,80 @@ function promptPill(ctx: CanvasRenderingContext2D, msg: string, y: number): void
   roundRect(ctx, 640 - w / 2, y - 22, w, 44, 22);
   ctx.fill();
   text(ctx, msg, 640, y, size, { color: '#ffffff', weight: 800 });
+}
+
+/** Item Crate: a reel of items whizzes past the pointer, slows down and stops on the prize. */
+let reelTick = -1;
+function drawItemReel(ctx: CanvasRenderingContext2D, spin: { reel: (keyof typeof ITEMS)[]; at: number }, age: number, t: number): void {
+  const cell = 92, vis = 7, cx = 640, cy = 236;
+  const w = cell * vis;
+  const k = Math.min(1, age / SPIN_STOP);
+  const pos = spin.at * (1 - Math.pow(1 - k, 4));
+  const idx = Math.floor(pos + 0.5);
+  if (idx !== reelTick) {
+    if (reelTick >= 0 && idx > reelTick) sfx.move();
+    reelTick = idx;
+  }
+  const done = k >= 1;
+  if (done && reelTick !== 1e9) {
+    sfx.gem();
+    reelTick = 1e9;
+  }
+  if (age < 0.05) reelTick = -1;
+  const enter = Math.min(1, age / 0.2);
+  ctx.save();
+  ctx.globalAlpha = enter;
+  // frame
+  ctx.fillStyle = 'rgba(20,12,40,0.82)';
+  roundRect(ctx, cx - w / 2 - 14, cy - cell / 2 - 46, w + 28, cell + 92, 20);
+  ctx.fill();
+  ctx.strokeStyle = '#ffb347';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  text(ctx, 'ITEM CRATE!', cx, cy - cell / 2 - 22, 26, { color: '#ffb347' });
+  // the strip, clipped to the window
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(cx - w / 2, cy - cell / 2, w, cell);
+  ctx.clip();
+  const first = Math.floor(pos) - Math.ceil(vis / 2) - 1;
+  for (let i = first; i <= first + vis + 3; i++) {
+    if (i < 0 || i >= spin.reel.length) continue;
+    const id = spin.reel[i];
+    const x = cx + (i - pos) * cell;
+    const prize = done && i === spin.at;
+    // fade toward the edges like a drum turning away
+    const edge = 1 - Math.min(1, Math.abs(x - cx) / (w / 2)) * 0.7;
+    ctx.globalAlpha = enter * edge;
+    ctx.fillStyle = prize ? 'rgba(255,179,71,0.35)' : 'rgba(255,255,255,0.08)';
+    ctx.fillRect(x - cell / 2 + 4, cy - cell / 2 + 4, cell - 8, cell - 8);
+    const icon = itemIcon(id);
+    const s = prize ? 1 + Math.sin(Math.min(1, (age - SPIN_STOP) / 0.3) * Math.PI) * 0.18 : 1;
+    const sz = (cell - 16) * s;
+    if (icon) ctx.drawImage(icon, x - sz / 2, cy - sz / 2, sz, sz);
+    else {
+      ctx.fillStyle = ITEMS[id].color;
+      roundRect(ctx, x - sz / 3, cy - sz / 3, (sz * 2) / 3, (sz * 2) / 3, 8);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+  // pointer and centre window
+  ctx.globalAlpha = enter;
+  ctx.strokeStyle = done ? '#ffd23f' : '#ffffff';
+  ctx.lineWidth = done ? 5 + Math.sin(t * 10) * 1.5 : 3;
+  ctx.strokeRect(cx - cell / 2 + 2, cy - cell / 2 + 2, cell - 4, cell - 4);
+  ctx.fillStyle = '#ffd23f';
+  for (const dir of [-1, 1]) {
+    const y = cy + dir * (cell / 2 + 2);
+    ctx.beginPath();
+    ctx.moveTo(cx - 12, y + dir * 12);
+    ctx.lineTo(cx + 12, y + dir * 12);
+    ctx.lineTo(cx, y - dir * 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const name = done ? ITEMS[spin.reel[spin.at]].name : '';
+  if (name) text(ctx, name, cx, cy + cell / 2 + 24, 22, { color: '#ffd23f' });
+  ctx.restore();
 }

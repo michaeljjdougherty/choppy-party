@@ -212,6 +212,7 @@ export type BoardSub =
   | 'prompt'
   | 'land'
   | 'wheel'
+  | 'itemSpin' // an Item Crate spins a reel of items before giving one
   | 'event' // waiting for the party to run a duel or Stew Battle
   | 'roundEnd' // hazards go off after everyone has moved
   | 'done';
@@ -272,6 +273,8 @@ export interface BoardState {
   weather: import('./weather').WeatherState;
   counter: number;
   banner: { text: string; color: string; t: number } | null;
+  /** Item Crate reel: the items it scrolls through, ending on the one you get. */
+  spin?: { reel: ItemId[]; at: number; pick: ItemId } | null;
   /** Short-lived effects for the 3D view: hits, heals, knockouts, item use. */
   fx: { n: number; kind: string; node: string; id?: string; amount?: number; t: number }[];
   fxSeq: number;

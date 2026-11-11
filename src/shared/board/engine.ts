@@ -49,6 +49,10 @@ function finishRoll(s: BoardState, def: BoardDef, me: BoardPlayer): void {
   me.dice = 2;
 }
 const WHEEL_TIME = 3;
+/** Item Crate reel: how many items scroll past and how long it runs (the last ~0.9 s shows the prize). */
+export const SPIN_LEN = 26;
+export const SPIN_STOP = 2.8;
+const SPIN_TIME = SPIN_STOP + 0.9;
 
 export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number, tour = false): BoardState {
   const def = getBoard(boardId);
@@ -342,13 +346,6 @@ function heal(s: BoardState, p: BoardPlayer, amount: number): number {
   return p.hp - before;
 }
 
-function giveItem(s: BoardState, p: BoardPlayer): ItemId | null {
-  if (p.items.length >= s.preset.maxItems) return null;
-  const it = ITEM_IDS[Math.floor(rand(s.rng) * ITEM_IDS.length)];
-  p.items.push(it);
-  return it;
-}
-
 // ---- the turn ------------------------------------------------------------------------------------
 
 /**
@@ -513,6 +510,16 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         const ev = s.event!;
         const sit = ev.wheel![Math.floor(rand(s.rng) * ev.wheel!.length)];
         startStew(s, def, ev, sit);
+      }
+      break;
+
+    case 'itemSpin':
+      if (s.t > SPIN_TIME && s.spin) {
+        const it = s.spin.pick;
+        s.spin = null;
+        if (me.items.length < s.preset.maxItems) me.items.push(it);
+        say(s, `Got ${ITEMS[it].name}!`, '#ffb347');
+        set(s, 'land');
       }
       break;
 
@@ -913,9 +920,18 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
       say(s, 'Heart Fountain: full HP!', '#ff7bd5');
       break;
     case 'crate': {
-      const it = giveItem(s, me);
       fx(s, 'crate', me.node, id);
-      say(s, it ? `Got ${ITEMS[it].name}!` : 'Your bag is full!', '#ffb347');
+      if (me.items.length >= pr.maxItems) {
+        say(s, 'Your bag is full!', '#ffb347');
+        break;
+      }
+      // the crate spins a reel of items and stops on the prize
+      const pick = ITEM_IDS[Math.floor(rand(s.rng) * ITEM_IDS.length)];
+      const reel: ItemId[] = [];
+      for (let i = 0; i < SPIN_LEN + 4; i++) reel.push(ITEM_IDS[(i * 7 + Math.floor(rand(s.rng) * ITEM_IDS.length)) % ITEM_IDS.length]);
+      reel[SPIN_LEN] = pick;
+      s.spin = { reel, at: SPIN_LEN, pick };
+      set(s, 'itemSpin');
       break;
     }
     case 'lucky': {

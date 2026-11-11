@@ -37,7 +37,7 @@ const models: FolkModel[] = [];
 await preloadAll(() => {});
 const SHOW = [
   ['Rik', 'crown.tux.cape'], ['Pete', 'cowboy.flannel.lantern'], ['Fucci', 'wizard.robe.wand'], ['Zach', 'propeller.hawaiian.icecream'],
-  ['KG', 'viking.knight.sword'], ['Chops', 'chef.chef.cleaver'], ['MM', 'space.spacesuit.jetpack'], ['Regs', 'party.varsity.foamfinger'],
+  ['KG', 'viking.knight.sword'], ['Chops', 'chef.chef.cleaver'], ['MM', 'space.spacesuit.jetpack'], ['Fick', 'party.varsity.foamfinger'],
 ];
 const show = q.has('show');
 const items = show ? SHOW.map(([name, l]) => ({ id: l, name })) : CATALOG[cat].slice(page * per, page * per + per);

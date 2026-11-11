@@ -10,7 +10,7 @@ import { netDialogOpen, openNetDialog } from './netDialog';
 
 /** ?server uses the optional Node room server instead of peer-to-peer. */
 const SERVER_MODE = new URLSearchParams(location.search).has('server');
-import { INTRO_PREVIEW, PREVIEW, drawFinal, drawIntro, drawLobby, drawResults, gridTiles } from './screens';
+import { INTRO_PREVIEW, MIX_TABS, PREVIEW, drawFinal, drawIntro, drawLobby, drawResults, gridTiles } from './screens';
 import { loadSamples, sfx, unlockAudio } from './sfx';
 import { music, syncMusic } from './soundtrack';
 import { drawConfetti, resetJuice, watch } from './juice';
@@ -522,6 +522,12 @@ function lobbyButtons(s: PartyState) {
     if (button(ctx, '◀', 236, 572, 64, 52, { color: '#9a5bff', size: 26 })) input.nudge(dev, -1, 0);
     if (button(ctx, '▶', 980, 572, 64, 52, { color: '#9a5bff', size: 26 })) input.nudge(dev, 1, 0);
   }
+  if (kind === 'mix') {
+    // click a mode tab: up/down steps toward it (so it works online too)
+    MIX_TABS.forEach((r, i) => {
+      if (i !== (s.mixMode ?? 0) && clicked(r.x, r.y, r.w, r.h)) input.nudge(dev, 0, ((i - (s.mixMode ?? 0) + 3) % 3) === 1 ? 1 : -1);
+    });
+  }
   if (kind === 'board') {
     text(ctx, 'Turns', 160, 698, 18, { weight: 800 });
     if (button(ctx, '+', 130, 566, 60, 50, { color: '#2f8cff', size: 30 })) input.nudge(dev, 0, -1);
@@ -960,6 +966,10 @@ Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px '
   input,
   menu,
   stage,
+  /** Test helper: where each player tag is on screen (catches things leaving the camera). */
+  tagSpots() {
+    return lastTags.map((t) => ({ text: t.text, ...stage.project(t.pos) }));
+  },
   OPTIONS,
   BOARDS,
   /** Test helper: fill local lobby seats with idle players. */

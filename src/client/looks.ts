@@ -15,9 +15,17 @@ function read(): Record<string, string> {
   }
 }
 
+/** Starting outfits for the extra KGs, so each one reads as his own character. */
+const STARTER: Record<string, Look> = {
+  'kg-king': { hat: 'crown', shirt: 'tux', acc: 'cape' },
+  'kg-evil': { hat: 'devil', shirt: 'leather', acc: 'bat' },
+  'kg-space': { hat: 'space', shirt: 'spacesuit', acc: 'jetpack' },
+  'kg-chef': { hat: 'chef', shirt: 'chef', acc: 'cleaver' },
+};
+
 export function savedLook(folkId: string): Look {
   const s = read()[folkId];
-  return s ? decodeLook(s) : { ...DEFAULT_LOOK };
+  return s ? decodeLook(s) : { ...(STARTER[folkId] ?? DEFAULT_LOOK) };
 }
 
 export function saveLook(folkId: string, look: Look): void {

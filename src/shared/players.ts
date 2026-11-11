@@ -20,6 +20,11 @@ export const CHARACTERS: Character[] = [
   crew('fucci', 'Fucci'),
   crew('zach', 'Zach'),
   crew('kg', 'KG'),
+  // Michael's call: four more KGs, each with his own starting outfit (see looks.ts)
+  crew('kg-king', 'King KG'),
+  crew('kg-evil', 'Evil KG'),
+  crew('kg-space', 'Space KG'),
+  crew('kg-chef', 'Chef KG'),
   crew('chops', 'Chops'),
   crew('maddog', 'Mad Dog'),
   crew('mm', 'MM'),

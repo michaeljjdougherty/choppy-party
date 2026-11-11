@@ -276,7 +276,17 @@ export const FOLKS: FolkSpec[] = [
   },
 ];
 
+const KG_VARIANTS: Record<string, { name: string; tagline: string }> = {
+  'kg-king': { name: 'King KG', tagline: 'Still not buying it, royally' },
+  'kg-evil': { name: 'Evil KG', tagline: 'Never bought it' },
+  'kg-space': { name: 'Space KG', tagline: 'Not buying it in orbit' },
+  'kg-chef': { name: 'Chef KG', tagline: 'Not buying it, cooking it' },
+};
+
 export function folk(id: string): FolkSpec {
+  // the extra KGs (kg-king, kg-evil, ...) are all KG underneath, with their own name and tagline
+  const kg = KG_VARIANTS[id];
+  if (kg) return { ...folk('kg'), ...kg };
   return FOLKS.find((f) => f.id === id) ?? FOLKS[0];
 }
 

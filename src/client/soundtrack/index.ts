@@ -2,7 +2,8 @@
  * Choppy Party soundtrack: music is always playing.
  *
  *   title / main menu / lobby -> 'menu' (the recorded menu track, music/menu.mp3; 'title' if it is missing)
- *   board                     -> that board's theme
+ *   board                     -> that board's theme (a recorded one from RECORDED when there is one;
+ *                                Lantern Hollow plays 'board:lantern-hollow-night' after dark)
  *   minigame intro + play     -> that minigame's own song (quieter during the intro)
  *   results                   -> 'results'
  *   final                     -> 'finale' (or whatever override the finale sequence sets)
@@ -18,14 +19,30 @@ import { ALL_SONGS, GAME_SONGS } from './songs';
 export { ALL_SONGS } from './songs';
 export type { SongSpec } from './compose';
 
-const MENU_FILE = 'music/menu.mp3';
+/**
+ * Recorded tracks (files in public/music) that take the place of a generated song. If a file
+ * fails to load, the generated song with the same id plays instead ('title' for the menu).
+ * Lantern Hollow at night has no generated song of its own: without its file it plays the board theme.
+ */
+const RECORDED: Record<string, string> = {
+  menu: 'music/menu.mp3',
+  'board:lantern-hollow': 'music/lantern-hollow-day.mp3',
+  'board:lantern-hollow-night': 'music/lantern-hollow-night.mp3',
+  'board:cosmo-junction': 'music/cosmo-junction.mp3',
+};
+/** Where a song with no file and no spec of its own falls back to. */
+const FALLBACK: Record<string, string> = { menu: 'title', 'board:lantern-hollow-night': 'board:lantern-hollow' };
 const VOL_KEY = 'choppy.musicVolume';
 
 const engine = new MusicEngine();
-engine.onFileError = () => (menuFileOk = false);
+const brokenFiles = new Set<string>();
+engine.onFileError = (id) => {
+  brokenFiles.add(id);
+  // the broken track was on screen: put its stand-in on straight away
+  if (engine.current() === null) play(id);
+};
 const byId = new Map(ALL_SONGS.map((s) => [s.id, s]));
 let overrideId: string | null = null;
-let menuFileOk = true;
 let hurry = false;
 
 try {
@@ -57,15 +74,14 @@ export function songForGame(id: string, name?: string): SongSpec {
 }
 
 function play(id: string): void {
-  if (id === 'menu') {
-    if (menuFileOk) {
-      engine.playFile('menu', MENU_FILE);
-      return;
-    }
-    id = 'title';
+  const file = RECORDED[id];
+  if (file && !brokenFiles.has(id)) {
+    engine.playFile(id, file);
+    return;
   }
-  const s = byId.get(id);
-  if (s) engine.playSong(s);
+  const s = byId.get(id) ?? (FALLBACK[id] ? byId.get(FALLBACK[id]) : undefined);
+  // a stand-in keeps the asked-for id, so syncMusic doesn't keep restarting it
+  if (s) engine.playSong(s.id === id ? s : { ...s, id });
 }
 
 export const music = {
@@ -104,7 +120,7 @@ export const music = {
   },
   /** The menu mp3 failed to load: fall back to the generated title theme. */
   menuFileMissing(): void {
-    menuFileOk = false;
+    brokenFiles.add('menu');
   },
 };
 
@@ -113,7 +129,9 @@ export function trackFor(s: PartyState | null | undefined): string {
   if (!s || s.phase === 'lobby') return 'menu';
   switch (s.phase) {
     case 'board':
-      return s.board ? `board:${s.board.boardId}` : 'results';
+      if (!s.board) return 'results';
+      if (s.board.boardId === 'lantern-hollow' && s.board.night) return 'board:lantern-hollow-night';
+      return `board:${s.board.boardId}`;
     case 'intro':
     case 'play':
       return s.gameId ? songForGame(s.gameId).id : 'results';

@@ -28,8 +28,10 @@ export class MusicEngine {
   private echoIn!: GainNode;
   private players: Player[] = [];
   private scores = new Map<string, Score>();
-  private file: { id: string; el: HTMLAudioElement; out: GainNode } | null = null;
-  private fileOn = false;
+  /** Recorded tracks, one element each, kept so going back to one doesn't load it again. */
+  private files = new Map<string, { el: HTMLAudioElement; out: GainNode }>();
+  /** The recorded track playing now, if any. */
+  private fileId: string | null = null;
   /** Called when a recorded track can't be loaded. */
   onFileError: ((id: string) => void) | null = null;
   volume = 0.7;
@@ -84,7 +86,8 @@ export class MusicEngine {
   unlock(): void {
     const ac = this.ensure();
     if (ac && ac.state === 'suspended') void ac.resume();
-    if (this.file?.el.paused) this.file.el.play().catch(() => {});
+    const f = this.fileId ? this.files.get(this.fileId) : undefined;
+    if (f?.el.paused) f.el.play().catch(() => {});
   }
 
   setVolume(v: number): void {
@@ -109,7 +112,7 @@ export class MusicEngine {
 
   current(): string | null {
     const live = this.players.find((p) => !p.stopping);
-    return live?.id ?? (this.fileOn ? (this.file?.id ?? null) : null);
+    return live?.id ?? this.fileId;
   }
 
   private scoreFor(spec: SongSpec): Score {
@@ -146,25 +149,27 @@ export class MusicEngine {
   playFile(id: string, src: string, gain = 1, fade = 0.8): void {
     const ac = this.ensure();
     if (!ac) return;
-    if (this.fileOn && this.file?.id === id) return;
+    if (this.fileId === id) return;
     this.stopAll(fade);
-    this.fileOn = true;
-    if (!this.file || this.file.id !== id) {
+    let f = this.files.get(id);
+    if (!f) {
       try {
         const el = new Audio(src);
         el.loop = true;
         el.addEventListener('error', () => {
-          if (this.file?.el === el) (this.fileOn = false), (this.file = null);
+          this.files.delete(id);
+          if (this.fileId === id) this.fileId = null;
           this.onFileError?.(id);
         });
         const out = ac.createGain();
         ac.createMediaElementSource(el).connect(out).connect(this.dry);
-        this.file = { id, el, out };
+        f = { el, out };
+        this.files.set(id, f);
       } catch {
         return;
       }
     }
-    const f = this.file;
+    this.fileId = id;
     f.out.gain.cancelScheduledValues(ac.currentTime);
     f.out.gain.setValueAtTime(0.0001, ac.currentTime);
     f.out.gain.linearRampToValueAtTime(0.6 * gain, ac.currentTime + fade);
@@ -186,14 +191,16 @@ export class MusicEngine {
         this.players = this.players.filter((x) => x !== p);
       }, (fade + LOOKAHEAD + 2) * 1000);
     }
-    if (this.file && this.fileOn) {
-      this.fileOn = false;
-      const f = this.file;
+    const id = this.fileId;
+    const f = id ? this.files.get(id) : undefined;
+    if (f) {
+      this.fileId = null;
       f.out.gain.cancelScheduledValues(now);
       f.out.gain.setValueAtTime(f.out.gain.value, now);
       f.out.gain.linearRampToValueAtTime(0, now + fade);
       setTimeout(() => {
-        if (!this.fileOn) f.el.pause();
+        // pause it, unless it was started again during the fade
+        if (this.fileId !== id) f.el.pause();
       }, fade * 1000 + 50);
     }
   }

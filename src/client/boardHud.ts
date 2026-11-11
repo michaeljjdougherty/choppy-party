@@ -197,7 +197,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     // two-choice prompts: two big buttons with a cursor, so a stray A press can't say yes
     const two = (q: string, opts: [string, string], sub: [string, string] = ['', '']) => {
       const sel = (pm as { sel?: number }).sel ?? 0;
-      const locked = b.t < PROMPT_LOCK;
+      const locked = (b.promptAge ?? 1) < PROMPT_LOCK;
       box(q, '', 210);
       opts.forEach((label, i) => {
         const on = i === sel;

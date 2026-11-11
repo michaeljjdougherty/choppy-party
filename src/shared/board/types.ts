@@ -266,6 +266,8 @@ export interface BoardState {
   bounced: boolean;
   branch: { options: string[]; sel: number } | null;
   prompt: Prompt | null;
+  /** Seconds the current prompt has been open (cursor moves don't reset it, unlike `t`). */
+  promptAge?: number;
   players: Record<string, BoardPlayer>;
   /** Spaces with a Crown Chest on them. */
   crowns: string[];

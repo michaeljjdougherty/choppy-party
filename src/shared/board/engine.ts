@@ -497,7 +497,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         });
         br.sel = best;
       }
-      if ((inp.aPressed && s.t > 0.25) || s.t > AUTO_CHOICE) {
+      if ((inp.aPressed && s.t > PROMPT_LOCK) || s.t > AUTO_CHOICE) {
         if (s.t > AUTO_CHOICE) br.sel = Math.floor(rand(s.rng) * br.options.length);
         s.hop = { from: me.node, to: br.options[br.sel], t: 0 };
         s.branch = null;
@@ -507,6 +507,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
     }
 
     case 'prompt':
+      s.promptAge = (s.promptAge ?? 0) + dt;
       stepPrompt(s, def, id, inp);
       break;
 
@@ -564,6 +565,7 @@ export const PROMPT_LOCK = 0.6;
 const TWO_CHOICE = new Set(['crown', 'wisp', 'train', 'claim', 'steal']);
 
 function ask(s: BoardState, p: Prompt): void {
+  s.promptAge = 0;
   // spending prompts start on "No"; the Crown Chest (what everyone wants) and claiming start on the first option
   if (TWO_CHOICE.has(p.kind) && !('sel' in p)) (p as { sel?: number }).sel = p.kind === 'crown' || p.kind === 'claim' ? 0 : 1;
   s.prompt = p;
@@ -581,7 +583,9 @@ function afterPrompt(s: BoardState): void {
 function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): void {
   const p = s.prompt!;
   const me = s.players[id];
-  const yes = inp.aPressed && s.t > 0.3;
+  // every board choice ignores A for a moment after it opens, so a press meant for the dice can't answer it
+  const age = s.promptAge ?? 1;
+  const yes = inp.aPressed && age > PROMPT_LOCK;
   const no = inp.bPressed && s.t > 0.3;
   const auto = s.t > AUTO_CHOICE;
   const stick = s.t > 0.2 && Math.abs(inp.x) > 0.6 ? Math.sign(inp.x) : 0;
@@ -655,7 +659,7 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
   // the two-choice prompts: stick left/right moves the cursor, A confirms it, B is always "no"
   const tp = p as { sel?: number };
   tp.sel ??= 0;
-  const live = s.t > PROMPT_LOCK;
+  const live = age > PROMPT_LOCK;
   if (live && stick) tp.sel = stick < 0 ? 0 : 1;
   const confirm = inp.aPressed && live;
   if (p.kind === 'claim') {
@@ -670,7 +674,7 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
     return;
   }
   const accept = confirm && tp.sel === 0;
-  const decline = (confirm && tp.sel === 1) || (no && s.t > PROMPT_LOCK);
+  const decline = (confirm && tp.sel === 1) || (no && age > PROMPT_LOCK);
   if (p.kind === 'steal') {
     // idle players don't spend keys stealing posts
     if (accept && me.keys >= s.preset.postStealCost) {
@@ -721,6 +725,7 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
       return;
     }
     s.prompt = { kind: 'target', purpose: 'item', item, options, sel: 0 };
+    s.promptAge = 0;
     s.t = 0;
     return;
   }
@@ -930,7 +935,8 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
       const stock: ItemId[] = [];
       while (stock.length < SHOP_STOCK && pool.length) stock.push(pool.splice(Math.floor(rand(s.rng) * pool.length), 1)[0]);
       stock.sort((a, b) => SHOP_PRICE[a] - SHOP_PRICE[b]);
-      ask(s, { kind: 'shop', node: me.node, stock, sel: 0 });
+      // the cursor starts on "Leave", so walking past never buys anything by accident
+      ask(s, { kind: 'shop', node: me.node, stock, sel: stock.length });
     }
     return;
   }

@@ -103,7 +103,11 @@ describe('board layer', () => {
     s.t = 1;
     stepBoard(s, { a: B }, DT);
     expect(s.prompt?.kind).toBe('items');
+    // a press right as the bag opens is ignored (no accidental item use)
+    stepBoard(s, { a: A }, DT);
+    expect(s.players.a.rollBonus ?? 0).toBe(0);
     s.t = 1;
+    s.promptAge = 1;
     stepBoard(s, { a: A }, DT);
     expect(s.players.a.rollBonus).toBe(5);
     expect(s.sub).toBe('roll');
@@ -114,6 +118,7 @@ describe('board layer', () => {
     const p = s.prompt as { kind: 'items'; sel: number };
     expect(ITEM_GRID[p.sel]).toBe('heart-snack');
     s.t = 1;
+    s.promptAge = 1;
     stepBoard(s, { a: A }, DT);
     expect(s.players.a.items).toEqual(['heart-snack']);
     s.t = 1;

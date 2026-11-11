@@ -514,7 +514,7 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
 function pickTwo(b: BoardState, sel: number | undefined, yes: boolean): TickInput {
   const want = yes ? 0 : 1;
   if ((sel ?? 0) !== want) return stick(yes ? -1 : 1, 0);
-  return b.t > PROMPT_LOCK ? press() : NO_INPUT;
+  return (b.promptAge ?? 1) > PROMPT_LOCK ? press() : NO_INPUT;
 }
 
 /** Step a menu cursor toward `want`, then confirm. */

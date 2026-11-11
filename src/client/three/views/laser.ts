@@ -13,7 +13,8 @@ const WIDTH = 5.2; // ramp width
 const LOW_Y = 0.45;
 const HIGH_Y = 1.55;
 
-const angleAt = (p: number) => p * TURNS * Math.PI * 2;
+// the spiral winds clockwise seen from above (Michael: it spun the wrong way)
+const angleAt = (p: number) => -p * TURNS * Math.PI * 2;
 function spot(p: number, r: number, y = 0): THREE.Vector3 {
   const a = angleAt(p);
   return new THREE.Vector3(Math.cos(a) * r, p * H + y, Math.sin(a) * r);
@@ -102,7 +103,7 @@ export function laserView(env: THREE.Texture, state: LaserState, players: Player
       const lead = (live.length ? live : s.folk).reduce((a, f) => Math.max(a, f.p), 0);
       const mean = (live.length ? live : s.folk).reduce((a, f) => a + f.p, 0) / Math.max(1, (live.length ? live : s.folk).length);
       const focus = mean * 0.5 + lead * 0.5;
-      camAng += (angleAt(focus) + 0.35 - camAng) * Math.min(1, dt * 2.5);
+      camAng += (angleAt(focus) - 0.35 - camAng) * Math.min(1, dt * 2.5);
       camY += (focus * H - camY) * Math.min(1, dt * 2.5);
       camAt.set(Math.cos(camAng) * 19, camY + 8, Math.sin(camAng) * 19);
       camera.position.copy(camAt);
@@ -155,7 +156,7 @@ export function laserView(env: THREE.Texture, state: LaserState, players: Player
         const pos = spot(f.p, laneR(f.lane), f.z * PX * 0.9);
         m.group.position.copy(pos);
         // face up the ramp (along the spiral)
-        m.group.rotation.y = -angleAt(f.p) - Math.PI;
+        m.group.rotation.y = -angleAt(f.p);
         const moved = Math.abs(f.p - (lastP.get(f.id) ?? f.p)) / Math.max(1e-3, dt);
         lastP.set(f.id, f.p);
         m.group.scale.set(0.55, f.duck ? 0.55 * 0.5 : 0.55, 0.55);

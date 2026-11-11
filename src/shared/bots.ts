@@ -887,20 +887,22 @@ function snowBot(g: SnowState, id: string, sk: Skill, mem: BotMem, r: Rng): Tick
 
 function laserBot(g: LaserState, id: string, sk: Skill, mem: BotMem, r: Rng): TickInput {
   const me = g.folk.find((q) => q.id === id);
-  if (!me || me.outAt >= 0 || me.topAt >= 0 || g.t < 3) return NO_INPUT;
-  // the next beam coming down at me, and how long until it arrives
+  if (!me || me.outAt >= 0 || g.t < 3) return NO_INPUT;
+  // the next beam coming down at me, and how long until it arrives (everyone runs on their own)
   let next = null as LaserState['beams'][number] | null;
   for (const b of g.beams) if (b.p >= me.p - 0.003 && (!next || b.p < next.p)) next = b;
-  if (!next) return stick(0, -1);
-  const tta = (next.p - me.p) / (next.speed + 0.034);
+  if (!next) return NO_INPUT;
+  const tta = (next.p - me.p) / (next.speed + 0.0125);
   if (remember(mem, `beam:${next.id}`, 0)) {
     // each beam gets its own timing error, and sometimes goes unnoticed
-    mem.m = (rand(r) * 2 - 1) * (sk.react[1] - sk.react[0]) * 1.4;
+    mem.m = (rand(r) * 2 - 1) * (sk.react[1] - sk.react[0]) * 1.2;
     mem.n = notices(next.id * 7.1, next.p, 0.45 + sk.sense * 0.55) ? 1 : 0;
   }
-  if (!mem.n) return stick(0, -1);
+  if (!mem.n || me.duck || me.z > 0.01) return NO_INPUT;
+  const k = Math.sqrt(Math.pow(1.13, g.level));
   const high = next.flipAt >= 0 && next.flipAt > me.p && tta < 0.5 ? !next.high : next.high;
-  if (high) return tta < 0.32 + mem.m * 0.5 ? { ...NO_INPUT, b: true } : stick(0, -1);
-  const jumpAt = 0.3 + mem.m;
-  return stick(0, -1, tta < jumpAt && tta > jumpAt - 0.08 && me.z <= 0.01);
+  // duck or hop so the move is at its deepest/highest as the beam passes
+  const at = (high ? 0.2 : 0.26) / k + mem.m * 0.5;
+  if (tta < at && tta > at - 0.1) return high ? { ...NO_INPUT, b: true, bPressed: true } : { ...NO_INPUT, a: true, aPressed: true };
+  return NO_INPUT;
 }

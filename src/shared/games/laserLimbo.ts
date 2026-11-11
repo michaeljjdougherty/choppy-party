@@ -2,20 +2,24 @@ import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
 import { drawTimer, roundRect, text } from '../draw';
 import { rand, randRange, type Rng } from '../rng';
-import { jump, newBody, stepVertical, type Body } from '../physics';
+import { newBody, type Body } from '../physics';
 import { playerChips } from './hud';
 
 /**
- * Laser Limbo (Modular Space Kit): everyone races up a spiral ramp around a reactor column.
- * Laser arms sweep down the spiral. Red beams are low: jump them (A). Blue beams are high: duck
- * them (hold B). The beams speed up every 5 seconds. A hit slides you back down; the third hit
- * knocks you out. First to the top wins; otherwise the highest climber does.
+ * Laser Limbo (Modular Space Kit): everyone runs up a spiral ramp around a reactor column by
+ * themselves; you only dodge. Laser arms sweep down the spiral. Red beams are low: hop them (A).
+ * Blue beams are high: duck them (B). Both are quick, fixed moves (no holding), and everything
+ * speeds up every 5 seconds, the hop and duck included. Each hit costs a heart; three hits and
+ * you're out. Last one standing wins.
  */
 export const TURNS = 3;
-const CLIMB = 0.034; // course per second at full stick
-const SLIDE = 0.07;
+const RUN = 0.0125; // course per second: everyone runs on their own
+const SLIDE = 0.04;
+const DUCK_TIME = 0.42; // a quick duck, shortened as the game speeds up
+const HOP_V = 370; // a low hop that just clears a red beam
+const HOP_G = 1400;
 const MAX_HITS = 3;
-const MAX_T = 60;
+const MAX_T = 80;
 const LOW_CLEAR = 34; // jump height needed to clear a low beam
 const READY = 3;
 
@@ -24,6 +28,7 @@ export interface Climber extends Body {
   lane: number;
   p: number; // 0 = bottom, 1 = top
   duck: boolean;
+  duckT: number;
   hits: number;
   safe: number;
   outAt: number;
@@ -54,8 +59,8 @@ export const laserLimbo: Minigame<LaserState> = {
   id: 'laser-limbo',
   name: 'Laser Limbo',
   mode: 'Free-for-all',
-  blurb: 'Race up the reactor! Red lasers are low: jump them. Blue lasers are high: duck them. They get faster every 5 seconds. Three hits and you are out!',
-  controls: 'Stick up: climb   A: jump   B: duck',
+  blurb: 'You run up the reactor on your own. Red lasers are low: hop them. Blue lasers are high: duck them. It all speeds up every 5 seconds. Three hits and you are out. Last one standing wins!',
+  controls: 'A: hop   B: duck (quick taps)',
   minPlayers: 1,
   maxPlayers: 10,
   ready: READY,
@@ -69,7 +74,7 @@ export const laserLimbo: Minigame<LaserState> = {
       nextId: 0,
       beams: [],
       zaps: [],
-      folk: players.map((p, i) => ({ id: p.id, lane: i, p: 0, duck: false, hits: 0, safe: 0, outAt: -1, topAt: -1, ...newBody() })),
+      folk: players.map((p, i) => ({ id: p.id, lane: i, p: 0, duck: false, duckT: 0, hits: 0, safe: 0, outAt: -1, topAt: -1, ...newBody() })),
     };
   },
 
@@ -91,19 +96,26 @@ export const laserLimbo: Minigame<LaserState> = {
       if (pair) make(0.07);
     }
     const before = new Map(s.folk.map((f) => [f.id, f.p]));
+    // the hop and duck speed up with everything else (same height, less time)
+    const k = Math.sqrt(speedUp);
     for (const f of s.folk) {
-      stepVertical(f, dt);
+      if (f.z > 0 || f.vz > 0) {
+        f.z += f.vz * dt;
+        f.vz -= HOP_G * k * k * dt;
+        if (f.z <= 0) {
+          f.z = 0;
+          f.vz = 0;
+        }
+      }
       if (f.outAt >= 0 || f.topAt >= 0) continue;
       const inp = inputs[f.id] ?? NO_INPUT;
       f.safe = Math.max(0, f.safe - dt);
-      f.duck = inp.b && f.z <= 0.01;
-      if (inp.aPressed && !f.duck) jump(f);
-      const push = Math.max(0, -inp.y, Math.abs(inp.x) > 0.5 ? 0.6 : 0);
-      if (!f.duck) f.p += CLIMB * Math.min(1, push) * dt;
-      if (f.p >= 1) {
-        f.p = 1;
-        f.topAt = s.t;
-      }
+      f.duckT = Math.max(0, f.duckT - dt);
+      const grounded = f.z <= 0.01 && f.vz <= 0;
+      if (inp.bPressed && grounded && f.duckT <= 0) f.duckT = DUCK_TIME / k;
+      else if (inp.aPressed && grounded && f.duckT <= 0) f.vz = HOP_V * k;
+      f.duck = f.duckT > 0;
+      f.p = Math.min(0.97, f.p + RUN * dt);
     }
     for (const b of s.beams) {
       const was = b.p;
@@ -119,7 +131,7 @@ export const laserLimbo: Minigame<LaserState> = {
           f.hits++;
           f.safe = 0.9;
           f.p = Math.max(0, f.p - SLIDE);
-          f.vz = 300;
+          f.duckT = 0;
           s.zaps.push({ id: f.id, high: b.high });
           if (f.hits >= MAX_HITS) f.outAt = s.t;
         }
@@ -129,15 +141,17 @@ export const laserLimbo: Minigame<LaserState> = {
   },
 
   isOver(s) {
-    return s.t >= MAX_T + READY || racing(s).length === 0 || s.folk.some((f) => f.topAt >= 0);
+    const alive = racing(s).length;
+    return s.t >= MAX_T + READY || alive === 0 || (s.folk.length > 1 && alive <= 1);
   },
 
   results(s): ResultRow[] {
     return s.folk
       .map((f) => ({
         id: f.id,
-        value: f.topAt >= 0 ? 100000 - Math.round(f.topAt * 100) : Math.round(f.p * 10000) - (f.outAt >= 0 ? 0 : 0),
-        label: f.topAt >= 0 ? 'Reached the top!' : `${Math.round(f.p * 100)}% up${f.outAt >= 0 ? ' (knocked out)' : ''}`,
+        // survivors first (fewest hits), then whoever lasted longest
+        value: f.outAt < 0 ? 100000 - f.hits * 1000 + Math.round(f.p * 100) : Math.round(f.outAt * 100),
+        label: f.outAt < 0 ? `Survived! ${'♥'.repeat(MAX_HITS - f.hits)}` : `Out at ${Math.max(0, f.outAt - READY).toFixed(1)}s`,
       }))
       .sort((a, b) => b.value - a.value);
   },
@@ -147,7 +161,7 @@ export const laserLimbo: Minigame<LaserState> = {
     playerChips(
       ctx,
       players,
-      s.folk.map((f) => ({ id: f.id, label: f.outAt >= 0 ? 'OUT' : `${Math.round(f.p * 100)}% ${'✕'.repeat(f.hits)}`, out: f.outAt >= 0 })),
+      s.folk.map((f) => ({ id: f.id, label: f.outAt >= 0 ? 'OUT' : '♥'.repeat(MAX_HITS - f.hits), out: f.outAt >= 0 })),
     );
     // climb meter on the right edge
     ctx.fillStyle = 'rgba(0,0,0,0.45)';

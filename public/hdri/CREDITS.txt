@@ -1,0 +1,10 @@
+Lighting environments (HDRIs) in this folder
+
+All are from Poly Haven (https://polyhaven.com/hdris), released under CC0 1.0 (public domain).
+We use the 512px EXR versions packaged by Poimandres in @pmndrs/assets 1.7.0
+(https://github.com/pmndrs/assets, also CC0 1.0).
+
+park.exr, forest.exr, night.exr, sunset.exr, sunrise.exr, studio.exr, dawn.exr, sky.exr, lobby.exr
+
+They are only used for lighting and reflections (scene.environment); skies on screen are painted.
+No attribution is required; this file is kept as a courtesy and a record.

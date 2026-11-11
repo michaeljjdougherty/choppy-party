@@ -79,6 +79,8 @@ export interface SceneOpts {
 /** A scene with sky, soft fill light and one shadow-casting sun. */
 export function makeScene(env: THREE.Texture, o: SceneOpts): THREE.Scene {
   const scene = new THREE.Scene();
+  // the look layer (look/dress.ts) reads these to pick lighting for views it doesn't know yet
+  scene.userData.sceneOpts = o;
   const real = o.sky ? sky(o.sky) : null;
   scene.background = real ?? skyTexture(o.skyTop, o.skyBottom);
   if (real && o.skyRotation) scene.backgroundRotation.set(0, o.skyRotation, 0);

@@ -1,0 +1,9 @@
+Surface detail textures (look/ and look512/)
+
+Made for Choppy Party from scratch by tools/gentex.py (procedural noise, no source images),
+so they are our own and free to use (treat as CC0 1.0).
+
+Each JPEG packs: R = height (bump), G = albedo detail (0.5 = neutral), B = roughness variation.
+grass, dirt, cobble, rock, wood, metal, snow, tiles, brick, bark, fabric, toy, sand.
+
+Regenerate:  python3 tools/gentex.py public/tex/look 1024 && python3 tools/gentex.py public/tex/look512 512

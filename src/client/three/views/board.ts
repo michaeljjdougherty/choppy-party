@@ -27,7 +27,7 @@ import { buildWeather } from '../weatherView';
 import { grassDetail, roadTexture, roadUVs } from '../surfaces';
 import { sfx } from '../../sfx';
 import { postPulse } from '../look/post';
-import { courtDecor } from '../stewCourtDecor';
+import { courtDecor, setCourtNames } from '../stewCourtDecor';
 
 const SPACE_COLORS: Record<SpaceType, string> = {
   key: '#2f7dff',
@@ -1023,6 +1023,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const K = def.spread ?? 1;
   const small = unspread(def);
   const gy0 = (x: number, z: number) => groundAt(small.hills, x, z);
+  setCourtNames(Object.fromEntries(players.map((p) => [p.id, p.name])));
   const animateDecor = DECOR[def.theme](scene, small);
   // scenery stands on the hills (sky things and the ground itself excepted)
   if (small.hills) {

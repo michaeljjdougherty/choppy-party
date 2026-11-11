@@ -120,7 +120,7 @@ const BOARD_LOOKS: Record<BoardDef['theme'], Look> = {
     horizon: 1,
   },
   cosmo: { theme: 'station', palette: 'space', grade: { tilt: 0.45, bloom: 0.3, bloomThreshold: 1.35 }, horizon: 0, density: 0.35 },
-  court: { theme: 'station', palette: 'space', grade: { tilt: 0.45, bloom: 0.3, bloomThreshold: 1.35 }, horizon: 0, density: 0 },
+  court: { theme: 'station', palette: 'indoor', grade: { contrast: 1.12, saturation: 1.12, tilt: 0.4, bloom: 0.28, bloomThreshold: 1.4, vignette: 0.4 }, horizon: 0, density: 0, noScenery: true },
   gulch: { theme: 'desert', light: { hdri: 'sky', envIntensity: 0.55, sun: 1.1, hemi: 0.85, rim: '#ffd09a', rimIntensity: 0.6 }, grade: { contrast: 1.1, saturation: 1.12, gain: [1.05, 1.0, 0.93], lift: [0.015, 0.0, 0.03], tilt: 0.55, vignette: 0.34 }, clouds: 0.2, fogScale: 1.7, horizon: 1 },
 };
 

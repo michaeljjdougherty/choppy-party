@@ -273,6 +273,15 @@ export class Post {
     try {
       this.ao = new GTAOPass(scene, cam, w, h);
       this.ao.output = GTAOPass.OUTPUT.Default;
+      // outline shells (see choppy.ts) only make sense with their own shader: keep them out of the AO's normal pass
+      const ao = this.ao as unknown as { overrideVisibility: () => void };
+      const hide = ao.overrideVisibility.bind(ao);
+      ao.overrideVisibility = () => {
+        hide();
+        scene.traverse((o) => {
+          if (o.userData.outline) o.visible = false;
+        });
+      };
       this.ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: 12 });
       this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
       this.composer.insertPass(this.ao, 1);

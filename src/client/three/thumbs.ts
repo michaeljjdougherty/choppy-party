@@ -25,6 +25,7 @@ export class Thumbs {
       const cv = document.createElement('canvas');
       cv.width = cv.height = SIZE;
       const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, preserveDrawingBuffer: true });
+      r.localClippingEnabled = true;
       r.setSize(SIZE, SIZE, false);
       r.toneMapping = THREE.ACESFilmicToneMapping;
       r.toneMappingExposure = 1.0;

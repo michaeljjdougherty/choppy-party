@@ -57,6 +57,8 @@ export class Stage {
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    // hats trim the hair under them with a clipping plane (FolkModel.clipHair)
+    this.renderer.localClippingEnabled = true;
     this.renderer.shadowMap.enabled = gfx().shadowMap > 0;
     this.renderer.shadowMap.type = gfx().softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;

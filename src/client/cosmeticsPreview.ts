@@ -13,6 +13,7 @@ const viewAng = { front: 0.35, back: Math.PI + 0.35, side: Math.PI / 2 } [q.get(
 const W = 1600, Hh = 900;
 const cv = document.getElementById('c') as HTMLCanvasElement;
 const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, preserveDrawingBuffer: true });
+r.localClippingEnabled = true;
 r.setSize(W, Hh);
 r.shadowMap.enabled = true;
 r.toneMapping = THREE.ACESFilmicToneMapping;
@@ -41,7 +42,8 @@ const SHOW = [
 const show = q.has('show');
 const items = show ? SHOW.map(([name, l]) => ({ id: l, name })) : CATALOG[cat].slice(page * per, page * per + per);
 items.forEach((it, i) => {
-  const spec = show ? FOLKS.find((f) => f.name === it.name) ?? FOLKS[i] : FOLKS[i % FOLKS.length];
+  const only = q.get('folk');
+  const spec = show ? FOLKS.find((f) => f.name === it.name) ?? FOLKS[i] : only ? FOLKS.find((f) => f.name === only) ?? FOLKS[0] : FOLKS[i % FOLKS.length];
   const m = new FolkModel(spec, colors[i % colors.length], 1);
   if (show) {
     const [hat, shirt, acc] = it.id.split('.');

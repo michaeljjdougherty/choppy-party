@@ -1265,10 +1265,11 @@ const ACCS: AccDef[] = [
     id: 'balloon', name: 'Balloon', cat: 'acc', slot: 'back',
     build: (c) => {
       const g = new THREE.Group();
-      const float = group(ball(0.36, new THREE.MeshStandardMaterial({ color: c, roughness: 0.15, metalness: 0.05 }), [0, 0, 0], [1, 1.15, 1]), part(new THREE.ConeGeometry(0.06, 0.08, 8), c, [0, -0.44, 0], [Math.PI, 0, 0]), cyl(0.008, 0.008, 1.6, '#f4f4f4', [0, -1.28, 0], [0, 0, 0], 4));
-      float.position.set(0.3, 2.0, -0.3);
+      const float = group(ball(0.36, new THREE.MeshStandardMaterial({ color: c, roughness: 0.15, metalness: 0.05 }), [0, 0, 0], [1, 1.15, 1]), part(new THREE.ConeGeometry(0.06, 0.08, 8), c, [0, -0.44, 0], [Math.PI, 0, 0]), cyl(0.008, 0.008, 2.1, '#f4f4f4', [0, -1.53, 0], [0, 0, 0], 4));
+      // floats up and behind, clear of even the biggest hair
+      float.position.set(0.3, 2.5, -0.55);
       animate(float, (t) => {
-        float.position.y = 2.0 + Math.sin(t * 1.6) * 0.08;
+        float.position.y = 2.5 + Math.sin(t * 1.6) * 0.08;
         float.rotation.z = Math.sin(t * 1.1) * 0.12 - 0.1;
       });
       g.add(float);
@@ -1453,6 +1454,54 @@ interface Worn {
 }
 const WORN = new WeakMap<FolkModel, Worn>();
 
+/** Hats that ride on top of the hair instead of replacing it. */
+const ON_TOP: Record<string, number> = { bunny: 0.12, catears: 0.12, devil: 0.1, boppers: 0.12, halo: 0.42, flowers: 0.14 };
+const halfOf = (b: THREE.Box3, axis: 'x' | 'z') => Math.max(-b.min[axis], b.max[axis]);
+
+/**
+ * Make a hat fit this character's hair, so nothing passes through anything:
+ * - hats that cover the head get widened to the hair, and the hair is trimmed flat where the hat starts;
+ * - ears, horns and halos ride up on top of big hair; bands and headphones widen round it;
+ * - the space helmet grows until the whole head and hair fit inside the glass.
+ */
+function fitHat(f: FolkModel, hat: HatDef, o: THREE.Object3D): void {
+  if (hat.id === 'bare') return;
+  const hair = f.hairBox(!!hat.keepHair);
+  if (hair.isEmpty()) return;
+  o.updateWorldMatrix(true, true);
+  const hb = new THREE.Box3().setFromObject(o); // slot space (the slot sits at y = HEAD in the head)
+  const hairX = halfOf(hair, 'x'), hairZ = halfOf(hair, 'z');
+  if (!hat.keepHair) {
+    const k = Math.min(1.3, Math.max(1, (hairX + 0.02) / halfOf(hb, 'x'), (hairZ + 0.02) / halfOf(hb, 'z')));
+    o.scale.x *= k;
+    o.scale.z *= k;
+    f.clipHair(HEAD + hb.min.y + 0.04);
+    return;
+  }
+  const above = Math.max(0, hair.max.y - HEAD);
+  if (hat.id in ON_TOP) {
+    // sit on the hair, sunk in a little so it looks worn rather than balanced
+    o.position.y += Math.max(0, above - ON_TOP[hat.id]);
+    const k = Math.min(1.35, Math.max(1, (hairX + 0.04) / (H + 0.04)));
+    o.scale.x *= k;
+    o.scale.z *= k;
+  } else if (hat.id === 'space') {
+    // the glass dome is centred on the head; grow it round the hair's furthest point
+    const centre = new THREE.Vector3(0, -H - 0.04, 0);
+    let need = 0;
+    for (const x of [hair.min.x, hair.max.x]) for (const y of [hair.min.y, hair.max.y]) for (const z of [hair.min.z, hair.max.z]) need = Math.max(need, new THREE.Vector3(x, y - HEAD, z).distanceTo(centre));
+    const k = Math.min(1.45, Math.max(1, (need + 0.06) / 1.14));
+    o.scale.setScalar(k);
+    o.position.y += centre.y * (1 - k);
+  } else {
+    // bands and headphones go round the hair
+    const k = Math.min(1.35, Math.max(1, (hairX + 0.06) / (H + 0.06), (hairZ + 0.06) / (H + 0.06)));
+    o.scale.x *= k;
+    o.scale.z *= k;
+    if (hat.id === 'headphones') o.scale.y *= Math.min(1.35, Math.max(1, (above + H + 0.1) / (H + 0.1)));
+  }
+}
+
 function undress(f: FolkModel): void {
   const w = WORN.get(f);
   const p = f.parts;
@@ -1470,6 +1519,7 @@ function undress(f: FolkModel): void {
   if (p.ownHat) p.ownHat.visible = true;
   if (p.ownGlasses) p.ownGlasses.visible = true;
   f.hideHairTop(!!p.ownHat);
+  f.clipHair(null);
   WORN.delete(f);
 }
 
@@ -1492,6 +1542,7 @@ export function applyLook(f: FolkModel, look: Look): void {
     const o = hat.build(c);
     // hats that cover the head sit a little lower, over the top of the forehead
     if (!hat.keepHair) o.position.y -= 0.08;
+    fitHat(f, hat, o);
     add(f.slots.hat, o);
   }
 
@@ -1528,6 +1579,7 @@ export function applyLook(f: FolkModel, look: Look): void {
     else if (acc.slot === 'hand') {
       o.scale.multiplyScalar(1.4);
       add(f.slots.handR, o);
+      f.holdClear(o);
     }
     else if (acc.slot === 'back') add(f.slots.back, o);
     else {

@@ -28,7 +28,7 @@ import type { BotLevel } from '../shared/bots';
 import { HostLine, LINES, countIn, finishBanner, hostCorner, pick } from './showtime';
 import { getBoard } from '../shared/board/boards';
 import type { View } from './three/stage';
-import { setCharacters } from './three/choppy';
+import { setCharacters, setOutlined } from './three/choppy';
 import { boardPreview, clearBoardPreviews } from './three/views/boardPreview';
 import { clearGamePreview, gamePreview } from './three/views/gamePreview';
 import { NameEntry } from './nameEntry';
@@ -602,7 +602,10 @@ function renderScreens(wallT: number, dt: number) {
     return;
   }
   const s = session.view();
-  if (s) setCharacters(s.players);
+  if (s) {
+    setCharacters(s.players);
+    setOutlined(s.players, session.localIds());
+  }
   statusEl.textContent = session.status();
   if (!s) {
     ctx.fillStyle = '#1a1033';

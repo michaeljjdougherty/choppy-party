@@ -16,6 +16,50 @@ export function setCharacters(players: { color: string; char?: number; slot: num
   for (const p of players) COLOR_CHAR.set(p.color, p.char ?? p.slot);
 }
 
+/** Colours of the players this screen controls; their models get a thin outline so you never lose yourself. */
+export const OUTLINED = new Set<string>();
+export function setOutlined(players: { id: string; color: string; bot?: unknown }[], local: Set<string>): void {
+  OUTLINED.clear();
+  const mine = players.filter((p) => !p.bot && local.has(p.id));
+  // if everyone in the game is on this screen, outlining all of them would mark nobody
+  if (mine.length < players.length) for (const p of mine) OUTLINED.add(p.color);
+}
+
+/** One shared outline look: an inverted shell pushed out a couple of pixels along each normal, on screen. */
+let outlineMat: THREE.MeshBasicMaterial | null = null;
+function outlineMaterial(): THREE.MeshBasicMaterial {
+  if (outlineMat) return outlineMat;
+  const m = new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.BackSide });
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace(
+        '#include <project_vertex>',
+        `vec4 mvPosition = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          mvPosition = instanceMatrix * mvPosition;
+        #endif
+        mvPosition = modelViewMatrix * mvPosition;
+        // push the shell away from the camera so only the outer silhouette shows,
+        // not an edge round every lock of hair or button
+        mvPosition.xyz += normalize(mvPosition.xyz) * 0.45;
+        gl_Position = projectionMatrix * mvPosition;`,
+      )
+      .replace(
+        '#include <fog_vertex>',
+        `{
+          vec4 nClip = projectionMatrix * vec4(normalize(normalMatrix * normal), 0.0);
+          float aspect = projectionMatrix[1][1] / projectionMatrix[0][0];
+          vec2 d = nClip.xy * vec2(aspect, 1.0);
+          if (dot(d, d) > 1e-8) gl_Position.xy += normalize(d) / vec2(aspect, 1.0) * 0.0075 * gl_Position.w;
+        }
+        #include <fog_vertex>`,
+      );
+  };
+  m.customProgramCacheKey = () => 'choppy-outline';
+  outlineMat = m;
+  return m;
+}
+
 /** World height of a character at scale 1 (matches the old blob mascots, so gameplay scales still fit). */
 const BASE = 2.3;
 
@@ -52,6 +96,8 @@ export class ChoppyModel {
   private current = '';
   private dizzy = new THREE.Group();
   private ring: THREE.Mesh;
+  private color: string;
+  private outline: [THREE.Mesh, THREE.Mesh][] | null = null;
   // squash & stretch spring (0 = rest, + = tall and thin, - = short and wide)
   private sq = 0;
   private sqv = 0;
@@ -64,6 +110,7 @@ export class ChoppyModel {
   constructor(color: string, scale = 1) {
     // players keep their clean look (no surface texture from look/detail.ts)
     this.group.userData.noDetail = true;
+    this.color = color;
     const slot = COLOR_CHAR.get(color) ?? Math.max(0, PLAYER_COLORS.indexOf(color));
     const c = CHARACTERS[slot] ?? CHARACTERS[0];
     if (c.folk) {
@@ -190,5 +237,72 @@ export class ChoppyModel {
     this.dizzy.visible = !!o.stunned;
     if (o.stunned) this.dizzy.rotation.y += dt * 6;
     (this.ring.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.35 + Math.sin((o.t ?? 0) * 4) * 0.1;
+    this.setOutline(OUTLINED.has(this.color));
+  }
+
+  /** Thin outline round the whole character (built the first time it's needed). */
+  setOutline(on: boolean): void {
+    if (!on && !this.outline) return;
+    if (on && !this.outline) {
+      const mat = outlineMaterial();
+      const shells: [THREE.Mesh, THREE.Mesh][] = [];
+      const src: THREE.Mesh[] = [];
+      this.body.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || o.userData.outline) return;
+        const mm = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material;
+        if (mm.transparent && mm.opacity < 0.95) return; // glass, decals, glows
+        const g = m.geometry;
+        if (!g.attributes.normal) return;
+        if (!g.boundingSphere) g.computeBoundingSphere();
+        const k = m.getWorldScale(new THREE.Vector3()).x / Math.max(1e-6, this.group.getWorldScale(new THREE.Vector3()).x);
+        if (g.boundingSphere!.radius * k < 0.08) return; // eyes, buttons and other specks
+        src.push(m);
+      });
+      for (const m of src) {
+        let shell: THREE.Mesh;
+        if ((m as THREE.SkinnedMesh).isSkinnedMesh) {
+          const sm = m as THREE.SkinnedMesh;
+          const s = new THREE.SkinnedMesh(sm.geometry, mat);
+          s.bind(sm.skeleton, sm.bindMatrix);
+          shell = s;
+          // a skinned shell must sit beside its source (bones already place it)
+          shell.position.copy(m.position);
+          shell.quaternion.copy(m.quaternion);
+          shell.scale.copy(m.scale);
+          m.parent!.add(shell);
+        } else {
+          const im = m as THREE.InstancedMesh;
+          if (im.isInstancedMesh) {
+            const s = new THREE.InstancedMesh(im.geometry, mat, im.count);
+            s.instanceMatrix = im.instanceMatrix;
+            shell = s;
+          } else shell = new THREE.Mesh(m.geometry, mat);
+          // a child with no transform of its own lines up exactly, however the part is placed or animated
+          m.add(shell);
+        }
+        shell.userData.outline = true;
+        shell.castShadow = shell.receiveShadow = false;
+        shell.frustumCulled = false;
+        shell.renderOrder = -1;
+        shells.push([m, shell]);
+      }
+      this.outline = shells;
+    }
+    for (const [m, sh] of this.outline!) {
+      sh.visible = on && m.visible;
+      if (!on) continue;
+      // hair trimmed under a hat: trim its outline the same way
+      const planes = ((Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material).clippingPlanes;
+      if (planes?.length) {
+        if (sh.material === outlineMat) {
+          const own = outlineMat.clone();
+          own.onBeforeCompile = outlineMat.onBeforeCompile;
+          own.customProgramCacheKey = outlineMat.customProgramCacheKey;
+          sh.material = own;
+        }
+        (sh.material as THREE.Material).clippingPlanes = planes;
+      }
+    }
   }
 }

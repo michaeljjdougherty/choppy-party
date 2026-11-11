@@ -1050,6 +1050,9 @@ export class FolkModel {
   private body = new THREE.Group();
   private head = new THREE.Group();
   private hairTop: THREE.Group;
+  private hairSides: THREE.Object3D;
+  private hairClip: { plane: THREE.Plane; y: number } | null = null;
+  private clipPlane = new THREE.Plane();
   private armL = new THREE.Group();
   private armR = new THREE.Group();
   private legL = new THREE.Group();
@@ -1069,6 +1072,7 @@ export class FolkModel {
   private hopV = 0;
   private exprT = 0;
   private pendingHat: THREE.Group | null = null;
+  private headCube!: THREE.Object3D;
   /** Body parts that outfits restyle or hide (see cosmetics.ts). */
   readonly parts = {
     torso: null as unknown as THREE.Mesh,
@@ -1157,6 +1161,7 @@ export class FolkModel {
     const nose = mesh(rbox(0.14, 0.14, 0.1, 0.04), skin, { cast: false });
     nose.position.set(0, HEAD * (1 - 158 / 256), H + 0.04);
     this.head.add(cube, facePlane, nose);
+    this.headCube = cube;
     const recipe = HAIR[spec.id];
     const hair = recipe
       ? (() => {
@@ -1167,6 +1172,7 @@ export class FolkModel {
         })()
       : buildHair(spec);
     this.hairTop = hair.top;
+    this.hairSides = hair.sides;
     this.head.add(hair.top, hair.sides, buildBeard(spec));
     if (spec.toothpick) {
       const pick = mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.4, 6), toy('#e2c48e', 0.6), { cast: false });
@@ -1225,6 +1231,108 @@ export class FolkModel {
   /** Hide the top of the hair so a hat can sit on the head. */
   hideHairTop(hide: boolean): void {
     this.hairTop.visible = !hide;
+  }
+
+  /**
+   * Slide something held in the right hand out sideways until it no longer passes into the torso or head
+   * (measured with the arm at rest, so the swing animation only ever moves it further out).
+   */
+  holdClear(o: THREE.Object3D, gap = 0.04): void {
+    const rx = this.armR.rotation.x, rz = this.armR.rotation.z;
+    this.armR.rotation.set(0, 0, 0);
+    this.body.updateWorldMatrix(true, true);
+    const inv = this.body.matrixWorld.clone().invert();
+    const inBody = (root: THREE.Object3D, deep: boolean) => {
+      const box = new THREE.Box3();
+      const m = new THREE.Matrix4();
+      root.traverse((c) => {
+        const g = (c as THREE.Mesh).geometry;
+        if (!(c as THREE.Mesh).isMesh || !g || (!deep && c !== root)) return;
+        if (!g.boundingBox) g.computeBoundingBox();
+        box.union(g.boundingBox!.clone().applyMatrix4(m.multiplyMatrices(inv, c.matrixWorld)));
+      });
+      return box;
+    };
+    const item = inBody(o, true);
+    let push = 0;
+    for (const b of [inBody(this.parts.torso, false), inBody(this.headCube, false)]) {
+      const yz = item.max.y > b.min.y && item.min.y < b.max.y && item.max.z > b.min.z && item.min.z < b.max.z;
+      if (yz && item.min.x < b.max.x + gap) push = Math.max(push, b.max.x + gap - item.min.x);
+    }
+    if (push > 0) {
+      // body +x expressed in the hand slot's parent space
+      const parent = o.parent!;
+      const dir = new THREE.Vector3(1, 0, 0).transformDirection(this.body.matrixWorld);
+      dir.transformDirection(parent.matrixWorld.clone().invert());
+      o.position.addScaledVector(dir, Math.min(push, 0.5) / parent.getWorldScale(new THREE.Vector3()).x * this.body.getWorldScale(new THREE.Vector3()).x);
+    }
+    this.armR.rotation.x = rx;
+    this.armR.rotation.z = rz;
+  }
+
+  /** The hair's bounds in head space (the hat slot sits at y = HEAD). `withTop` adds the hair on top. */
+  hairBox(withTop = true): THREE.Box3 {
+    const box = new THREE.Box3();
+    this.head.updateWorldMatrix(true, true);
+    const inv = this.head.matrixWorld.clone().invert();
+    const m = new THREE.Matrix4();
+    const parts = withTop ? [this.hairSides, this.hairTop] : [this.hairSides];
+    for (const root of parts)
+      root.traverse((o) => {
+        const g = (o as THREE.Mesh).geometry;
+        if (!(o as THREE.Mesh).isMesh || !g) return;
+        if (!g.boundingBox) g.computeBoundingBox();
+        box.union(g.boundingBox!.clone().applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld)));
+      });
+    return box;
+  }
+
+  /**
+   * Trim the hair flat at height `y` (head space) so nothing pokes up through a hat; null puts it back.
+   * Uses a clipping plane that follows the head, so it works while bouncing, turning and squashing.
+   */
+  clipHair(y: number | null): void {
+    const meshes: THREE.Mesh[] = [];
+    for (const root of [this.hairSides, this.hairTop]) root.traverse((o) => (o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh));
+    if (y === null) {
+      this.hairClip = null;
+      for (const m of meshes) {
+        const mat = m.material as THREE.Material;
+        if (mat.clippingPlanes?.length) {
+          mat.clippingPlanes = null;
+          mat.needsUpdate = true;
+        }
+      }
+      return;
+    }
+    this.hairClip ??= { plane: this.clipPlane, y };
+    const placePlane = () => {
+      const c = this.hairClip;
+      if (!c) return;
+      // the plane faces down: everything above the cut is clipped away
+      const up = new THREE.Vector3(0, 1, 0).transformDirection(this.head.matrixWorld);
+      const at = new THREE.Vector3(0, c.y, 0).applyMatrix4(this.head.matrixWorld);
+      c.plane.setFromNormalAndCoplanarPoint(up.negate(), at);
+    };
+    for (const m of meshes) {
+      if (m.userData.clipHooked) continue;
+      m.userData.clipHooked = true;
+      // our own copy of the material, so other models with the same hair aren't trimmed too
+      m.material = (m.material as THREE.Material).clone();
+      const prev = m.onBeforeRender;
+      m.onBeforeRender = (...args) => {
+        prev.apply(m, args);
+        placePlane();
+      };
+    }
+    this.hairClip.y = y;
+    this.head.updateWorldMatrix(true, false);
+    placePlane();
+    for (const m of meshes) {
+      const mat = m.material as THREE.Material;
+      mat.clippingPlanes = [this.hairClip.plane];
+      mat.needsUpdate = true;
+    }
   }
 
   /** Show an expression for a while (e.g. 'hurt' when hit, 'happy' on a win), then go back to idle. */

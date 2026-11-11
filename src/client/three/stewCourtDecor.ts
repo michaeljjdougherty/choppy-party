@@ -7,6 +7,9 @@ import { BOSS_INTRO, BOSS_SLAM, SPIN_STOP } from '../../shared/board/engine';
 import { shake } from './fx';
 import { sfx } from '../sfx';
 import { postPulse } from './look/post';
+import { DANCES, DANCE_BEATS, LEBRON_BEAT0, LEBRON_BPM, applyPose, dancePose, danceOrder, lebronNow, makeRig, mixPose, type Pose, type Rig } from './lebronDance';
+import { buildDanceParty, descendPose, TADA } from './lebronParty';
+import { music } from '../soundtrack';
 import { buildArena, buildInferno, buildJumbotron } from './stewCourtLook';
 
 /**
@@ -242,7 +245,7 @@ function labelTexture(txt: string, col: string): THREE.CanvasTexture {
  * with purple skin, glowing red eyes, a gold crown, a headband and a flaming ball. Stands on the
  * origin facing +z, `h` units tall. Returns the group plus the parts that animate.
  */
-export function makeTyrant(h: number): { g: THREE.Group; ball: THREE.Object3D; armR: THREE.Object3D; eyes: THREE.MeshStandardMaterial; flame: THREE.Mesh } {
+export function makeTyrant(h: number): { g: THREE.Group; ball: THREE.Object3D; armR: THREE.Object3D; eyes: THREE.MeshStandardMaterial; flame: THREE.Mesh; rig?: Rig } {
   const g = new THREE.Group();
   const inner = new THREE.Group();
   g.add(inner);
@@ -331,6 +334,7 @@ export function makeLebron(h: number): ReturnType<typeof makeTyrant> {
   o.scale.setScalar(k);
   o.position.set(0, -box.min.y * k, 0);
   g.add(o);
+  const rig = makeRig(o, h);
   // a red glow from inside him, so he reads as evil from far up
   const aura = new THREE.PointLight('#ff2a10', 18, h * 2.2, 1.5);
   aura.position.set(0, h * 0.7, h * 0.25);
@@ -344,7 +348,7 @@ export function makeLebron(h: number): ReturnType<typeof makeTyrant> {
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.15 * k, 0.4 * k, 12, 1, true), new THREE.MeshBasicMaterial({ color: '#ff6a00', transparent: true, opacity: 0.75, depthWrite: false }));
   flame.position.set(0, 0.2 * k, 0);
   ball.add(flame);
-  return { g, ball, armR, eyes: new THREE.MeshStandardMaterial(), flame };
+  return { g, ball, armR, eyes: new THREE.MeshStandardMaterial(), flame, rig };
 }
 
 interface Hoop {
@@ -648,6 +652,17 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
   let slammed = false;
   let leaveT = -1;
   const HOVER = new THREE.Vector3(0, 7, -4);
+  // where he lands and dances: centre court, with his magic set around him
+  const DANCE = new THREE.Vector3(0, 0, -4);
+  const party = buildDanceParty(scene, DANCE);
+  let order = danceOrder(1);
+  /** Client clock for his visit, and when the host skipped his dance (-1 while he's dancing). */
+  let visitT = 0;
+  let skipAt = -1;
+  let localBeat = 0;
+  let lastPose: Pose | null = null;
+  let landed = false;
+  let lastBeat = -1;
 
   return (s, t, dt) => {
     // flip worlds
@@ -677,7 +692,8 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
       hellLight.intensity = 26 + Math.sin(t * 9) * 6;
       evilMat.emissiveIntensity = 0.9 + Math.sin(t * 2.2) * 0.35;
     }
-    // THE VILLAIN: drops out of the sky over centre court, hovers through his reel, then dunks his victim
+    // THE VILLAIN: a magic entrance onto centre court, a dance party to his song that goes on until
+    // the host skips it, then up to hover through his reel and down on his victim
     if (s.sub === 'boss' && s.boss) {
       const v = s.players[s.boss.pick];
       if (!bossAt && v) {
@@ -685,31 +701,84 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
         bossAt = new THREE.Vector3(n.x, n.y, n.z);
         slammed = false;
         leaveT = -1;
+        visitT = 0;
+        skipAt = -1;
+        landed = false;
+        lastPose = null;
+        order = danceOrder(s.turn * 31 + s.order.indexOf(s.boss.pick) + 7);
         sfx.whistle();
-        postPulse('dramatic', 1, '#ff3b4e');
+        postPulse('dramatic', 1, '#c79bff');
       }
+      visitT += dt;
       const hitAt = BOSS_INTRO + SPIN_STOP + 0.9;
       ty.g.visible = true;
       ty.flame.scale.y = 0.8 + Math.sin(t * 25) * 0.25;
       ty.eyes.emissiveIntensity = 1.6 + Math.sin(t * 9) * 0.6;
-      if (s.t < BOSS_INTRO) {
-        // descend with a spin
-        const k = Math.min(1, s.t / 1.2);
-        const e = 1 - (1 - k) * (1 - k);
-        ty.g.position.set(HOVER.x, HOVER.y + (1 - e) * 40, HOVER.z);
-        ty.g.rotation.y = (1 - e) * Math.PI * 4;
-        ty.armR.rotation.z = -0.35;
-        if (k >= 1 && s.t - dt < 1.2) {
-          shake(0.4);
-          sfx.boom();
+      const dancing = !!s.boss.dance;
+      if (!dancing && skipAt < 0) skipAt = visitT;
+      // the beat: from where his song actually is, so the moves land on the music
+      const prog = music.current() === 'evil-lebron' ? music.progress() : null;
+      localBeat += (dt * LEBRON_BPM) / 60;
+      const beat = prog ? ((prog.t - LEBRON_BEAT0) * LEBRON_BPM) / 60 : localBeat;
+      lebronNow.beat = beat;
+      const sinceSkip = skipAt < 0 ? 0 : visitT - skipAt;
+      party.tick(t, dt, beat, visitT, dancing ? 1 : Math.max(0, 1 - sinceSkip / 0.8), s.t < BOSS_INTRO && dancing);
+      if (s.t < BOSS_INTRO || dancing) {
+        ty.armR.visible = false;
+        ty.g.rotation.y = 0;
+        if (s.t < 0.7) {
+          // the magic circle opens and the beam comes down: he's not here yet
+          ty.g.position.set(DANCE.x, DANCE.y + 60, DANCE.z);
+          ty.g.scale.setScalar(0.3);
+          if (ty.rig) applyPose(ty.rig, null, 0);
+        } else if (s.t < 2.0) {
+          // down the beam, spinning, wings beating, growing to full size
+          const k = (s.t - 0.7) / 1.3;
+          const e = 1 - Math.pow(1 - k, 3);
+          ty.g.position.set(DANCE.x, DANCE.y + (1 - e) * 34, DANCE.z);
+          ty.g.rotation.y = (1 - e) * Math.PI * 6;
+          ty.g.scale.setScalar(0.3 + e * 0.7);
+          if (ty.rig) applyPose(ty.rig, descendPose(visitT), 1);
+        } else {
+          if (!landed) {
+            landed = true;
+            shake(0.7);
+            sfx.boom();
+            sfx.bell();
+            postPulse('impact', 1.4, '#c79bff');
+            party.burst();
+          }
+          // a squash on landing, a ta-da, then straight into the dance
+          const a = s.t - 2.0;
+          const sq = Math.max(0, 1 - a * 4) * 0.25;
+          ty.g.position.copy(DANCE);
+          ty.g.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
+          const into = s.t < BOSS_INTRO ? 0 : Math.min(1, (s.t - BOSS_INTRO) / 0.5);
+          const d = dancePose(beat, order);
+          lebronNow.name = DANCES[order[Math.floor(beat / DANCE_BEATS) % order.length]]?.name ?? '';
+          lastPose = into >= 1 ? d : mixPose(TADA, d, into * into * (3 - 2 * into));
+          if (ty.rig) applyPose(ty.rig, lastPose, 1);
+          // a sparkle burst on the first beat of every bar
+          const bar = Math.floor(beat / 4);
+          if (dancing && s.t >= BOSS_INTRO && bar !== lastBeat) {
+            if (lastBeat >= 0) party.burst(0.5);
+            lastBeat = bar;
+          }
         }
       } else if (s.t < hitAt - 0.7) {
-        // hover menacingly, spinning the ball on one finger
-        ty.g.position.set(HOVER.x, HOVER.y + Math.sin(t * 2) * 0.4, HOVER.z);
-        ty.g.rotation.y = Math.sin(t * 0.9) * 0.5;
+        // hover menacingly, spinning the ball on one finger (after the dance: float up off the floor)
+        const u = Math.min(1, sinceSkip / 0.8);
+        const ue = u * u * (3 - 2 * u);
+        ty.armR.visible = u > 0.5;
+        ty.g.scale.setScalar(1);
+        ty.g.position.set(HOVER.x, HOVER.y + Math.sin(t * 2) * 0.4, HOVER.z).lerp(DANCE, 1 - ue);
+        ty.g.rotation.y = Math.sin(t * 0.9) * 0.5 * ue;
         ty.ball.rotation.y += dt * 12;
+        if (ty.rig) applyPose(ty.rig, u < 1 ? lastPose : null, 1 - ue);
       } else if (bossAt && s.t < hitAt) {
         // leap at the victim and throw it down
+        ty.armR.visible = true;
+        if (ty.rig) applyPose(ty.rig, null, 0);
         const k = Math.min(1, (s.t - (hitAt - 0.7)) / 0.7);
         const x = HOVER.x + (bossAt.x - HOVER.x) * k;
         const z = HOVER.z + (bossAt.z - 2 - HOVER.z) * k;
@@ -734,6 +803,7 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
       }
     } else if (ty.g.visible) {
       // blast off back into space
+      party.tick(t, dt, 0, 0, 0, false);
       if (leaveT < 0) {
         leaveT = 0;
         sfx.boing();

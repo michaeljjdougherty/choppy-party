@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getBoard } from '../src/shared/board/boards';
-import { bossIn, createBoard, finishEvent, nextTurn, stepBoard } from '../src/shared/board/engine';
+import { BOSS_INTRO, bossIn, createBoard, endBossDance, finishEvent, nextTurn, stepBoard } from '../src/shared/board/engine';
 import type { BoardState } from '../src/shared/board/types';
 import { DT } from '../src/shared/types';
 
@@ -13,6 +13,8 @@ function play(s: BoardState, turns: number, watch: (s: BoardState) => void): voi
       finishEvent(s, s.event.players.map((id, i) => ({ id, value: i })));
       continue;
     }
+    // Evil LeBron dances until the host skips: skip him once he's in
+    if (s.sub === 'boss' && s.boss?.dance && s.t > BOSS_INTRO + 1) endBossDance(s);
     if (s.sub === 'done') {
       if (s.turn >= turns) return;
       nextTurn(s);
@@ -57,6 +59,28 @@ describe('Stew Court', () => {
       });
     }
     expect(strikes).toBeGreaterThan(0);
+  });
+
+  it('Evil LeBron keeps dancing until the host skips, then spins his reel', () => {
+    const s = createBoard('stew-court', ['a', 'b', 'c'], 8, 3);
+    s.choppy = true;
+    let ticks = 0;
+    while (s.sub !== 'boss' && ticks++ < 30 * 2000) {
+      if (s.sub === 'event' && s.event) finishEvent(s, s.event.players.map((id, i) => ({ id, value: i })));
+      else if (s.sub === 'done') nextTurn(s);
+      else stepBoard(s, {}, DT);
+    }
+    expect(s.sub).toBe('boss');
+    expect(s.boss?.dance).toBe(true);
+    // five minutes of dancing: nobody gets slammed and the round doesn't end
+    for (let i = 0; i < 30 * 300; i++) stepBoard(s, {}, DT);
+    expect(s.sub).toBe('boss');
+    expect(s.boss?.hit).toBeFalsy();
+    endBossDance(s);
+    expect(s.boss?.dance).toBe(false);
+    expect(s.t).toBe(BOSS_INTRO);
+    for (let i = 0; i < 30 * 10 && s.sub === 'boss'; i++) stepBoard(s, {}, DT);
+    expect(s.sub).not.toBe('boss');
   });
 
   it('the Chop Pit is a closed ring of mostly bad spaces with no way in or out', () => {

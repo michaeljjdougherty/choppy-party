@@ -309,7 +309,7 @@ export interface BoardState {
   /** Mister Chunk's reel: which nasty surprise he picks. */
   chunk?: { reel: ChunkKind[]; at: number; pick: ChunkKind; victim: string } | null;
   /** The villain's reel of player ids, stopping on his victim. */
-  boss?: { reel: string[]; at: number; pick: string; hit?: boolean } | null;
+  boss?: { reel: string[]; at: number; pick: string; hit?: boolean; /** still dancing to his song: nothing moves on until the host skips */ dance?: boolean } | null;
   /** Round the villain last struck, and who he got (so he doesn't pick on the same player twice running). */
   bossTurn?: number;
   /** Stew Court: true in the Choppy Verse (the evil floating space court), false in the Fucci Verse. */

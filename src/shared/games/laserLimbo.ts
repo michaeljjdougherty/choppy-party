@@ -9,7 +9,7 @@ import { playerChips } from './hud';
  * Laser Limbo (Modular Space Kit): everyone runs up a spiral ramp around a reactor column by
  * themselves; you only dodge. Laser arms sweep down the spiral. Red beams are low: hop them (A).
  * Blue beams are high: duck them (B). Both are quick, fixed moves (no holding), and everything
- * speeds up every 5 seconds, the hop and duck included. Each hit costs a heart; three hits and
+ * speeds up every 5 seconds, the hop and duck included. One hit and
  * you're out. Last one standing wins.
  */
 export const TURNS = 3;
@@ -18,7 +18,7 @@ const SLIDE = 0.04;
 const DUCK_TIME = 0.42; // a quick duck, shortened as the game speeds up
 const HOP_V = 370; // a low hop that just clears a red beam
 const HOP_G = 1400;
-const MAX_HITS = 3;
+const MAX_HITS = 1; // one hit and you're out (Michael prefers one-hit games)
 const MAX_T = 80;
 const LOW_CLEAR = 34; // jump height needed to clear a low beam
 const READY = 3;
@@ -59,7 +59,7 @@ export const laserLimbo: Minigame<LaserState> = {
   id: 'laser-limbo',
   name: 'Laser Limbo',
   mode: 'Free-for-all',
-  blurb: 'You run up the reactor on your own. Red lasers are low: hop them. Blue lasers are high: duck them. It all speeds up every 5 seconds. Three hits and you are out. Last one standing wins!',
+  blurb: 'You run up the reactor on your own. Red lasers are low: hop them. Blue lasers are high: duck them. It all speeds up every 5 seconds. One hit and you are out. Last one standing wins!',
   controls: 'A: hop   B: duck (quick taps)',
   minPlayers: 1,
   maxPlayers: 10,

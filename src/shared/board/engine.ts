@@ -1088,6 +1088,26 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
       set(s, 'itemSpin');
       break;
     }
+    case 'oop': {
+      // Alley-Oop Pad: launched across the court. In the Fucci Verse you slam into the glowing hoop
+      // (and can buy the Chobglob); in the Choppy Verse you're dunked straight into the Chop Pit
+      if (s.choppy && def.pit?.length) {
+        me.node = def.pit[0];
+        fx(s, 'warp', me.node, id);
+        say(s, 'ALLEY-OOP... straight into the CHOP PIT!', '#ff3b4e');
+        break;
+      }
+      const target = s.crowns[0];
+      if (!target) break;
+      me.node = target;
+      fx(s, 'warp', target, id);
+      say(s, 'ALLEY-OOP! Slammed into the glowing hoop!', '#ff9f1c');
+      if (me.keys >= pr.crownPrice) {
+        s.resume = 'land';
+        ask(s, { kind: 'crown', node: target });
+      }
+      break;
+    }
     case 'lucky': {
       if (rand(s.rng) < 0.12 && s.crowns.length) {
         // jackpot: a free trip to a Crown Chest
@@ -1277,6 +1297,14 @@ function boardEvent(s: BoardState, def: BoardDef, id: string): void {
     // Verse Flip: the court swaps between the Fucci Verse and the Choppy Verse
     s.choppy = !s.choppy;
     s.chopRounds = 0;
+    // back in the Fucci Verse the Chop Pit lets everyone go: straight back to the start
+    if (!s.choppy && def.pit) {
+      for (const p of Object.values(s.players)) {
+        if (!def.pit.includes(p.node)) continue;
+        p.node = def.start;
+        fx(s, 'warp', p.node, p.id);
+      }
+    }
     fx(s, 'verse', me.node, id);
     say(s, s.choppy ? 'VERSE FLIP! Welcome to the CHOPPY VERSE...' : 'VERSE FLIP! Back to the Fucci Verse. Phew.', s.choppy ? '#ff3b4e' : '#5fb8ff');
   } else {

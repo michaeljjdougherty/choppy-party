@@ -61,6 +61,11 @@ export function buildTour(def: BoardDef, s: BoardState): TourStep[] {
     const lanes = Object.values(def.nodes).filter((n) => n.id.startsWith('sw') || n.id.startsWith('se')).map((n) => n.id);
     if (lanes.length) steps.push({ title: 'Half-Court Lanes', text: 'Two one-way lanes cut across centre court. Each one skips a hoop, so pick the one that heads for the glowing end.', node: lanes[Math.floor(lanes.length / 4)], also: lanes });
   }
+  if (def.pit) {
+    const pad = Object.values(def.nodes).find((n) => n.type === 'oop');
+    if (pad) steps.push({ title: 'Alley-Oop Pads', text: 'Land on an orange Alley-Oop Pad and you get launched for a slam dunk. In the Fucci Verse it slams you right into the glowing hoop, so you can buy the Chobglob. In the Choppy Verse it dunks you into the Chop Pit.', node: pad.id });
+    steps.push({ title: 'The Chop Pit', text: 'The cage off the corner is the Chop Pit. Three spaces in four hurt in there. Walk it out the far end, or wait for a Verse Flip back to the Fucci Verse, which sends everyone in the pit back to the start.', node: def.pit[Math.floor(def.pit.length / 2)], also: def.pit });
+  }
   if (def.boss)
     steps.push({ title: def.boss.name, text: `In the Choppy Verse, ${def.boss.every === 1 ? 'at the end of every round' : `every ${def.boss.every} rounds`} ${def.boss.name} drops in, spins a reel of everyone and slams one player. Knocked out: you drop half your Pit Coin and start again from the bench. Only a Knight Shield can stop him.`, node: def.camp });
   // weather zones, each lit up end to end

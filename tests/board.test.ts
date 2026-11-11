@@ -12,8 +12,9 @@ describe.each(BOARDS.map((b) => [b.name, b] as const))('%s layout', (_n, def) =>
       expect(n.next.length).toBeGreaterThan(0);
       for (const x of n.next) expect(def.nodes[x]).toBeDefined();
     }
-    const seen = new Set([def.start]);
-    const queue = [def.start];
+    // Stew Court's Chop Pit has no way in: you only get thrown into it
+    const seen = new Set([def.start, ...(def.pit ? [def.pit[0]] : [])]);
+    const queue = [...seen];
     while (queue.length) for (const x of def.nodes[queue.shift()!].next) if (!seen.has(x)) (seen.add(x), queue.push(x));
     expect(seen.size).toBe(nodes.length);
   });

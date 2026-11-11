@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import type { BoardDef, BoardState } from '../../shared/board/types';
 import { COURT } from '../../shared/board/boards';
 import { mesh, toy } from './kit';
-import { place, sky } from './assets';
+import { character, place, sky } from './assets';
 import { BOSS_INTRO, BOSS_SLAM, SPIN_STOP } from '../../shared/board/engine';
 import { shake } from './fx';
 import { sfx } from '../sfx';
 import { postPulse } from './look/post';
+import { buildArena, buildInferno, buildJumbotron } from './stewCourtLook';
 
 /**
  * STEW COURT: a hardwood basketball court floating in deep space. Built in the board's
@@ -18,6 +19,12 @@ import { postPulse } from './look/post';
  * - a jumbotron spinning slowly over centre court, planets, asteroids and a starfield
  */
 const FLOOR = { w: 64, h: 40 };
+/** Player names for the jumbotron (the board view sets these before building the court). */
+let names: Record<string, string> = {};
+export function setCourtNames(n: Record<string, string>): void {
+  names = n;
+}
+const leaderName = (id: string) => names[id] ?? '';
 const LINES = { w: 58, h: 34 };
 /** Where the hoops' rims hang (x), just past the hoop spaces at the round ends of the loop. */
 const RIM_X = COURT.hoopX + 1.1;
@@ -153,6 +160,26 @@ function courtTexture(evil = false, glow = false): THREE.CanvasTexture {
   return t;
 }
 
+function signTexture(txt: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#1b0d10';
+  g.fillRect(0, 0, 512, 128);
+  g.strokeStyle = '#ff2a10';
+  g.lineWidth = 8;
+  g.strokeRect(6, 6, 500, 116);
+  g.font = '900 80px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#ff3b1a';
+  g.fillText(txt, 256, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /** A basketball: orange with black seams. */
 function ballTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -284,6 +311,42 @@ export function makeTyrant(h: number): { g: THREE.Group; ball: THREE.Object3D; a
   return { g, ball, armR, eyes, flame };
 }
 
+/**
+ * Evil LeBron, from Michael's model (lebron_james.glb, CC BY-NC-ND, private play only: see
+ * public/models/misc/CREDITS-evil-lebron.txt). Winged, crowned, glowing; a flaming ball rides on
+ * a pivot at his shoulder so the slam can swing it down. Same parts as makeTyrant, so either drops in.
+ */
+export function makeLebron(h: number): ReturnType<typeof makeTyrant> {
+  const g = new THREE.Group();
+  const o = character('misc/evil-lebron').scene;
+  o.traverse((m) => {
+    if (m.name === 'Object_14') m.visible = false; // the staff he holds out to one side in the T-pose
+    if ((m as THREE.Mesh).isMesh) {
+      m.castShadow = true;
+      m.frustumCulled = false;
+    }
+  });
+  const box = new THREE.Box3().setFromObject(o);
+  const k = h / 1.84;
+  o.scale.setScalar(k);
+  o.position.set(0, -box.min.y * k, 0);
+  g.add(o);
+  // a red glow from inside him, so he reads as evil from far up
+  const aura = new THREE.PointLight('#ff2a10', 18, h * 2.2, 1.5);
+  aura.position.set(0, h * 0.7, h * 0.25);
+  g.add(aura);
+  const armR = new THREE.Group();
+  armR.position.set(-0.22 * k, 1.42 * k, 0);
+  g.add(armR);
+  const ball = basketball(0.16 * k);
+  ball.position.set(0, 0.9 * k, 0);
+  armR.add(ball);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.15 * k, 0.4 * k, 12, 1, true), new THREE.MeshBasicMaterial({ color: '#ff6a00', transparent: true, opacity: 0.75, depthWrite: false }));
+  flame.position.set(0, 0.2 * k, 0);
+  ball.add(flame);
+  return { g, ball, armR, eyes: new THREE.MeshStandardMaterial(), flame };
+}
+
 interface Hoop {
   node: string;
   rim: THREE.MeshStandardMaterial;
@@ -376,8 +439,10 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
   const grab = (list: THREE.Object3D[], from: number) => list.push(...scene.children.slice(from));
 
   // the floating court
-  const floorMat = new THREE.MeshStandardMaterial({ map: courtTexture(), roughness: 0.55, metalness: 0.0, color: '#e6d6c6' });
+  const floorMat = new THREE.MeshPhysicalMaterial({ map: courtTexture(), roughness: 0.38, metalness: 0.0, color: '#efe2d2', clearcoat: 0.9, clearcoatRoughness: 0.12 });
+  floorMat.userData.noDetail = true;
   const evilMat = new THREE.MeshStandardMaterial({ map: courtTexture(true), roughness: 0.7, color: '#b0a0a0', emissive: '#ffffff', emissiveMap: courtTexture(true, true), emissiveIntensity: 1.1 });
+  evilMat.userData.noDetail = true;
   const floorMats = [toy('#2a1238', 0.4), toy('#2a1238', 0.4), floorMat, toy('#1b1030', 0.5), toy('#2a1238', 0.4), toy('#2a1238', 0.4)];
   const floor = mesh(new THREE.BoxGeometry(FLOOR.w, 1.2, FLOOR.h), floorMats as unknown as THREE.Material, { cast: false, receive: true });
   floor.position.y = -0.62;
@@ -391,87 +456,14 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
     strip.userData.ground = true;
     scene.add(strip);
   }
-  // FUCCI VERSE: a normal arena. The court sits on the arena floor, with stands all round and a lighting rig
+  // FUCCI VERSE: a full arena bowl round the court (see stewCourtLook.ts)
   let mark = scene.children.length;
-  const ground = mesh(new THREE.CircleGeometry(95, 64), toy('#241b2e', 0.8), { cast: false, receive: true });
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -1.22;
-  ground.userData.ground = true;
-  scene.add(ground);
-  const wall = mesh(new THREE.CylinderGeometry(78, 78, 40, 64, 1, true), new THREE.MeshStandardMaterial({ color: '#2a2040', side: THREE.BackSide, roughness: 0.9 }), { cast: false });
-  wall.position.y = 18;
-  wall.userData.ground = true;
-  scene.add(wall);
-  for (const [y, col] of [[2.5, '#ff8a1f'], [9, '#5fb8ff']] as [number, string][]) {
-    const band = mesh(new THREE.CylinderGeometry(77.5, 77.5, 1.2, 64, 1, true), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.8, side: THREE.BackSide }), { cast: false });
-    band.position.y = y;
-    band.userData.ground = true;
-    scene.add(band);
-  }
-  for (const [x, z, ry, w] of [[-41, 0, Math.PI / 2, 34], [41, 0, -Math.PI / 2, 34], [0, 30, Math.PI, 50]] as [number, number, number, number][]) {
-    const st = bleachers(w, 8, '#3d5bff');
-    st.position.set(x, -1.2, z);
-    st.rotation.y = ry;
-    st.userData.keep = true;
-    scene.add(st);
-  }
-  const rig = new THREE.Group();
-  rig.userData.sky = true;
-  const truss = mesh(new THREE.TorusGeometry(26, 0.5, 6, 48), toy('#3a3f5c', 0.4), { cast: false });
-  truss.rotation.x = Math.PI / 2;
-  truss.scale.y = 0.62;
-  rig.add(truss);
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    const lamp = mesh(new THREE.CylinderGeometry(0.7, 1.1, 1.2, 12), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#fff4d6', emissiveIntensity: 2 }), { cast: false });
-    lamp.position.set(Math.cos(a) * 26, -0.8, Math.sin(a) * 26 * 0.62);
-    rig.add(lamp);
-  }
-  rig.position.y = 30;
-  scene.add(rig);
+  const arena = buildArena(scene, FLOOR);
   grab(fucci, mark);
 
   // CHOPPY VERSE: the court tears loose and floats in deep space, burning
   mark = scene.children.length;
-  // the hull under the court: a shallow upturned pyramid of dark metal with thrusters
-  const hull = mesh(new THREE.CylinderGeometry(1, 0.55, 4.5, 4, 1), toy('#1b1030', 0.5), { cast: false });
-  hull.rotation.y = Math.PI / 4;
-  hull.scale.set(FLOOR.w * 0.7, 1, FLOOR.h * 0.7);
-  hull.position.y = -3.45;
-  hull.userData.ground = true;
-  scene.add(hull);
-  const thrustMat = new THREE.MeshBasicMaterial({ color: '#5fd8ff', transparent: true, opacity: 0.75, depthWrite: false });
-  const flames: THREE.Mesh[] = [];
-  for (const [x, z] of [[-18, -9], [18, -9], [-18, 9], [18, 9], [0, 0]] as [number, number][]) {
-    const nozzle = mesh(new THREE.CylinderGeometry(1.4, 1.9, 1.4, 16), toy('#3a3f5c', 0.3), { cast: false });
-    nozzle.position.set(x, -5.6, z);
-    nozzle.userData.ground = true;
-    scene.add(nozzle);
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(1.3, 5, 16, 1, true), thrustMat);
-    flame.rotation.x = Math.PI;
-    flame.position.set(x, -8.8, z);
-    flame.userData.ground = true;
-    scene.add(flame);
-    flames.push(flame);
-  }
-
-  // fire burning on the court (the board view nudges each one off the path)
-  const fires: THREE.Group[] = [];
-  const fireMats = ['#ff3b00', '#ff8a00', '#ffd23f'].map((c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
-  let fseed = 3;
-  const fr = () => ((fseed = (fseed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 40; i++) {
-    const f = new THREE.Group();
-    for (let k = 0; k < 3; k++) {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.7 - k * 0.18, 2.4 - k * 0.6, 8, 1, true), fireMats[k]);
-      cone.position.set((fr() - 0.5) * 0.3, (2.4 - k * 0.6) / 2, (fr() - 0.5) * 0.3);
-      f.add(cone);
-    }
-    f.position.set((fr() - 0.5) * (FLOOR.w - 6), 0, (fr() - 0.5) * (FLOOR.h - 6));
-    f.userData.k = fr() * 10;
-    scene.add(f);
-    fires.push(f);
-  }
+  const inferno = buildInferno(scene, FLOOR);
   const hellLight = new THREE.PointLight('#ff3010', 30, 70, 1.4);
   hellLight.position.set(0, 8, 0);
   scene.add(hellLight);
@@ -534,6 +526,8 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
     scene.add(st);
     stands.push(st);
   }
+  // the floating stands only exist in the Choppy Verse; in the Fucci Verse the Bleacher Run crosses the arena's front rows
+  chop.push(...stands);
   // a catwalk slab under each Bleacher Run space, with glowing edges
   const walkMat = toy('#3a3f5c', 0.35);
   const walkEdge = new THREE.MeshStandardMaterial({ color: '#ff8a1f', emissive: '#ff6a00', emissiveIntensity: 0.9 });
@@ -550,23 +544,48 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
     scene.add(edge);
   }
 
-  // the jumbotron over centre court
-  const jumbo = new THREE.Group();
-  jumbo.userData.sky = true;
-  const screenMat = new THREE.MeshStandardMaterial({ color: '#10173a', emissive: '#3d5bff', emissiveIntensity: 0.55 });
-  const box = mesh(new THREE.BoxGeometry(5.5, 3, 5.5), [screenMat, screenMat, toy('#2b2f45', 0.4), toy('#2b2f45', 0.4), screenMat, screenMat] as unknown as THREE.Material);
-  jumbo.add(box);
-  for (const y of [-1.7, 1.7]) {
-    const band = mesh(new THREE.BoxGeometry(5.9, 0.35, 5.9), new THREE.MeshStandardMaterial({ color: '#ff8a1f', emissive: '#ff6a00', emissiveIntensity: 1 }));
-    band.position.y = y;
-    jumbo.add(band);
+  // the Chop Pit: an iron cage walkway hanging off the east corner, lit red
+  const pitIds = def.pit ?? [];
+  const iron = toy('#26222e', 0.45);
+  const pitGlow = new THREE.MeshStandardMaterial({ color: '#ff2a10', emissive: '#ff2000', emissiveIntensity: 1.2 });
+  pitIds.forEach((id, i) => {
+    const n = def.nodes[id];
+    const slab = mesh(new THREE.CylinderGeometry(1.5, 1.3, 0.5, 8), iron);
+    slab.position.set(n.x, n.y - 0.27, n.z);
+    slab.userData.keep = true;
+    scene.add(slab);
+    const ring = mesh(new THREE.TorusGeometry(1.5, 0.07, 6, 8), pitGlow, { cast: false });
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(n.x, n.y - 0.03, n.z);
+    ring.userData.keep = true;
+    scene.add(ring);
+    // bars on both sides of the walkway (the board view nudges them clear of the path)
+    const nx = def.nodes[pitIds[Math.min(pitIds.length - 1, i + 1)]];
+    const px = def.nodes[pitIds[Math.max(0, i - 1)]];
+    const dx = nx.x - px.x, dz = nx.z - px.z;
+    const l = Math.hypot(dx, dz) || 1;
+    for (const side of [-1, 1]) {
+      const bar = mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 6), iron);
+      bar.position.set(n.x + (-dz / l) * 1.4 * side, n.y + 1.6, n.z + (dx / l) * 1.4 * side);
+      bar.userData.keep = true;
+      scene.add(bar);
+      const spike = mesh(new THREE.ConeGeometry(0.16, 0.4, 6), pitGlow);
+      spike.position.set(bar.position.x, n.y + 3.35, bar.position.z);
+      spike.userData.keep = true;
+      scene.add(spike);
+    }
+  });
+  if (pitIds.length) {
+    const n = def.nodes[pitIds[Math.floor(pitIds.length / 2)]];
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.8), new THREE.MeshBasicMaterial({ map: signTexture('CHOP PIT'), transparent: true }));
+    sign.position.set(n.x + 3.2, n.y + 4.2, n.z);
+    sign.rotation.y = -Math.PI / 2.6;
+    sign.userData.keep = true;
+    scene.add(sign);
   }
-  const jball = basketball(1.1);
-  jball.position.y = 3;
-  jumbo.add(jball);
-  jumbo.position.set(0, 25, -4);
-  jumbo.scale.setScalar(0.8);
-  scene.add(jumbo);
+
+  // the jumbotron over centre court, with live screens
+  const jumbo = buildJumbotron(scene, basketball);
 
   // the wider universe (Choppy Verse only): planets, a ringed giant, asteroids, satellites and a starfield
   mark = scene.children.length;
@@ -621,7 +640,7 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
   let wasChoppy: boolean | null = null;
 
   // the villain waits off-screen, high above the court
-  const ty = makeTyrant(9);
+  const ty = makeLebron(8.5);
   ty.g.visible = false;
   ty.g.userData.sky = true;
   scene.add(ty.g);
@@ -633,6 +652,9 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
   return (s, t, dt) => {
     // flip worlds
     const choppy = !!s.choppy;
+    scene.environmentIntensity = choppy ? 0.12 : 0.35;
+    const lead = Object.values(s.players).sort((a, b) => b.crowns - a.crowns || b.keys - a.keys)[0];
+    const info = { turn: s.turn, maxTurns: s.maxTurns, leader: lead ? leaderName(lead.id) : '', choppy };
     if (choppy !== wasChoppy) {
       if (wasChoppy !== null) {
         shake(0.8);
@@ -651,11 +673,9 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
       walkEdge.emissive.set(choppy ? '#ff2000' : '#ff6a00');
     }
     if (choppy) {
-      fires.forEach((f, i) => {
-        const k = f.userData.k as number;
-        f.children.forEach((c, j) => (c.scale.set(1, 0.75 + Math.abs(Math.sin(t * (7 + j * 3) + k + i)) * 0.5, 1)));
-      });
+      inferno.tick(t, dt, info);
       hellLight.intensity = 26 + Math.sin(t * 9) * 6;
+      evilMat.emissiveIntensity = 0.9 + Math.sin(t * 2.2) * 0.35;
     }
     // THE VILLAIN: drops out of the sky over centre court, hovers through his reel, then dunks his victim
     if (s.sub === 'boss' && s.boss) {
@@ -743,16 +763,12 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
       const gm = h.glow.material as THREE.MeshBasicMaterial;
       gm.opacity += ((lit ? 0.55 + Math.sin(t * 3) * 0.15 : 0) - gm.opacity) * Math.min(1, dt * 3);
     }
-    flames.forEach((f, i) => {
-      f.scale.y = 0.85 + Math.sin(t * 22 + i * 1.7) * 0.15;
-      (f.material as THREE.MeshBasicMaterial).opacity = 0.6 + Math.sin(t * 17 + i) * 0.15;
-    });
+    if (!choppy) arena.tick(t, dt, info);
+    jumbo.tick(t, dt, info);
     stands.forEach((st, i) => {
       st.position.y = (st.userData.base as number) + Math.sin(t * 0.8 + i * 1.9) * 0.12;
       (st.userData.fans as THREE.Mesh[]).forEach((f, k) => (f.position.y = (f.userData.base as number) + Math.max(0, Math.sin(t * 5 + k * 1.3)) * 0.12));
     });
-    jumbo.rotation.y = t * 0.25;
-    jball.rotation.y = -t * 1.5;
     planets.forEach((p, i) => (p.rotation.y = t * (0.04 + i * 0.02)));
     for (const r of rocks) {
       r.rotation.x += dt * (r.userData.spin as number) * 0.5;

@@ -58,4 +58,48 @@ describe('Stew Court', () => {
     }
     expect(strikes).toBeGreaterThan(0);
   });
+
+  it('the Chop Pit is a dead-end-free prison, mostly bad spaces, with no way in', () => {
+    const pit = def.pit!;
+    expect(pit.length).toBeGreaterThanOrEqual(8);
+    const bad = pit.filter((id) => ['thorn', 'chunk', 'dynamite'].includes(def.nodes[id].type)).length;
+    expect(bad / pit.length).toBeGreaterThanOrEqual(0.75);
+    const into = Object.values(def.nodes).filter((n) => !pit.includes(n.id) && n.next.some((x) => pit.includes(x)));
+    expect(into).toEqual([]);
+    expect(pit.includes(def.nodes[pit[pit.length - 1]].next[0])).toBe(false);
+  });
+
+  it('Alley-Oop Pads dunk you into the glowing hoop in the Fucci Verse and into the Chop Pit in the Choppy Verse', () => {
+    const pad = Object.values(def.nodes).find((n) => n.type === 'oop')!;
+    for (const choppy of [false, true]) {
+      const s = createBoard('stew-court', ['a', 'b'], 5, 1);
+      s.sub = 'turnIntro';
+      s.choppy = choppy;
+      const me = s.players[s.order[0]];
+      me.keys = 0;
+      me.node = pad.id;
+      s.stepsLeft = 0;
+      s.sub = 'land';
+      s.t = 0;
+      // landing is resolved by the move step; call it through a zero-step move
+      s.sub = 'move';
+      stepBoard(s, {}, DT);
+      expect(me.node).toBe(choppy ? def.pit![0] : s.crowns[0]);
+    }
+  });
+
+  it('flipping back to the Fucci Verse sends everyone in the Chop Pit back to the start', () => {
+    const flip = Object.values(def.nodes).find((n) => n.type === 'event')!;
+    const s = createBoard('stew-court', ['a', 'b'], 5, 1);
+    s.choppy = true;
+    const [a, b] = s.order;
+    s.players[b].node = def.pit![3];
+    s.players[a].node = flip.id;
+    s.cur = 0;
+    s.stepsLeft = 0;
+    s.sub = 'move';
+    stepBoard(s, {}, DT);
+    expect(!!s.choppy).toBe(false);
+    expect(s.players[b].node).toBe(def.start);
+  });
 });

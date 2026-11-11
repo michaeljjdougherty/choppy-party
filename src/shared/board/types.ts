@@ -28,6 +28,7 @@ export type SpaceType =
   | 'counter' // Cosmo laser gate
   | 'camp' // Respawn Camp
   | 'shop' // pass-by item shop: spend keys on items (doesn't use up a step)
+  | 'oop' // Stew Court Alley-Oop Pad: dunk to the glowing hoop (Fucci Verse) or into the Chop Pit (Choppy Verse)
   | 'chunk'; // CHUNK SPACE: Mister Chunk shows up and spins a reel of nasty surprises
 
 export interface BoardNode {
@@ -130,6 +131,8 @@ export interface BoardDef {
   hills?: Hill[];
   /** The board was laid out small and blown up by this much (spaces, hills and scenery), so the spaces sit further apart. */
   spread?: number;
+  /** Stew Court's Chop Pit: a one-way prison path you only get thrown into (first id is the way in). */
+  pit?: string[];
   /** A villain who drops in at round end and knocks out one player at random (Stew Court: only in the Choppy Verse, every `every` rounds there). */
   boss?: { name: string; every: number };
   /** Weather zones (see weather.ts). */

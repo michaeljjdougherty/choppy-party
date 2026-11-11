@@ -13,6 +13,7 @@ const SERVER_MODE = new URLSearchParams(location.search).has('server');
 import { INTRO_PREVIEW, MIX_TABS, PREVIEW, drawFinal, drawIntro, drawLobby, drawResults, gridTiles } from './screens';
 import { loadSamples, sfx, unlockAudio } from './sfx';
 import { music, syncMusic } from './soundtrack';
+import { playSplash, splashActive } from './splash';
 import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
 import { bakeItemIcons } from './three/itemIcons';
@@ -145,6 +146,8 @@ if (roomParam) {
 
 // in the lobby: A joins, B leaves (or goes back to the menu if you're not in)
 for (const ev of ['keydown', 'pointerdown', 'touchstart']) window.addEventListener(ev, () => (unlockAudio(), music.unlock()));
+// Tiger Fish Interactive studio splash: plays over the loading screen; any input skips it
+void playSplash({ onGesture: () => (unlockAudio(), music.unlock()) });
 input.onAPress = (d) => {
   unlockAudio();
   music.unlock();
@@ -408,7 +411,7 @@ function frame(now: number) {
     const p = pointerAt();
     if (p && input.kind === 'mouse') menu.hover(p.x, p.y);
     const before = `${menu.screen}:${menu.sel}`;
-    if (joinBox.classList.contains('hidden') && !netDialogOpen()) act(menu.update(dt));
+    if (joinBox.classList.contains('hidden') && !netDialogOpen() && !splashActive()) act(menu.update(dt));
     const after = `${menu.screen}:${menu.sel}`;
     if (session) sfx.select();
     else if (before !== after) {

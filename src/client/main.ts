@@ -40,6 +40,7 @@ import { setMapLook } from './three/views/board';
 import { TouchControls, isTouchDevice, needsFromControls, safeInsets, type TouchNeed } from './touch';
 import { PAUSE_ROW_H, PAUSE_ROW_Y, boardPointer, pauseHover, pausePointer, stepSeek } from './pointerNav';
 import { Settings, gear } from './settings';
+import { OstScreen } from './ost';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -121,6 +122,10 @@ function act(action: ReturnType<MainMenu['update']>) {
     settings.show(() => menu.resync());
     return;
   }
+  if (action === 'ost') {
+    ost.show(() => menu.resync());
+    return;
+  }
   if (action === 'customize') {
     customize = new CustomizeScreen(input);
     return;
@@ -135,6 +140,7 @@ function act(action: ReturnType<MainMenu['update']>) {
 }
 
 const settings = new Settings(input);
+const ost = new OstScreen(input);
 canvas.style.pointerEvents = 'auto';
 attachUi(canvas, VIEW_W, VIEW_H);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -206,7 +212,7 @@ setMapLook(() => {
   return l;
 });
 window.addEventListener('keydown', (e) => {
-  if (names.open || settings.open) return;
+  if (names.open || settings.open || ost.open) return;
   if (e.code === 'KeyM' && !e.repeat && (e.target as HTMLElement)?.tagName !== 'INPUT') setMap(!mapCam.on);
 });
 // mouse: drag to orbit and tilt, wheel to zoom. touch: drag to orbit, pinch to zoom
@@ -300,7 +306,7 @@ function pauseDevice(): string | null {
   return kb ? deviceOf(kb) : ids[0] ? deviceOf(ids[0]) : null;
 }
 window.addEventListener('keydown', (e) => {
-  if (names.open || settings.open) return;
+  if (names.open || settings.open || ost.open) return;
   // O: settings, from the title or main menu
   if (e.code === 'KeyO' && !e.repeat && !session && !customize && joinBox.classList.contains('hidden') && !netDialogOpen()) {
     act('settings');
@@ -343,7 +349,7 @@ function lobbyBot(level: BotLevel | null) {
   (level ? sfx.join : sfx.leave)();
 }
 window.addEventListener('keydown', (e) => {
-  if (names.open || settings.open || e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+  if (names.open || settings.open || ost.open || e.repeat || (e.target as HTMLElement)?.tagName === 'INPUT') return;
   // N: type your name (the first keyboard player)
   if (e.code === 'KeyN' && session?.view()?.phase === 'lobby') {
     openNames('kb1');
@@ -419,8 +425,8 @@ function frame(now: number) {
   }
   if (!session && customize) {
     if (customize.update(dt) === 'back') closeCustomize();
-  } else if (!session && settings.open) {
-    // Settings has the controls
+  } else if (!session && (settings.open || ost.open)) {
+    // Settings / the OST player has the controls
   } else if (!session) {
     const p = pointerAt();
     if (p && input.kind === 'mouse') menu.hover(p.x, p.y);
@@ -448,8 +454,9 @@ function frame(now: number) {
 function render(wallT: number, dt: number) {
   beginUi();
   renderScreens(wallT, dt);
+  ost.draw(ctx, wallT);
   settings.draw(ctx, wallT);
-  if (!settings.open) mouseFallback();
+  if (!settings.open && !ost.open) mouseFallback();
   endUi();
 }
 
@@ -769,7 +776,7 @@ function renderScreens(wallT: number, dt: number) {
 
 /** Round cog button in the main menu's top-right corner: opens Settings. */
 function settingsButton(t: number) {
-  if (settings.open || !joinBox.classList.contains('hidden') || netDialogOpen()) return;
+  if (settings.open || ost.open || !joinBox.classList.contains('hidden') || netDialogOpen()) return;
   const x = 1196, y = 16, w = 68, h = 60;
   if (button(ctx, '', x, y, w, h, { color: '#6b6f86', sound: 'none' })) act('settings');
   const over = inside(pointerAt(), x, y, w, h);

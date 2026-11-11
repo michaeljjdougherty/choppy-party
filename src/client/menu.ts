@@ -3,14 +3,14 @@ import { roundRect, text } from '../shared/draw';
 import { sunburst } from './showtime';
 import { A, B, STICK, Y, promptKind, tapWord } from './prompts';
 
-export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | 'netcfg' | 'customize' | 'settings' | null;
+export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | 'netcfg' | 'customize' | 'settings' | 'ost' | null;
 
 interface Item {
   key: Exclude<MenuAction, null> | 'online' | 'back';
   title: string;
   sub: string;
   color: string;
-  icon: 'dice' | 'stars' | 'pad' | 'globe' | 'home' | 'key' | 'back' | 'hat';
+  icon: 'dice' | 'stars' | 'pad' | 'globe' | 'home' | 'key' | 'back' | 'hat' | 'note';
 }
 
 const MAIN: Item[] = [
@@ -19,6 +19,7 @@ const MAIN: Item[] = [
   { key: 'free', title: 'Free Play', sub: 'Pick any minigame', color: '#21c45a', icon: 'pad' },
   { key: 'online', title: 'Play Online', sub: 'Host a room or join friends', color: '#9a5bff', icon: 'globe' },
   { key: 'customize', title: 'Customize', sub: 'Hats, shirts and extras for the crew', color: '#ff8a1f', icon: 'hat' },
+  { key: 'ost', title: 'Choppy Party - OST', sub: 'The soundtrack, by DJ Tuna (on the beat)', color: '#ff4fa3', icon: 'note' },
 ];
 const ONLINE: Item[] = [
   { key: 'host', title: 'Host a Room', sub: 'Get a code to share with friends', color: '#ff8a1f', icon: 'home' },
@@ -163,8 +164,8 @@ export class MainMenu {
   }
 
   private rect(i: number, n: number) {
-    const h = n > 4 ? 96 : n > 3 ? 112 : 120;
-    const gap = n > 4 ? 14 : 18;
+    const h = n > 5 ? 84 : n > 4 ? 96 : n > 3 ? 112 : 120;
+    const gap = n > 5 ? 12 : n > 4 ? 14 : 18;
     const total = n * h + (n - 1) * gap;
     return { x: 700, y: 360 - total / 2 + i * (h + gap) + 30, w: 520, h };
   }
@@ -239,7 +240,13 @@ export class MainMenu {
       }
       icon(ctx, it.icon, r.x + 66, r.y + r.h / 2, t);
       ctx.restore();
-      text(ctx, it.title, r.x + 128, r.y + (it.sub ? r.h / 2 - 14 : r.h / 2), 38, { align: 'left' });
+      // long titles (Choppy Party - OST) are drawn smaller so they fit, in the same chunky font
+      const k = Math.min(1, 12.5 / it.title.length);
+      ctx.save();
+      ctx.translate(r.x + 128, r.y + (it.sub ? r.h / 2 - 14 : r.h / 2));
+      ctx.scale(k, k);
+      text(ctx, it.title, 0, 0, 38, { align: 'left' });
+      ctx.restore();
       if (it.sub) text(ctx, it.sub, r.x + 130, r.y + r.h / 2 + 26, 19, { align: 'left', weight: 600 });
       ctx.restore();
       if (on) {
@@ -416,6 +423,24 @@ function icon(ctx: CanvasRenderingContext2D, kind: Item['icon'], x: number, y: n
       ctx.lineTo(20, 8);
       ctx.stroke();
     }
+  } else if (kind === 'note') {
+    // a pair of beamed eighth notes that bop to the beat
+    ctx.rotate(Math.sin(t * 4) * 0.12);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(-16, 18, 12, 9, -0.4, 0, Math.PI * 2);
+    ctx.ellipse(18, 10, 12, 9, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillRect(-7, -26, 6, 44);
+    ctx.fillRect(27, -34, 6, 44);
+    ctx.beginPath();
+    ctx.moveTo(-7, -26);
+    ctx.lineTo(33, -34);
+    ctx.lineTo(33, -22);
+    ctx.lineTo(-7, -14);
+    ctx.closePath();
+    ctx.fill();
   } else if (kind === 'hat') {
     // a top hat that tips on its own
     ctx.rotate(Math.sin(t * 3) * 0.12);

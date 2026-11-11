@@ -99,7 +99,9 @@ export function quickDrawView(env: THREE.Texture, state: QuickDrawState, players
   scene.add(flower);
 
   const n = state.ids.length;
-  const gap = Math.min(2.2, 18 / Math.max(1, n));
+  const gap = Math.min(2.2, 15 / Math.max(1, n));
+  // a big lineup: step the camera back so the players at the ends stay in shot
+  camera.position.z += Math.max(0, n - 6) * 0.9;
   const models = new Map<string, ChoppyModel>();
   state.ids.forEach((id, i) => {
     const p = players.find((q) => q.id === id);

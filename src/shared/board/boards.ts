@@ -295,7 +295,7 @@ function goldRushGulch(): BoardDef {
   put('post', [0.08, 0.24, 0.4, 0.56, 0.72, 0.88]);
   put('duel', [0.16, 0.5, 0.82]);
   put('stew', [0.33, 0.66]);
-  put('dynamite', [0.12, 0.45, 0.62, 0.94]);
+  put('dynamite', [0.17, 0.45, 0.62, 0.94]);
   put('cannon', [0.2, 0.53, 0.78]);
   b.set(west[3], 'dynamite');
   const crownSpots = chestSpots(b, [...loop, ...west, ...east, ...trailUp, ...ledge, ...mesa], 25, [...skip]);
@@ -316,7 +316,7 @@ function goldRushGulch(): BoardDef {
     weather: [
       { kind: 'sandstorm', name: 'Sandstorm', area: 'the west dunes', nodes: loop.filter((id) => b.nodes[id].x < -16.5 && id !== start) },
       { kind: 'flood', name: 'Flash Flood', area: 'the east riverbed', nodes: loop.filter((id) => b.nodes[id].x > 16.5 && id !== start) },
-      { kind: 'heat', name: 'Heatwave', area: 'the south salt flats', nodes: loop.filter((id) => b.nodes[id].z > 11 && Math.abs(b.nodes[id].x) < 16.5 && !mesa.includes(id) && id !== start) },
+      { kind: 'heat', name: 'Heatwave', area: 'the south salt flats', nodes: loop.filter((id) => b.nodes[id].z > 11 && Math.abs(b.nodes[id].x) < 16.5 && !mesa.includes(id) && loop.indexOf(id) > 4 && loop.indexOf(id) < loop.length - 4) },
     ] satisfies WeatherZone[],
     preset: { ...DEFAULT_PRESET, chests: 2 },
   };

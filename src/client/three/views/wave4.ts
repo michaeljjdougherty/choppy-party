@@ -119,8 +119,9 @@ export function digView(env: THREE.Texture, state: DigState, players: PlayerInfo
 export function cannonView(env: THREE.Texture, state: CannonState, players: PlayerInfo[]): View {
   const scene = makeScene(env, { sky: 'day', skyTop: '#73c3ff', skyBottom: '#ffeccf', fog: ['#cfe8ff', 40, 120], shadowSize: 22 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
-  camera.position.set(1.5, 16.5, 14);
-  camera.lookAt(1.5, 0, 1.4);
+  // framed to take in the captain at the cannon on the left as well as the whole deck
+  camera.position.set(-0.6, 18.2, 15.4);
+  camera.lookAt(-0.6, 0, 1.4);
   const water = toonWater('#1574c9', 20);
   const sea = mesh(new THREE.CircleGeometry(120, 64), water.material, { cast: false, receive: true });
   sea.rotation.x = -Math.PI / 2;

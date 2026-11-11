@@ -322,8 +322,9 @@ export function bowlView(env: THREE.Texture, state: BowlState, players: PlayerIn
   const zOf = (y: number) => 6 - y * PX; // foul line at z = 6, pins far up the lanes
   ground(scene, '#3d4a2e', 90);
   const wide = n * gap;
-  camera.position.set(0, 7 + wide * 0.35, 15 + wide * 0.35);
-  camera.lookAt(0, 0, -6);
+  // pulled back far enough that the bowlers on the outside lanes stay in shot
+  camera.position.set(0, 8 + wide * 0.4, 17 + wide * 0.55);
+  camera.lookAt(0, 0, -4);
   const laneMat = new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', 1, 10), color: '#c9a477', roughness: 0.6 });
   const gutter = toy('#2d2438', 0.8);
   state.bowlers.forEach((_, i) => {

@@ -330,6 +330,7 @@ const lateGame = (s: BoardState) => s.maxTurns - s.turn < s.preset.doubleTurns;
 export function hurt(s: BoardState, def: BoardDef, id: string, amount: number, by?: string): boolean {
   const p = s.players[id];
   if (!p || p.ko) return false;
+  if (!by && p.fresh && s.turn <= p.fresh) return false;
   if (p.shield) {
     p.shield = false;
     fx(s, 'block', p.node, id);
@@ -406,6 +407,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         if (s.t < dt * 1.5) say(s, 'Resting at the Respawn Camp', '#ffb347');
         if (s.t > BANNER + 0.4) {
           me.ko = false;
+          me.fresh = s.turn + 1;
           endTurn(s, def);
         }
         break;

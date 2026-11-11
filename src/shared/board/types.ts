@@ -166,6 +166,8 @@ export interface BoardPlayer {
   items: ItemId[];
   /** Knocked out: skips their next move, then plays on from the Respawn Camp. */
   ko: boolean;
+  /** After a respawn: board and weather hazards can't hurt them until the end of this turn number. */
+  fresh?: number;
   /** Next roll is capped (Sticky Cube, Root Snare). 0 = no cap. */
   rollCap: number;
   /** Extra steps or dice for the next roll (Spring Boots, Double Barrel). */

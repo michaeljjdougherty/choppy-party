@@ -4,7 +4,7 @@ import { rand, randInt, shuffle } from '../rng';
 import { getBoard } from './boards';
 import { buildTour } from './tour';
 import { WEATHER, flareThisRound, inZone, newWeather, stormThisRound } from './weather';
-import { ITEMS, ITEM_IDS, SHOP_PRICE, SHOP_STOCK } from './items';
+import { ITEMS, ITEM_COLS, ITEM_GRID, ITEM_IDS, SHOP_PRICE, SHOP_STOCK } from './items';
 import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt } from './types';
 import { COUNTER_START, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
 
@@ -400,9 +400,10 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       break;
 
     case 'roll': {
-      const canItem = me.items.length > 0 && me.usedItemTurn !== s.turn;
-      if (inp.bPressed && canItem && s.t > 0.2) {
-        ask(s, { kind: 'items', sel: 0 });
+      // B opens the item bag before the first die: browse every item, use one you own
+      if (inp.bPressed && s.rolls.length === 0 && s.t > 0.2) {
+        const owned = ITEM_GRID.findIndex((it) => me.items.includes(it));
+        ask(s, { kind: 'items', sel: Math.max(0, owned) });
         break;
       }
       if ((inp.aPressed && s.t > 0.3) || s.t > AUTO_ROLL) {
@@ -581,8 +582,10 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
   const stickY = s.t > 0.2 && Math.abs(inp.y) > 0.6 ? Math.sign(inp.y) : 0;
 
   if (p.kind === 'items') {
-    if ((stick || stickY) && s.t > 0.2) {
-      p.sel = (p.sel + (stick || stickY) + me.items.length) % me.items.length;
+    // a cursor over the item grid: left/right steps through it, up/down jumps a row
+    const n = ITEM_GRID.length;
+    if (stick || stickY) {
+      p.sel = (p.sel + (stick || stickY * ITEM_COLS) + n) % n;
       s.t = 0.05; // tiny repeat delay
     }
     if (no || auto) {
@@ -590,7 +593,17 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
       set(s, 'roll');
       return;
     }
-    if (yes) useItem(s, def, id, p.sel);
+    if (yes) {
+      const item = ITEM_GRID[p.sel];
+      const slot = me.items.indexOf(item);
+      if (slot < 0) {
+        say(s, `You don't have a ${ITEMS[item].name}`, '#ff5a5f');
+        s.t = 0.05;
+      } else if (me.usedItemTurn === s.turn) {
+        say(s, 'Only 1 item per turn', '#ff5a5f');
+        s.t = 0.05;
+      } else useItem(s, def, id, slot);
+    }
     return;
   }
   if (p.kind === 'shop') {

@@ -42,3 +42,7 @@ export const SHOP_PRICE: Record<ItemId, number> = {
 };
 /** How many items a shop has on the counter at once. */
 export const SHOP_STOCK = 4;
+
+/** The item bag's grid: every item in a fixed order, ITEM_COLS per row. */
+export const ITEM_GRID = ITEM_IDS;
+export const ITEM_COLS = 5;

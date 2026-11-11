@@ -5,7 +5,7 @@ import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
 import { SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, currentPlayer } from '../shared/board/engine';
 import { TRAIN_PRICE, WISP_PRICE } from '../shared/board/types';
-import { ITEMS, SHOP_PRICE } from '../shared/board/items';
+import { ITEMS, ITEM_COLS, ITEM_GRID, SHOP_PRICE } from '../shared/board/items';
 import { WEATHER_COLOR, forecast } from '../shared/board/weather';
 import { playerById, popText, roundRect, text } from '../shared/draw';
 import { itemIcon } from './three/itemIcons';
@@ -107,7 +107,11 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   }
 
   // bottom: the item grid for whoever's turn it is
-  if (!setup && mine && !mapOpen) drawItemGrid(ctx, s, cur);
+  const bagOpen = b.sub === 'prompt' && (b.prompt as { kind: string } | null)?.kind === 'items';
+  if (!setup && mine && !mapOpen) {
+    if (bagOpen) drawItemGrid(ctx, s, cur, t);
+    else bagHint(ctx, mine.items.length, b.sub === 'roll' && b.rolls.length === 0);
+  }
 
   // centre callouts
   const name = me?.name ?? '';
@@ -145,10 +149,9 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Turn order follows the last minigame\'s finish!', 640, 204, 22, { color: '#ffd23f' });
   } else if (b.sub === 'roll') {
     const first = b.rolls.length === 0;
-    const canItem = first && mine.items.length > 0 && mine.usedItemTurn !== b.turn;
     const n = first ? (mine.rollCap ? 1 : mine.dice) : b.diceN;
     const which = n > 1 ? ` die ${b.rolls.length + 1} of ${n}` : '';
-    promptPill(ctx, `${name}: ${A()} to roll${which}${canItem ? `   ·   ${B()} to use an item` : ''}`, 104);
+    promptPill(ctx, `${name}: ${A()} to roll${which}${first ? `   ·   ${B()} for items` : ''}`, 104);
     if (first) {
       const bonus = [mine.dice > 2 && !mine.rollCap ? '3 dice!' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `snared: 1 die, max ${mine.rollCap}` : ''].filter(Boolean).join('  ');
       text(ctx, bonus || `Doubles pay +${DOUBLES_KEYS} keys`, 640, 146, 22, { color: '#ffd23f' });
@@ -201,26 +204,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     } else if (pm.kind === 'steal') box(`Pay ${pr.postStealCost} keys to take over this post?`, 'A: Yes      B: No');
     else if (pm.kind === 'shop') drawShop(ctx, pm, mine.keys);
     else if (pm.kind === 'items') {
-      const h = 110 + mine.items.length * 44;
-      ctx.fillStyle = 'rgba(255,255,255,0.96)';
-      roundRect(ctx, 340, 110, 600, h, 26);
-      ctx.fill();
-      text(ctx, 'Use an item (1 per turn)', 640, 146, 26, { color: '#2a1b5e', outline: false });
-      mine.items.forEach((it, k) => {
-        const y = 192 + k * 44;
-        const sel = k === pm.sel;
-        if (sel) {
-          ctx.fillStyle = 'rgba(255,210,63,0.6)';
-          roundRect(ctx, 360, y - 20, 560, 40, 14);
-          ctx.fill();
-        }
-        ctx.fillStyle = ITEMS[it].color;
-        roundRect(ctx, 372, y - 14, 28, 28, 7);
-        ctx.fill();
-        text(ctx, ITEMS[it].name, 412, y, 22, { align: 'left', color: '#2a1b5e', outline: false });
-        text(ctx, ITEMS[it].desc, 908, y, 15, { align: 'right', color: '#5b4a91', outline: false, weight: 600 });
-      });
-      text(ctx, 'Stick: choose   A: use   B: back', 640, 110 + h - 26, 18, { color: '#ff4d5a', outline: false, weight: 700 });
+      // drawn by drawItemGrid at the bottom
     } else if (pm.kind === 'target') {
       const tp = playerById(s.players, pm.options[pm.sel]);
       const what = pm.purpose === 'duel' ? 'Pick your duel rival' : pm.purpose === 'cannon' ? 'Aim the cannon' : `${ITEMS[pm.item!].name}: pick a target`;
@@ -393,39 +377,89 @@ function drawStandings(ctx: CanvasRenderingContext2D, s: PartyState, cur: string
 }
 
 /** Bottom centre: every item in the game, with how many the current player holds. */
-function drawItemGrid(ctx: CanvasRenderingContext2D, s: PartyState, cur: string): void {
+function drawItemGrid(ctx: CanvasRenderingContext2D, s: PartyState, cur: string, t: number): void {
   const b = s.board!;
   const mine = b.players[cur];
-  const ids = Object.keys(ITEMS) as (keyof typeof ITEMS)[];
-  const cols = 5, cell = 56, gap = 6;
-  const rows = Math.ceil(ids.length / cols);
+  const cols = ITEM_COLS, cell = 64, gap = 8;
+  const rows = Math.ceil(ITEM_GRID.length / cols);
   const w = cols * cell + (cols - 1) * gap;
   const x0 = 640 - w / 2;
-  const y0 = 712 - rows * cell - (rows - 1) * gap;
-  const pm = b.prompt as { kind: string; sel?: number } | null;
-  const picking = b.sub === 'prompt' && pm?.kind === 'items' ? mine.items[pm.sel ?? 0] : null;
-  text(ctx, 'Items', 640, y0 - 16, 20, { color: '#7dff6a' });
-  ids.forEach((id, k) => {
+  const y0 = 704 - rows * cell - (rows - 1) * gap;
+  const pm = b.prompt as { kind: string; sel: number };
+  const used = mine.usedItemTurn === b.turn;
+  // backing panel
+  ctx.fillStyle = 'rgba(20,12,40,0.72)';
+  roundRect(ctx, x0 - 16, y0 - 44, w + 32, rows * cell + (rows - 1) * gap + 56, 16);
+  ctx.fill();
+  text(ctx, used ? 'Items  (used one this turn)' : 'Items  (1 per turn)', 640, y0 - 22, 20, { color: '#7dff6a' });
+  let cx = 0, cy = 0;
+  ITEM_GRID.forEach((id, k) => {
     const x = x0 + (k % cols) * (cell + gap);
     const y = y0 + Math.floor(k / cols) * (cell + gap);
     const count = mine.items.filter((it) => it === id).length;
-    ctx.fillStyle = 'rgba(20,12,40,0.62)';
+    const on = k === pm.sel;
+    if (on) [cx, cy] = [x, y];
+    ctx.fillStyle = on ? 'rgba(255,210,63,0.28)' : 'rgba(255,255,255,0.08)';
     ctx.fillRect(x, y, cell, cell);
-    ctx.lineWidth = picking === id ? 4 : 2;
-    ctx.strokeStyle = picking === id ? '#ffd23f' : count ? '#7dff6a' : 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = on ? 4 : 2;
+    ctx.strokeStyle = on ? '#ffd23f' : count ? '#7dff6a' : 'rgba(255,255,255,0.28)';
     ctx.strokeRect(x + 1, y + 1, cell - 2, cell - 2);
     const icon = itemIcon(id);
     ctx.save();
-    ctx.globalAlpha = count ? 1 : 0.4;
+    ctx.globalAlpha = count ? 1 : 0.35;
     if (icon) ctx.drawImage(icon, x + 3, y + 3, cell - 6, cell - 6);
     else {
       ctx.fillStyle = ITEMS[id].color;
-      roundRect(ctx, x + 12, y + 12, cell - 24, cell - 24, 6);
+      roundRect(ctx, x + 14, y + 14, cell - 28, cell - 28, 6);
       ctx.fill();
     }
     ctx.restore();
     text(ctx, String(count), x + cell - 8, y + cell - 11, 15, { align: 'right', color: count ? '#ffffff' : 'rgba(255,255,255,0.6)' });
   });
+  // the cursor: a bobbing pointer over the selected cell
+  const bob = Math.sin(t * 6) * 3;
+  ctx.save();
+  ctx.translate(cx + cell / 2, cy - 4 + bob);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-10, -14);
+  ctx.lineTo(10, -14);
+  ctx.closePath();
+  ctx.fillStyle = '#ffd23f';
+  ctx.strokeStyle = '#2a1b5e';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fill();
+  ctx.restore();
+  // tooltip: what the highlighted item does
+  const id = ITEM_GRID[pm.sel];
+  const info = ITEMS[id];
+  const have = mine.items.filter((it) => it === id).length;
+  const tw = 540, th = 104;
+  const tx = 640 - tw / 2, ty = y0 - 44 - th - 10;
+  ctx.fillStyle = 'rgba(255,255,255,0.96)';
+  roundRect(ctx, tx, ty, tw, th, 18);
+  ctx.fill();
+  ctx.fillStyle = info.color;
+  roundRect(ctx, tx, ty, 10, th, 5);
+  ctx.fill();
+  text(ctx, info.name, tx + 26, ty + 24, 24, { align: 'left', color: '#2a1b5e', outline: false });
+  text(ctx, have ? `You have ${have}` : 'You have none', tx + tw - 18, ty + 24, 16, { align: 'right', color: have ? '#1f9d55' : '#9a8fbf', outline: false, weight: 700 });
+  text(ctx, info.desc + (info.target ? '. You pick who.' : ''), tx + 26, ty + 56, 18, { align: 'left', color: '#4b3b80', outline: false, weight: 600 });
+  const action = !have ? '' : used ? '' : `${A()}: use   `;
+  text(ctx, `Stick: move   ${action}${B()}: close`, tx + 26, ty + 86, 15, { align: 'left', color: '#ff4d5a', outline: false, weight: 700 });
+}
+
+/** While the bag is shut: a small "B: Items" chip where the grid would be. */
+function bagHint(ctx: CanvasRenderingContext2D, count: number, canOpen: boolean): void {
+  if (!canOpen) return;
+  const label = `${B()}: Items (${count})`;
+  ctx.font = `800 18px system-ui, sans-serif`;
+  const w = ctx.measureText(label).width + 36;
+  ctx.fillStyle = 'rgba(20,12,40,0.72)';
+  roundRect(ctx, 640 - w / 2, 670, w, 36, 18);
+  ctx.fill();
+  text(ctx, label, 640, 688, 18, { color: count ? '#7dff6a' : '#d8d2ee', weight: 800 });
 }
 
 /** The big "<name> start turn!" banner that slams in at the top of each turn. */

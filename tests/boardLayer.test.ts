@@ -3,6 +3,7 @@ import { BOARDS, getBoard } from '../src/shared/board/boards';
 import { ROLL_SHOW, createBoard, finishEvent, forwardDist, hurt, placeChest, stepBoard } from '../src/shared/board/engine';
 import { DT, NO_INPUT, type Inputs } from '../src/shared/types';
 import { addPlayer, createParty, OPTIONS, stepParty } from '../src/shared/party';
+import { ITEM_COLS, ITEM_GRID } from '../src/shared/board/items';
 
 const A = { ...NO_INPUT, a: true, aPressed: true, aTaps: 1 };
 const B = { ...NO_INPUT, b: true, bPressed: true, bTaps: 1 };
@@ -106,9 +107,42 @@ describe('board layer', () => {
     stepBoard(s, { a: A }, DT);
     expect(s.players.a.rollBonus).toBe(5);
     expect(s.sub).toBe('roll');
+    // the bag still opens to look, but a second item is refused
     s.t = 1;
     stepBoard(s, { a: B }, DT);
-    expect(s.sub).toBe('roll'); // already used an item this turn
+    expect(s.prompt?.kind).toBe('items');
+    const p = s.prompt as { kind: 'items'; sel: number };
+    expect(ITEM_GRID[p.sel]).toBe('heart-snack');
+    s.t = 1;
+    stepBoard(s, { a: A }, DT);
+    expect(s.players.a.items).toEqual(['heart-snack']);
+    s.t = 1;
+    stepBoard(s, { a: B }, DT);
+    expect(s.sub).toBe('roll');
+  });
+
+  it('item bag: the cursor walks the grid and B closes it, even with no items', () => {
+    const def = BOARDS[0];
+    const s = createBoard(def.id, ['a'], 10, 1);
+    s.players.a.items = [];
+    s.sub = 'roll';
+    s.t = 1;
+    stepBoard(s, { a: B }, DT);
+    const p = s.prompt as { kind: 'items'; sel: number };
+    expect(p.kind).toBe('items');
+    expect(p.sel).toBe(0);
+    s.t = 1;
+    stepBoard(s, { a: { ...NO_INPUT, x: 1 } }, DT);
+    expect(p.sel).toBe(1);
+    s.t = 1;
+    stepBoard(s, { a: { ...NO_INPUT, y: 1 } }, DT);
+    expect(p.sel).toBe(1 + ITEM_COLS);
+    s.t = 1;
+    stepBoard(s, { a: A }, DT);
+    expect(s.prompt?.kind).toBe('items'); // nothing to use there
+    s.t = 1;
+    stepBoard(s, { a: B }, DT);
+    expect(s.sub).toBe('roll');
   });
 
   it('a duel space in a real party runs the duel minigame with just two players and returns to the board', () => {

@@ -10,7 +10,7 @@ import { getBoard } from './board/boards';
 import { currentPlayer, forwardDist, nearDist } from './board/engine';
 import type { BoardState, ItemId } from './board/types';
 import { WISP_PRICE, TRAIN_PRICE } from './board/types';
-import { SHOP_PRICE } from './board/items';
+import { ITEM_GRID, SHOP_PRICE } from './board/items';
 import type { CloudburstState } from './games/coinCloudburst';
 import { ANVIL_HIT, AX0, AX1, AY0, AY1 } from './games/coinCloudburst';
 import type { CrateGrabState } from './games/crateGrab';
@@ -618,7 +618,8 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
   if (!ready) return NO_INPUT;
   switch (pr.kind) {
     case 'items':
-      return choose(pr.sel, Math.max(0, mem.m), me.items.length);
+      if (me.usedItemTurn === b.turn || !me.items.length) return pressB();
+      return choose(pr.sel, Math.max(0, ITEM_GRID.indexOf(me.items[Math.min(Math.max(0, mem.m), me.items.length - 1)])), ITEM_GRID.length);
     case 'target': {
       if (mem.n < 0) mem.n = pickTarget(b, id, pr.options, pr.purpose, smart(), r);
       return choose(pr.sel, mem.n, pr.options.length);

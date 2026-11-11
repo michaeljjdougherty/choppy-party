@@ -617,7 +617,7 @@ function pauseLayer(s: PartyState) {
     const g = s.phase === 'board' ? null : s.gameId ? getGame(s.gameId) : null;
     const lines = g
       ? [g.name, ...wrap(g.blurb, 40), '', g.controls]
-      : ['Board game', 'Roll the die with A, use an item with B.', 'Pick a path at forks with the stick.', 'Buy Choppy Crowns at the Crown Chest', 'for 40 Choppy Keys. Most crowns wins!'];
+      : ['Board game', 'Roll the dice with A. B opens your item bag.', 'Pick a path at forks with the stick.', 'Buy Choppy Crowns at the Crown Chest', 'for 40 Choppy Keys. Most crowns wins!'];
     lines.forEach((l, i) => text(ctx, l, 640, 270 + i * 30, i === 0 ? 24 : 18, { color: i === 0 ? '#ff4d5a' : '#2a1b5e', outline: false, weight: i === 0 ? 900 : 600 }));
     text(ctx, mine ? 'A or B: back' : `Waiting for ${who?.name ?? 'them'}`, 640, 540, 18, { color: '#6b5aa8', outline: false, weight: 700 });
     return;

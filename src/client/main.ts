@@ -36,6 +36,8 @@ import { attachUi, beginUi, button, clicked, endUi, pointerAt, takeStrayClick, u
 import { A, B, START, STICK, Y, localizeControls, setPromptKind } from './prompts';
 import { closeMap, mapCam, openMap } from './mapCam';
 import { setMapLook } from './three/views/board';
+import { TouchControls, isTouchDevice, safeInsets } from './touch';
+import { boardPointer, pauseHover, pausePointer, stepSeek } from './pointerNav';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -51,6 +53,12 @@ const input = new InputManager();
 uiSound.hover = () => sfx.hover();
 uiSound.press = (k) => (k === 'back' ? sfx.back : sfx.select)();
 const menu = new MainMenu(input);
+/** On-screen stick and buttons for phones and tablets (shown during a party once the screen is touched). */
+const touch = new TouchControls(input);
+if (isTouchDevice()) {
+  input.touchSeen = true;
+  input.kind = 'touch';
+}
 /** null while the title screen / main menu is up. */
 let session: Session | null = null;
 /** The Customize screen, while it's open (from the main menu). */
@@ -192,11 +200,32 @@ window.addEventListener('keydown', (e) => {
   if (names.open) return;
   if (e.code === 'KeyM' && !e.repeat && (e.target as HTMLElement)?.tagName !== 'INPUT') setMap(!mapCam.on);
 });
-// mouse: drag to orbit and tilt, wheel to zoom
+// mouse: drag to orbit and tilt, wheel to zoom. touch: drag to orbit, pinch to zoom
 let dragAt: { x: number; y: number } | null = null;
-canvas.addEventListener('pointerdown', (e) => mapCam.on && (dragAt = { x: e.clientX, y: e.clientY }));
-window.addEventListener('pointerup', () => (dragAt = null));
+const fingers = new Map<number, { x: number; y: number }>();
+let pinchWas = 0;
+canvas.addEventListener('pointerdown', (e) => {
+  if (!mapCam.on) return;
+  dragAt = { x: e.clientX, y: e.clientY };
+  if (e.pointerType === 'touch') fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  pinchWas = 0;
+});
+const lift = (e: PointerEvent) => {
+  fingers.delete(e.pointerId);
+  pinchWas = 0;
+  dragAt = null;
+};
+window.addEventListener('pointerup', lift);
+window.addEventListener('pointercancel', lift);
 window.addEventListener('pointermove', (e) => {
+  if (fingers.has(e.pointerId)) fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (mapCam.on && fingers.size >= 2) {
+    const [f1, f2] = [...fingers.values()];
+    const d = Math.hypot(f1.x - f2.x, f1.y - f2.y);
+    if (pinchWas) mapCam.dist = Math.max(8, Math.min(120, mapCam.dist * (pinchWas / d)));
+    pinchWas = d;
+    return;
+  }
   if (!mapCam.on || !dragAt) return;
   mapCam.yaw -= (e.clientX - dragAt.x) * 0.006;
   mapCam.pitch = Math.max(0.35, Math.min(1.45, mapCam.pitch + (e.clientY - dragAt.y) * 0.004));
@@ -215,7 +244,8 @@ function mapLayer(s: PartyState) {
   if (mapCam.on && !canMap()) setMap(false);
   if (s.phase !== 'board' || s.pause) return;
   if (!mapCam.on) {
-    if (button(ctx, `Map (${Y()})`, 1106, 668, 106, 40, { color: '#3fa9f5', size: 17, sound: 'none' })) setMap(true);
+    // touch: the on-screen Y opens the map, so no button under the thumbs
+    if (!touch.visible && button(ctx, `Map (${Y()})`, 1106, 668, 106, 40, { color: '#3fa9f5', size: 17, sound: 'none' })) setMap(true);
     return;
   }
   ctx.fillStyle = 'rgba(20,12,40,0.7)';
@@ -225,7 +255,9 @@ function mapLayer(s: PartyState) {
   const hint =
     input.kind === 'pad'
       ? `Left stick: move · Right stick: turn · Bumpers: zoom · ${A()} / ${B()}: close`
-      : input.kind === 'mouse'
+      : input.kind === 'touch'
+        ? 'Stick: move · Drag: turn · Pinch: zoom · tap Close'
+        : input.kind === 'mouse'
         ? 'Drag: turn · Wheel: zoom · WASD: move · click Close'
         : 'WASD: move · Q/E: turn · R/F: tilt · Z/X: zoom · Space: close';
   text(ctx, hint, 640, 566, 15, { color: '#ffffff', weight: 600 });
@@ -306,18 +338,30 @@ function deviceOf(id: string): string {
 }
 
 function resize() {
-  const scale = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
-  const dpr = window.devicePixelRatio || 1;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const scale = Math.min(vw / VIEW_W, vh / VIEW_H);
+  // phones: cap the pixel ratio at 2 (a 3x iPhone renders 2.25x the pixels for little gain)
+  const dpr = Math.min(window.devicePixelRatio || 1, input.touchSeen ? 2 : 4);
+  const gw = VIEW_W * scale, gh = VIEW_H * scale;
+  // a phone held upright: the game sits near the top, leaving room under it for the touch controls
+  const safe = safeInsets();
+  const upright = input.touchSeen && vh > vw;
+  const gy = upright ? Math.max(safe.t + 8, Math.min((vh - gh) / 2, (vh - gh - 250) / 2)) : (vh - gh) / 2;
   for (const c of [canvas, glCanvas]) {
-    c.style.width = `${VIEW_W * scale}px`;
-    c.style.height = `${VIEW_H * scale}px`;
+    c.style.width = `${gw}px`;
+    c.style.height = `${gh}px`;
+    c.style.top = upright ? `${gy}px` : '';
+    c.style.bottom = upright ? 'auto' : '';
   }
+  touch.place(vw, vh, { x: (vw - gw) / 2, y: gy, w: gw, h: gh }, safe);
   stage.resize(VIEW_W * scale, VIEW_H * scale, dpr);
   canvas.width = Math.round(VIEW_W * scale * dpr);
   canvas.height = Math.round(VIEW_H * scale * dpr);
   ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0);
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+window.visualViewport?.addEventListener('resize', resize);
 resize();
 
 let last = performance.now();
@@ -326,7 +370,12 @@ function frame(now: number) {
   last = now;
   input.soloKeys = !hasLocal('kb2');
   input.poll();
-  setPromptKind(input.kind, input.soloKeys, input.padStyle);
+  // the touch pad shows during a party; menus, the lobby and Customize are tapped directly
+  const ph = session?.view()?.phase;
+  const wasTouch = touch.visible;
+  touch.setVisible(!!session && !customize && !!ph && ph !== 'lobby');
+  if (touch.visible !== wasTouch && input.touchSeen) resize();
+  setPromptKind(input.kind, input.soloKeys, input.padStyle, touch.visible);
   // menu music on the title, main menu and lobby; it fades out when the party starts
   syncMusic(session?.view() ?? null, dt);
   if (session && pendingJoin && session.view()?.phase === 'lobby') {
@@ -351,6 +400,7 @@ function frame(now: number) {
     }
   } else {
     session.update(dt);
+    stepSeek(input);
     const v = session.view();
     if (v) watch(v);
   }
@@ -455,7 +505,7 @@ function lobbyButtons(s: PartyState) {
     ['− Remove CPU', '#6b6f86', () => lobbyBot(null), bots === 0],
   ];
   if (!humans.length) row.unshift(['Join', '#2f8cff', () => (session!.join('kb1'), sfx.join()), full]);
-  else if (!hasLocal('kb2')) row.push(['+ 2nd keyboard', '#9a5bff', addSecondKeyboard, full]);
+  else if (!hasLocal('kb2') && !input.touchSeen) row.push(['+ 2nd keyboard', '#9a5bff', addSecondKeyboard, full]);
   const w = 170;
   const gap = 12;
   let x = 640 - (row.length * w + (row.length - 1) * gap) / 2;
@@ -621,6 +671,8 @@ function renderScreens(wallT: number, dt: number) {
       bakeItemIcons(stage.renderer);
       drawBoardHud(ctx, s, wallT, mapCam.on);
       hostCorner(ctx, hostLine, wallT, 'br', 340, 70);
+      // mouse / touch: clickable board menus, path markers and tour buttons
+      boardPointer(ctx, s, input, session.localIds(), (v) => stage.project(v), mapCam.on);
       break;
     case 'intro': {
       drawIntro(ctx, s, wallT);
@@ -688,7 +740,7 @@ function pauseLayer(s: PartyState) {
   if (!p) {
     // small pause button for mouse players
     const dev = pauseDevice();
-    if (dev && s.phase !== 'intro' && button(ctx, 'II', 1220, 668, 44, 40, { color: '#6b6f86', size: 18, sound: 'none' })) input.start(dev);
+    if (dev && s.phase !== 'intro' && !touch.visible && button(ctx, 'II', 1220, 668, 44, 40, { color: '#6b6f86', size: 18, sound: 'none' })) input.start(dev);
     return;
   }
   const who = s.players.find((x) => x.id === p.by);
@@ -703,6 +755,7 @@ function pauseLayer(s: PartyState) {
   ctx.stroke();
   text(ctx, 'PAUSED', 640, 180, 48, { color: '#2a1b5e', outline: false });
   text(ctx, `${who?.name ?? 'Someone'} paused the game`, 640, 222, 18, { color: who?.color ?? '#6b5aa8', outline: false, weight: 700 });
+  pausePointer(s, input, mine);
   if (p.help) {
     const g = s.phase === 'board' ? null : s.gameId ? getGame(s.gameId) : null;
     const lines = g
@@ -723,8 +776,9 @@ function pauseLayer(s: PartyState) {
     text(ctx, off ? 'End party (host only)' : label, 640, y, 22, { color: off ? '#a99fcf' : '#2a1b5e', outline: false, weight: 800 });
   });
   text(ctx, mine ? `${STICK()} choose   ${A()} pick   ${B()} / ${START()} resume` : `Only ${who?.name ?? 'they'} can use this menu`, 640, 540, 17, { color: '#6b5aa8', outline: false, weight: 700 });
-  // mouse: Resume
-  if (mine && button(ctx, 'Resume', 1110, 668, 150, 40, { color: '#4cd97b', size: 18, sound: 'none' })) input.start(deviceOf(p.by));
+  // mouse / touch: click a row to pick it, Resume to close
+  pauseHover(ctx, s);
+  if (mine && !touch.visible && button(ctx, 'Resume', 1110, 668, 150, 40, { color: '#4cd97b', size: 18, sound: 'none' })) input.start(deviceOf(p.by));
 }
 
 function wrap(t: string, n: number): string[] {

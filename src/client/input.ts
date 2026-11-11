@@ -55,7 +55,7 @@ const SOLO: KeyProfile = {
   y: ['KeyV', 'Period'],
 };
 
-export type InputKind = 'pad' | 'keys' | 'mouse';
+export type InputKind = 'pad' | 'keys' | 'mouse' | 'touch';
 /** x = Xbox / generic, p = PlayStation, n = Nintendo. */
 export type PadStyle = 'x' | 'p' | 'n';
 export function padStyleOf(id: string): PadStyle {
@@ -116,6 +116,10 @@ export class InputManager {
   private padBump = new Map<string, boolean>();
   private typeHeld = new Map<string, number>();
   private typeDir = { x: 0, y: 0, next: 0 };
+  /** On-screen touch controls (src/client/touch.ts): a virtual stick and buttons that drive kb1. */
+  private virt = { x: 0, y: 0, a: false, b: false };
+  /** True once this device has been touched: the touch controls and touch prompts switch on. */
+  touchSeen = false;
   private nudges = new Map<string, { x: number; y: number; until: number; polls: number }>();
 
   constructor(target: Window = window) {
@@ -160,11 +164,18 @@ export class InputManager {
         if (p.y.includes(e.code)) d.raw.yCount = (d.raw.yCount ?? 0) + 1;
       }
     });
-    target.addEventListener('pointermove', () => (this.kind = 'mouse'));
-    target.addEventListener('pointerdown', () => {
-      this.kind = 'mouse';
-      this.pointerDown = true;
+    target.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse') this.kind = 'mouse';
     });
+    target.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+        this.kind = 'touch';
+        this.touchSeen = true;
+      } else this.kind = 'mouse';
+      // presses on the on-screen buttons are not a held mouse button
+      if (!(e.target as Element | null)?.closest?.('#touchPad')) this.pointerDown = true;
+    });
+    target.addEventListener('pointercancel', () => (this.pointerDown = false));
     target.addEventListener('pointerup', () => (this.pointerDown = false));
     target.addEventListener('keyup', (e) => this.keys.delete(e.code));
     target.addEventListener('blur', () => this.keys.clear());
@@ -182,6 +193,32 @@ export class InputManager {
     else if (btn === 'b') d.raw.bCount++;
     else if (btn === 'x') d.raw.xCount = (d.raw.xCount ?? 0) + 1;
     else d.raw.yCount = (d.raw.yCount ?? 0) + 1;
+  }
+
+  /** The on-screen stick, -1..1 on each axis (y down). Drives kb1, like the keyboard does. */
+  touchStick(x: number, y: number): void {
+    this.virt.x = x;
+    this.virt.y = y;
+    this.kind = 'touch';
+  }
+
+  /** An on-screen button going down or up. Presses count exactly like a key or pad button. */
+  touchButton(btn: 'a' | 'b' | 'x' | 'y' | 'start', down: boolean): void {
+    this.kind = 'touch';
+    this.touchSeen = true;
+    if (btn === 'a') this.virt.a = down;
+    if (btn === 'b') this.virt.b = down;
+    if (!down) return;
+    if (this.capture) {
+      if (btn === 'a' || btn === 'b' || btn === 'y') this.onCaptureExit();
+      return;
+    }
+    const d = this.devices.get('kb1')!;
+    if (btn === 'start') return this.start('kb1');
+    if (btn === 'y') this.onYPress(d);
+    if (btn === 'a') this.onAPress(d);
+    if (btn === 'b') this.onBPress(d);
+    this.tap('kb1', btn);
   }
 
   /** Start / pause press for a device (Esc or P on the keyboard). */
@@ -215,6 +252,15 @@ export class InputManager {
       d.raw.y = y;
       d.raw.a = any(p.a) || (p.key === 'kb1' && this.mouseHoldsA && this.pointerDown);
       d.raw.b = any(p.b);
+      if (p.key === 'kb1') {
+        // the touch stick wins whenever it's pushed further than the keys
+        if (Math.hypot(this.virt.x, this.virt.y) > Math.hypot(d.raw.x, d.raw.y)) {
+          d.raw.x = this.virt.x;
+          d.raw.y = this.virt.y;
+        }
+        d.raw.a ||= this.virt.a;
+        d.raw.b ||= this.virt.b;
+      }
     }
 
     if (this.capture) {
@@ -225,6 +271,8 @@ export class InputManager {
       this.look.orbit += k('KeyE') - k('KeyQ');
       this.look.tilt += k('KeyF') - k('KeyR');
       this.look.zoom += k('KeyZ') + k('Equal') - k('KeyX') - k('Minus');
+      this.look.panX += this.virt.x;
+      this.look.panY += this.virt.y;
       for (const p of this.profiles()) {
         const d = this.devices.get(p.key)!;
         d.raw.x = d.raw.y = 0;

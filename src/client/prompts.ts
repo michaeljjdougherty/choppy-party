@@ -9,11 +9,29 @@ import { glyphToken } from '../shared/draw';
 let kind: InputKind = 'keys';
 let solo = true;
 let style: PadStyle = 'x';
+/** Touch screen: true while the on-screen pad is showing (then prompts name its buttons). */
+let touch = false;
 
-export function setPromptKind(k: InputKind, soloKeys: boolean, padStyle: PadStyle = 'x'): void {
-  kind = k;
+/**
+ * Touch players see the on-screen pad's buttons (coloured A / B / X / Y, like an Xbox pad) while it's up,
+ * and "Tap" instead of "Click" on menus where it's hidden.
+ */
+export function setPromptKind(k: InputKind, soloKeys: boolean, padStyle: PadStyle = 'x', touchPadShown = false): void {
+  touch = k === 'touch';
+  kind = touch ? (touchPadShown ? 'pad' : 'mouse') : k;
   solo = soloKeys;
-  style = padStyle;
+  style = touch ? 'x' : padStyle;
+}
+
+/** True on a touch screen (whether or not the on-screen pad is up). */
+export function isTouch(): boolean {
+  return touch;
+}
+
+/** "Click" for a mouse, "Tap" on a touch screen. */
+export function tapWord(lower = false): string {
+  const w = touch ? 'Tap' : 'Click';
+  return lower ? w.toLowerCase() : w;
 }
 
 export function promptKind(): InputKind {
@@ -29,7 +47,7 @@ const key = (label: string) => glyphToken('k', label);
 
 /** The confirm button. */
 export function A(): string {
-  return kind === 'pad' ? pad('a') : kind === 'mouse' ? 'Click' : solo ? key('Space') : `${key('Space')} / ${key('Enter')}`;
+  return kind === 'pad' ? pad('a') : kind === 'mouse' ? tapWord() : solo ? key('Space') : `${key('Space')} / ${key('Enter')}`;
 }
 
 /** The back / second button. */
@@ -83,5 +101,5 @@ export function localizeControls(line: string): string {
 
 /** The confirm button as a plain word, for speech bubbles that can't draw glyphs. */
 export function aWord(): string {
-  return kind === 'pad' ? padName('a') : kind === 'mouse' ? 'the mouse' : 'Space';
+  return kind === 'pad' ? padName('a') : kind === 'mouse' ? (touch ? 'a tap' : 'the mouse') : 'Space';
 }

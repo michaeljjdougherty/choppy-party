@@ -6,7 +6,7 @@ import { folk } from './three/folks';
 import { Thumbs } from './three/thumbs';
 import type { DressingState } from './three/views/customize';
 import { button, clicked, inside, pointerAt } from './ui';
-import { A, B, X, Y, promptKind } from './prompts';
+import { A, B, X, Y, isTouch, promptKind, tapWord } from './prompts';
 import { sfx } from './sfx';
 import { customizePrefs, saveCustomizePrefs, saveLook, savedLook } from './looks';
 
@@ -249,7 +249,7 @@ export class CustomizeScreen {
       ctx.fill();
       text(ctx, cur.name, 0, -1, 26, { color: '#fff' });
       ctx.restore();
-      const tag = wearing ? 'Wearing it ✓' : promptKind() === 'mouse' ? 'Trying on · click to wear' : `Trying on · ${A()} to wear`;
+      const tag = wearing ? 'Wearing it ✓' : promptKind() === 'mouse' ? `Trying on · ${tapWord(true)} to wear` : `Trying on · ${A()} to wear`;
       text(ctx, tag, 330, 178, 16, { color: wearing ? '#7dff9a' : '#ffffff', weight: 800 });
     }
 
@@ -403,7 +403,7 @@ export class CustomizeScreen {
     const k = promptKind();
     const hint =
       k === 'mouse'
-        ? 'Hover to try on · Click to wear · ◀ ▶ change character · Esc: back'
+        ? isTouch() ? 'Tap to wear · ◀ ▶ change character · Back to leave' : 'Hover to try on · Click to wear · ◀ ▶ change character · Esc: back'
         : `Stick: browse   ·   ${A()}: wear   ·   ${X()}: next character   ·   ${Y()}: colour   ·   ${B()}: back`;
     text(ctx, hint, 330, 702, 15, { weight: 700 });
     return out;

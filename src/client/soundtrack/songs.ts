@@ -26,7 +26,7 @@ export const SCREEN_SONGS: S[] = [
     bass: { voice: 'synthbass', style: 'synco' }, drums: 'funk', seed: 11,
   },
   {
-    id: 'results', title: 'Who Got the Keys?', mood: 'Minigame results: cheery strut',
+    id: 'results', title: 'Who Got the Coin?', mood: 'Minigame results: cheery strut',
     bpm: 116, key: 67, mode: 'major', form: 'AB', prog: { A: '1 4 1 5', B: '4 5 3 6' }, swing: 0.25,
     lead: 'pulse', melody: 'bouncy', parts: [{ voice: 'piano', style: 'stab' }, { voice: 'bell', style: 'arp', oct: 1, gain: 0.2 }],
     bass: { voice: 'upright', style: 'walking' }, drums: 'shuffle', seed: 3,
@@ -39,7 +39,7 @@ export const SCREEN_SONGS: S[] = [
     bass: { voice: 'tuba', style: 'root' }, drums: 'march', reverb: 0.3, seed: 21,
   },
   {
-    id: 'bonus-reel', title: 'Bonus Crown Roulette', mood: 'Bonus Crown slot reel: ticking suspense',
+    id: 'bonus-reel', title: 'Bonus Chobglob Roulette', mood: 'Bonus Chobglob slot reel: ticking suspense',
     bpm: 150, key: 57, mode: 'harmonic', form: 'AB', prog: { A: '1 1 6 5', B: '4 4 5 5' },
     lead: 'square', melody: 'fast', parts: [{ voice: 'pulse', style: 'arp16', oct: 1, gain: 0.25 }],
     bass: { voice: 'synthbass', style: 'pump' }, drums: 'chase', seed: 5,

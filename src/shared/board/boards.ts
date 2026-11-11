@@ -305,7 +305,7 @@ function goldRushGulch(): BoardDef {
     name: 'Gold Rush Gulch',
     players: [8, 10],
     tagline: 'A boomtown under Bonanza Peak, with a mine at the top.',
-    gimmick: 'Two Crown Chests are out at once. Ride the steam train between stations, and anyone waiting at a station when it passes gets carried along. Watch for dynamite, cannons and boulders in the canyons.',
+    gimmick: 'Two Chobglob Chests are out at once. Ride the steam train between stations, and anyone waiting at a station when it passes gets carried along. Watch for dynamite, cannons and boulders in the canyons.',
     theme: 'gulch',
     nodes: b.nodes,
     start,

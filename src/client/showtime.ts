@@ -350,7 +350,7 @@ export const LINES = {
   title: ['Welcome. I am Square Brian. I have been expecting you.', 'Every great party begins with one button. That button is A.'],
   menu: [
     'Choose your path. Every path has a minigame at the end of it.',
-    'The board rewards patience. And keys. Mostly keys.',
+    'The board rewards patience. And Pit Coin. Mostly Pit Coin.',
     'I have seen ten thousand parties. Make this one count.',
   ],
   lobby: ['Gather, friends. The party waits for no one.', 'More players, more chaos. That is the way.'],

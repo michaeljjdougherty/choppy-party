@@ -45,7 +45,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
           ? 'Night: a pine falls at round end'
           : 'Day: ring the bell for night'
         : `Boulder in the ${b.hazards.boulderLane ? 'east' : 'west'} canyon`;
-  if (late) event = 'Final turns: Key and Heart pay double!';
+  if (late) event = 'Final turns: Coin and Heart pay double!';
   const pill = (y: number, w: number) => {
     ctx.fillStyle = 'rgba(20,12,40,0.62)';
     ctx.beginPath();
@@ -155,7 +155,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     promptPill(ctx, `${name}: ${A()} to roll${which}${first ? `   ·   ${B()} for items` : ''}`, 104);
     if (first) {
       const bonus = [mine.dice > 2 && !mine.rollCap ? '3 dice!' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `snared: 1 die, max ${mine.rollCap}` : ''].filter(Boolean).join('  ');
-      text(ctx, bonus || `Doubles pay +${DOUBLES_KEYS} keys`, 640, 146, 22, { color: '#ffd23f' });
+      text(ctx, bonus || `Doubles pay +${DOUBLES_KEYS} Pit Coin`, 640, 146, 22, { color: '#ffd23f' });
     } else text(ctx, `${b.rolls.map((r, i) => `Die ${i + 1}: ${fog ? '?' : r}`).join('   ')}`, 640, 146, 22, { color: '#ffd23f' });
   } else if (b.sub === 'rolling') {
     promptPill(ctx, `${name} is rolling...`, 104);
@@ -179,7 +179,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
         ctx.translate(640, 350);
         ctx.rotate(-0.06);
         ctx.scale(0.6 + p * 0.4 + Math.sin(t * 8) * 0.03, 0.6 + p * 0.4 + Math.sin(t * 8) * 0.03);
-        text(ctx, `DOUBLES!  +${DOUBLES_KEYS} keys`, 0, 0, 44, { color: '#7cf3ff' });
+        text(ctx, `DOUBLES!  +${DOUBLES_KEYS} Pit Coin`, 0, 0, 44, { color: '#7cf3ff' });
         ctx.restore();
       }
       if (b.t > 0.35) text(ctx, fog ? `${name} moves ? spaces...` : `${name} moves ${b.roll} space${b.roll === 1 ? '' : 's'}!`, 640, b.doubles && !fog ? 404 : 330, 28, { color: me?.color ?? '#fff' });
@@ -192,7 +192,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     const p = playerById(s.players, b.event.wheel[k]);
     box('Odd number of players! Who sits out?', '', 170);
     text(ctx, p?.name ?? '', 640, 236, 48, { color: p?.color ?? '#000', outline: false });
-    text(ctx, `(sitting out pays +${pr.sitOutKeys} keys)`, 640, 274, 18, { color: '#6b5aa8', outline: false, weight: 600 });
+    text(ctx, `(sitting out pays +${pr.sitOutKeys} Pit Coin)`, 640, 274, 18, { color: '#6b5aa8', outline: false, weight: 600 });
   } else if (b.sub === 'prompt' && b.prompt) {
     const pm = b.prompt;
     // two-choice prompts: two big buttons with a cursor, so a stray A press can't say yes
@@ -223,12 +223,12 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
       text(ctx, `${STICK()} choose   ${A()} confirm   ${B()} no`, 640, 300, 18, { color: '#2a1b5e', outline: false, weight: 700 });
       ctx.globalAlpha = 1;
     };
-    if (pm.kind === 'crown') two(`Open the Crown Chest for ${pr.crownPrice} keys?`, ['Yes', 'No']);
-    else if (pm.kind === 'wisp') two(`Pay the Wisp ${WISP_PRICE} keys to rob the leader?`, ['Yes, pay', 'No thanks']);
-    else if (pm.kind === 'train') two(`Ride the train to the next station for ${TRAIN_PRICE} keys?`, ['Yes, ride', 'No thanks']);
+    if (pm.kind === 'crown') two(`Open the Chobglob Chest for ${pr.crownPrice} Pit Coin?`, ['Yes', 'No']);
+    else if (pm.kind === 'wisp') two(`Pay the Wisp ${WISP_PRICE} Pit Coin to rob the leader?`, ['Yes, pay', 'No thanks']);
+    else if (pm.kind === 'train') two(`Ride the train to the next station for ${TRAIN_PRICE} Pit Coin?`, ['Yes, ride', 'No thanks']);
     else if (pm.kind === 'claim')
-      two('Claim this post! Pick its mode', ['Toll Post', 'Sting Post'], [`others pay ${pr.postToll} keys`, `${pr.postSting} dmg, you heal ${pr.postStingHeal}`]);
-    else if (pm.kind === 'steal') two(`Pay ${pr.postStealCost} keys to take over this post?`, ['Yes, steal', 'No thanks']);
+      two('Claim this post! Pick its mode', ['Toll Post', 'Sting Post'], [`others pay ${pr.postToll} Pit Coin`, `${pr.postSting} dmg, you heal ${pr.postStingHeal}`]);
+    else if (pm.kind === 'steal') two(`Pay ${pr.postStealCost} Pit Coin to take over this post?`, ['Yes, steal', 'No thanks']);
     else if (pm.kind === 'shop') drawShop(ctx, pm, mine.keys);
     else if (pm.kind === 'items') {
       // drawn by drawItemGrid at the bottom
@@ -269,6 +269,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   void t;
 }
 
+/** Pit Coin: a gold coin with a dimple pressed in the middle. */
 export function keyIcon(ctx: CanvasRenderingContext2D, x: number, y: number): void {
   ctx.save();
   ctx.translate(x, y);
@@ -276,37 +277,54 @@ export function keyIcon(ctx: CanvasRenderingContext2D, x: number, y: number): vo
   ctx.strokeStyle = '#a06a00';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(-4, 0, 6, 0, Math.PI * 2);
+  ctx.arc(0, 0, 8, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-  ctx.fillRect(1, -2, 10, 4);
-  ctx.fillRect(7, 1, 2, 4);
-  ctx.fillRect(10, 1, 2, 3);
-  ctx.fillStyle = '#7a4d00';
+  ctx.fillStyle = '#c98a00';
   ctx.beginPath();
-  ctx.arc(-4, 0, 2, 0, Math.PI * 2);
+  ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.beginPath();
+  ctx.arc(-3, -3.5, 2, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
 
+/** A Chobglob: a golden dollop of goo with two eyes. */
 export function crownIcon(ctx: CanvasRenderingContext2D, x: number, y: number, s = 1): void {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
-  ctx.fillStyle = '#ffcc33';
+  ctx.fillStyle = '#ffc21a';
   ctx.strokeStyle = '#8a5a00';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(-11, 8);
-  ctx.lineTo(-12, -7);
-  ctx.lineTo(-5, -1);
-  ctx.lineTo(0, -10);
-  ctx.lineTo(5, -1);
-  ctx.lineTo(12, -7);
-  ctx.lineTo(11, 8);
+  ctx.moveTo(-12, 9);
+  ctx.quadraticCurveTo(-14, -2, -6, -4);
+  ctx.quadraticCurveTo(-4, -12, 1, -11);
+  ctx.quadraticCurveTo(4, -15, 3, -9);
+  ctx.quadraticCurveTo(9, -8, 8, -2);
+  ctx.quadraticCurveTo(15, 0, 12, 9);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  for (const ex of [-4, 4]) {
+    ctx.beginPath();
+    ctx.ellipse(ex, 2, 2.6, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#1f1d26';
+  for (const ex of [-4, 4]) {
+    ctx.beginPath();
+    ctx.arc(ex, 2.8, 1.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(-7, -1, 1.6, 2.6, -0.5, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -705,7 +723,7 @@ function drawGambleReel(ctx: CanvasRenderingContext2D, g: { reel: number[]; at: 
       at: g.at,
       title: 'GOLD STRIKE!',
       color: '#ffc61a',
-      result: g.pick >= 0 ? `Struck gold! +${g.pick} keys` : `Cave-in! ${g.pick} keys`,
+      result: g.pick >= 0 ? `Struck gold! +${g.pick} Pit Coin` : `Cave-in! ${g.pick} Pit Coin`,
       resultColor: g.pick >= 0 ? '#ffd23f' : '#ff6b6b',
       cell: (i, x, y, sz) => {
         const v = g.reel[i];

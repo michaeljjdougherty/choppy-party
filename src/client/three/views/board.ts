@@ -76,7 +76,7 @@ const SPACE_ICON: Record<SpaceType, string> = {
 };
 /** Kenney models that float or stand on each kind of space. [model, size, floats] */
 const SPACE_PROP: Partial<Record<SpaceType, [string, number, boolean]>> = {
-  key: ['platformer/key', 0.55, true],
+  key: ['platformer/coin-gold', 0.6, true],
   heart: ['platformer/heart', 0.6, true],
   thorn: ['platformer/spike-block', 0.55, false],
   crate: ['platformer/crate-item', 0.7, false],
@@ -182,6 +182,35 @@ function chunkModel(h: number): THREE.Group {
   });
   const g = new THREE.Group();
   g.add(o);
+  return g;
+}
+
+/**
+ * A Chobglob, the prize you buy at the chest: the Kenney whipped-cream dollop turned into
+ * a glossy golden glob with a face.
+ */
+export function makeGlob(): THREE.Group {
+  const g = new THREE.Group();
+  const body = fitProp('food/whipped-cream', 1.15);
+  const goo = new THREE.MeshStandardMaterial({ color: '#ffc21a', roughness: 0.12, metalness: 0.35, emissive: '#6a3c00', emissiveIntensity: 0.6 });
+  body.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = goo;
+  });
+  const box = new THREE.Box3().setFromObject(body);
+  body.position.y -= box.min.y + (box.max.y - box.min.y) / 2;
+  g.add(body);
+  const h = (box.max.y - box.min.y) / 2;
+  const front = Math.max(box.max.z, (box.max.x - box.min.x) / 2) * 0.82;
+  const white = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.3 });
+  const dark = new THREE.MeshStandardMaterial({ color: '#1f1d26', roughness: 0.3 });
+  for (const sx of [-1, 1]) {
+    const eye = mesh(new THREE.SphereGeometry(0.13, 14, 10), white);
+    eye.scale.set(1, 1.2, 0.6);
+    eye.position.set(sx * 0.17, -h * 0.15, front);
+    const pupil = mesh(new THREE.SphereGeometry(0.065, 10, 8), dark);
+    pupil.position.set(sx * 0.17, -h * 0.17, front + 0.07);
+    g.add(eye, pupil);
+  }
   return g;
 }
 
@@ -1417,7 +1446,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       if (!blind) b.crowns.forEach((nodeId, i) => {
         while (crownPool.length <= i) {
           const g = new THREE.Group();
-          const c = makeCrown();
+          const c = makeGlob();
           c.name = 'crown';
           const chest = fitProp('pirate/chest', 1.2);
           chest.position.set(0.9, 0.33, -0.7);
@@ -1436,6 +1465,9 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         const c = g.getObjectByName('crown')!;
         c.position.set(0.9, 2.0 + Math.sin(t * 2 + i) * 0.15, -0.7);
         c.rotation.y = t * 1.2;
+        // the glob jiggles like the goo it is
+        const w = Math.sin(t * 5 + i) * 0.07;
+        c.scale.set(1 + w, 1 - w, 1 + w);
       });
 
       for (const f of floaters) {

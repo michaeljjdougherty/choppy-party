@@ -15,9 +15,9 @@ export interface TourStep {
 }
 
 const TYPE_STEPS: [SpaceType, string, (d: BoardDef, s: BoardState) => string][] = [
-  ['duel', 'Duel Shields', () => 'Shield spaces start a duel. Pick a rival; the winner jumps right behind a Crown Chest.'],
+  ['duel', 'Duel Shields', () => 'Shield spaces start a duel. Pick a rival; the winner jumps right behind a Chobglob Chest.'],
   ['stew', 'Stew Battles', () => 'The other shield is a Stew Battle: everyone splits into two teams and the winners share the pot.'],
-  ['chunk', 'CHUNK SPACE', () => "Stay off the dark skull spaces. Land on one and Mister Chunk stomps in to spin his reel of nasty surprises: taxes, smashes, stolen items, even a stolen crown."],
+  ['chunk', 'CHUNK SPACE', () => "Stay off the dark skull spaces. Land on one and Mister Chunk stomps in to spin his reel of nasty surprises: taxes, smashes, stolen items, even a stolen Chobglob."],
   ['cannon', 'Cannons', (_d, s) => `Octagon cannons let you fire at anyone within ${s.preset.cannonRange} spaces for ${s.preset.cannonDamage} damage.`],
   ['wisp', 'The Wisp', () => 'The Wisp, in the teardrop space, will rob the leader for you, for a price.'],
   ['snare', 'Root Snares', () => 'Down in the cellar the roots wake up at night. Get caught and your next roll is 1 to 3.'],
@@ -30,13 +30,13 @@ const TYPE_STEPS: [SpaceType, string, (d: BoardDef, s: BoardState) => string][] 
 const EVENT_TEXT: Record<BoardDef['theme'], [string, string]> = {
   hollow: ['The Bell', 'The diamond is the bell. Land there to swap day and night. Night opens the cellar and a pine falls on someone each round.'],
   cosmo: ['Warp Pads', 'Diamond spaces are warp pads. Step on one and you zap to another somewhere on the station.'],
-  gulch: ['Gold Strikes', 'The gold question-mark spaces are gold strikes. Land on one and spin the reel: usually a pile of keys, sometimes a cave-in that costs you.'],
+  gulch: ['Gold Strikes', 'The gold question-mark spaces are gold strikes. Land on one and spin the reel: usually a pile of Pit Coin, sometimes a cave-in that costs you.'],
 };
 
 export function buildTour(def: BoardDef, s: BoardState): TourStep[] {
   // only what's special about this map, plus the battles: the everyday spaces explain themselves
   const steps: TourStep[] = [
-    { title: def.name, text: `Welcome to ${def.name}. ${def.tagline} Bring ${s.preset.crownPrice} keys to a Crown Chest for a crown. Here's what's special.`, node: null },
+    { title: def.name, text: `Welcome to ${def.name}. ${def.tagline} Bring ${s.preset.crownPrice} Pit Coin to a Chobglob Chest for a Chobglob. Here's what's special.`, node: null },
   ];
   const firstOf = (t: SpaceType) => Object.values(def.nodes).find((n) => n.type === t)?.id ?? null;
   const ev = firstOf('event');

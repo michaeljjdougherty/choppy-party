@@ -839,7 +839,7 @@ function pauseLayer(s: PartyState) {
     const g = s.phase === 'board' ? null : s.gameId ? getGame(s.gameId) : null;
     const lines = g
       ? [g.name, ...wrap(g.blurb, 40), '', localizeControls(g.controls)]
-      : ['Board game', 'Roll the dice with A. B opens your item bag.', 'Pick a path at forks with the stick.', 'Buy Choppy Crowns at the Crown Chest', 'for 40 Choppy Keys. Most crowns wins!'];
+      : ['Board game', 'Roll the dice with A. B opens your item bag.', 'Pick a path at forks with the stick.', 'Buy Chobglobs at the Chobglob Chest', 'for 40 Pit Coin. Most Chobglobs wins!'];
     lines.forEach((l, i) => text(ctx, l, 640, PAUSE_ROW_Y + i * 30, i === 0 ? 24 : 18, { color: i === 0 ? '#ff4d5a' : '#2a1b5e', outline: false, weight: i === 0 ? 900 : 600 }));
     text(ctx, mine ? `${A()} or ${B()}: back` : `Waiting for ${who?.name ?? 'them'}`, 640, 576, 18, { color: '#6b5aa8', outline: false, weight: 700 });
     return;
@@ -918,7 +918,7 @@ function hostFor(s: PartyState, view: View, t: number, dt: number) {
       // (with no tour, an all-CPU game, he just gives the summary)
       else if (bd.turn === 1 && bd.cur === 0 && bd.sub !== 'move' && s.players.every((p) => p.bot)) hostLine.say(`Welcome to ${def.name}. ${def.gimmick}`);
       else if (bd.turn === bd.maxTurns - bd.preset.doubleTurns + 1 && bd.cur === 0 && bd.sub !== 'move' && bd.turn > 1)
-        hostLine.say('The final turns are upon us. Key and Heart Spaces now pay double.', 'wow');
+        hostLine.say('The final turns are upon us. Coin and Heart Spaces now pay double.', 'wow');
       else if (bd.turn === bd.maxTurns && bd.cur === 0 && bd.sub !== 'move') hostLine.say('The last turn. Make it a good one.', 'smug');
       else hostLine.say('');
       break;

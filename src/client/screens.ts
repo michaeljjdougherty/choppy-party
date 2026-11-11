@@ -114,7 +114,7 @@ export type LobbyKind = 'boards' | 'mix' | 'free' | 'online';
 
 /** Each lobby has its own colour, title and backdrop pattern, so the modes feel like different places. */
 export const LOBBY_THEME: Record<LobbyKind, { color: string; title: string; sub: string; deco: 'dice' | 'stars' | 'tiles' | 'waves' }> = {
-  boards: { color: '#ff4d5a', title: 'Party Boards', sub: 'Roll the dice, race the board, grab Choppy Crowns', deco: 'dice' },
+  boards: { color: '#ff4d5a', title: 'Party Boards', sub: 'Roll the dice, race the board, grab Chobglobs', deco: 'dice' },
   mix: { color: '#2f8cff', title: 'Minigame Mix', sub: 'Back-to-back minigames. Most points wins', deco: 'stars' },
   free: { color: '#21c45a', title: 'Free Play', sub: 'Pick any minigame and play it right now', deco: 'tiles' },
   online: { color: '#9a5bff', title: 'Play Online', sub: 'Friends join with the room code', deco: 'waves' },
@@ -514,7 +514,7 @@ export function drawResults(ctx: CanvasRenderingContext2D, s: PartyState, age: n
   const top = rows.filter((r) => r.place === 1).map((r) => playerById(s.players, r.id)!).filter(Boolean);
   // winner spotlight over the podium
   sunburst(ctx, 330, 360, 420, t, top[0]?.color ?? '#ffd23f', 0.3 * clamp01(age * 2));
-  ribbon(ctx, 330, 50, 420, 50, '#9a5bff', s.boardEvent ? g.name : onBoard ? `${g.name}: keys won` : g.name, 22);
+  ribbon(ctx, 330, 50, 420, 50, '#9a5bff', s.boardEvent ? g.name : onBoard ? `${g.name}: Pit Coin won` : g.name, 22);
   const headline = top.length > 1 ? 'IT\'S A TIE!' : `${top[0]?.name ?? ''} WINS!`;
   slam(ctx, headline, 330, 124, top.length > 1 ? 58 : Math.min(64, 900 / Math.max(6, headline.length)), age, top[0]?.color ?? '#ffd23f', 0.1);
 
@@ -570,7 +570,7 @@ export function drawResults(ctx: CanvasRenderingContext2D, s: PartyState, age: n
       text(ctx, `+${pl.points}`, 0, 0, 24, { color: onBoard ? '#e0a800' : '#21a64a', outline: false, weight: 900 });
       ctx.restore();
     }
-    const total = onBoard ? `${s.board!.players[pl.id]?.keys ?? 0} keys` : `${s.scores[pl.id] ?? 0} pts`;
+    const total = onBoard ? `${s.board!.players[pl.id]?.keys ?? 0} Pit Coin` : `${s.scores[pl.id] ?? 0} pts`;
     text(ctx, total, x0 + w - 22, cy, 18, { align: 'right', color: '#2a1b5e', outline: false, weight: 800 });
     ctx.restore();
   });
@@ -644,7 +644,7 @@ export function drawFinal(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
       const bp = s.board.players[r.id];
       crownIcon(ctx, x0 + w - 150, cy, 1.1);
       text(ctx, String(bp?.crowns ?? 0), x0 + w - 130, cy, 22, { align: 'left', color: '#2a1b5e', outline: false });
-      text(ctx, `${bp?.keys ?? 0} keys`, x0 + w - 20, cy, 18, { align: 'right', color: '#2a1b5e', outline: false });
+      text(ctx, `${bp?.keys ?? 0} Pit Coin`, x0 + w - 20, cy, 18, { align: 'right', color: '#2a1b5e', outline: false });
     } else text(ctx, `${r.score} pts`, x0 + w - 20, cy, 20, { align: 'right', color: '#2a1b5e', outline: false });
     ctx.restore();
   });

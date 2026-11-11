@@ -60,15 +60,15 @@ const SPIN_TIME = SPIN_STOP + 0.9;
 export const CHUNK_INTRO = 1.6;
 /** What each of Mister Chunk's surprises is called and does, for the reel and the result line. */
 export const CHUNK_EVENTS: Record<ChunkKind, { name: string; line: string; weight: number }> = {
-  tax: { name: 'Chunk Tax', line: '-12 keys', weight: 3 },
+  tax: { name: 'Chunk Tax', line: '-12 Pit Coin', weight: 3 },
   smash: { name: 'Chunk Smash', line: '10 damage', weight: 3 },
   shake: { name: 'Pocket Shake', line: 'He shakes out all your items', weight: 2 },
-  crown: { name: 'Crown Snatch', line: 'He swipes a Choppy Crown!', weight: 1 },
-  swap: { name: 'Chunk Swap', line: "Your keys swap with the poorest player's", weight: 2 },
+  crown: { name: 'Glob Snatch', line: 'He swipes a Chobglob!', weight: 1 },
+  swap: { name: 'Chunk Swap', line: "Your Pit Coin swaps with the poorest player's", weight: 2 },
   toss: { name: 'Chunk Toss', line: 'Thrown 6 spaces back', weight: 2 },
-  party: { name: 'Chunk Party', line: 'Everyone loses 6 keys', weight: 2 },
+  party: { name: 'Chunk Party', line: 'Everyone loses 6 Pit Coin', weight: 2 },
   stomp: { name: 'Ground Stomp', line: '6 damage to everyone within 3 spaces', weight: 2 },
-  snack: { name: 'Snack Break', line: 'He wanders off for a snack (+2 keys)', weight: 1 },
+  snack: { name: 'Snack Break', line: 'He wanders off for a snack (+2 Pit Coin)', weight: 1 },
 };
 
 export function createBoard(boardId: string, playerIds: string[], maxTurns: number, seed: number, tour = false): BoardState {
@@ -253,7 +253,7 @@ function set(s: BoardState, sub: BoardState['sub']): void {
 /** Rank for the end of the game: crowns first, then keys. */
 export function boardRanking(s: BoardState): { id: string; value: number; label: string }[] {
   return Object.values(s.players)
-    .map((p) => ({ id: p.id, value: p.crowns * 10000 + p.keys, label: `${p.crowns} crown${p.crowns === 1 ? '' : 's'} · ${p.keys} keys` }))
+    .map((p) => ({ id: p.id, value: p.crowns * 10000 + p.keys, label: `${p.crowns} Chobglob${p.crowns === 1 ? '' : 's'} · ${p.keys} Pit Coin` }))
     .sort((a, b) => b.value - a.value);
 }
 
@@ -353,7 +353,7 @@ export function hurt(s: BoardState, def: BoardDef, id: string, amount: number, b
   p.node = def.camp;
   const mine = Object.entries(s.posts).filter(([, c]) => c.owner === id);
   if (mine.length) delete s.posts[mine[Math.floor(rand(s.rng) * mine.length)][0]];
-  say(s, `Knocked out! Dropped ${drop} keys`, '#ff5a5f');
+  say(s, `Knocked out! Dropped ${drop} Pit Coin`, '#ff5a5f');
   return true;
 }
 
@@ -552,12 +552,12 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         if (v >= 0) {
           me.keys += v;
           fx(s, 'keys', me.node, id, v);
-          say(s, `Struck gold! +${v} keys`, '#ffd23f');
+          say(s, `Struck gold! +${v} Pit Coin`, '#ffd23f');
         } else {
           const c = Math.min(me.keys, -v);
           me.keys -= c;
           fx(s, 'keys', me.node, id, -c);
-          say(s, `Cave-in! -${c} keys`, '#ff5a5f');
+          say(s, `Cave-in! -${c} Pit Coin`, '#ff5a5f');
         }
         set(s, 'land');
       }
@@ -652,7 +652,7 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
       const it = p.stock[p.sel];
       const price = SHOP_PRICE[it];
       if (me.keys < price) {
-        say(s, `Not enough keys (${price})`, '#ff5a5f');
+        say(s, `Not enough Pit Coin (${price})`, '#ff5a5f');
         s.t = 0.05;
         return;
       }
@@ -814,7 +814,7 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
       }
       me.keys += got;
       fx(s, 'dig', at, id, got);
-      say(s, got ? `Dug up ${got} keys!` : 'Nothing to dig up nearby', info.color);
+      say(s, got ? `Dug up ${got} Pit Coin!` : 'Nothing to dig up nearby', info.color);
       break;
     }
   }
@@ -891,7 +891,7 @@ function resolvePrompt(s: BoardState, def: BoardDef, id: string, p: Prompt): voi
     s.lastChest = [p.node];
     placeChest(s, def);
     fx(s, 'crown', p.node, id);
-    say(s, 'Got a Choppy Crown!', '#ffd23f');
+    say(s, 'Got a Chobglob!', '#ffd23f');
   } else if (p.kind === 'wisp' && me.keys >= WISP_PRICE) {
     const target = leaderOtherThan(s, id);
     if (!target) return;
@@ -899,7 +899,7 @@ function resolvePrompt(s: BoardState, def: BoardDef, id: string, p: Prompt): voi
     const take = Math.min(s.players[target].keys, randInt(s.rng, 6, 15));
     s.players[target].keys -= take;
     me.keys += take;
-    say(s, `The Wisp stole ${take} keys from the leader!`, '#c79bff');
+    say(s, `The Wisp stole ${take} Pit Coin from the leader!`, '#c79bff');
   } else if (p.kind === 'train' && me.keys >= TRAIN_PRICE) {
     me.keys -= TRAIN_PRICE;
     s.hop = { from: me.node, to: p.to, t: -1.5 }; // a longer hop: the train ride
@@ -923,7 +923,7 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
     delete s.weather.loose[me.node];
     me.keys += loose;
     fx(s, 'keys', me.node, id, loose);
-    say(s, `Picked up ${loose} washed-up keys!`, '#3fa9f5');
+    say(s, `Picked up ${loose} washed-up Pit Coin!`, '#3fa9f5');
   }
   // Heatwave: every step on the salt flats costs HP
   if (s.weather.heat && inZone(def, me.node, 'heat')) {
@@ -931,7 +931,7 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
   }
   if (s.crowns.includes(me.node)) {
     if (me.keys >= s.preset.crownPrice) ask(s, { kind: 'crown', node: me.node });
-    else say(s, `Need ${s.preset.crownPrice} keys for the crown`, '#ffd23f');
+    else say(s, `Need ${s.preset.crownPrice} Pit Coin for the Chobglob`, '#ffd23f');
     return;
   }
   if (passing) {
@@ -954,7 +954,7 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
   if (node.type === 'shop' && passing) {
     const cheapest = Math.min(...ITEM_IDS.map((i) => SHOP_PRICE[i]));
     if (me.items.length >= s.preset.maxItems) say(s, 'Shop: your bag is full!', '#ffb347');
-    else if (me.keys < cheapest) say(s, `Shop: items start at ${cheapest} keys`, '#ffb347');
+    else if (me.keys < cheapest) say(s, `Shop: items start at ${cheapest} Pit Coin`, '#ffb347');
     else {
       // a fresh counter every visit, cheapest first
       const pool = [...ITEM_IDS];
@@ -1016,7 +1016,7 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
       const k = pr.keySpace * dbl;
       me.keys += k;
       fx(s, 'keys', me.node, id, k);
-      say(s, `+${k} keys`, '#5fb8ff');
+      say(s, `+${k} Pit Coin`, '#5fb8ff');
       break;
     }
     case 'heart': {
@@ -1032,7 +1032,7 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
       const k = Math.min(me.keys, pr.thornSpace);
       me.keys -= k;
       fx(s, 'keys', me.node, id, -k);
-      say(s, `-${pr.thornSpace} keys`, '#ff5a5f');
+      say(s, `-${pr.thornSpace} Pit Coin`, '#ff5a5f');
       break;
     }
     case 'fountain':
@@ -1060,7 +1060,7 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
         const target = s.crowns[0];
         me.node = target;
         fx(s, 'warp', target, id);
-        say(s, 'Lucky! Warped to a Crown Chest!', '#4cd97b');
+        say(s, 'Lucky! Warped to a Chobglob Chest!', '#4cd97b');
         if (me.keys >= pr.crownPrice) {
           s.resume = 'land';
           ask(s, { kind: 'crown', node: target });
@@ -1070,7 +1070,7 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
       const c = randInt(s.rng, 5, 10);
       me.keys += c;
       fx(s, 'keys', me.node, id, c);
-      say(s, `Lucky! +${c} keys`, '#4cd97b');
+      say(s, `Lucky! +${c} Pit Coin`, '#4cd97b');
       break;
     }
     case 'post': {
@@ -1089,7 +1089,7 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
         me.keys -= k;
         owner.keys += k;
         fx(s, 'toll', me.node, id, k);
-        say(s, `Toll Post: paid ${k} keys`, '#ffd23f');
+        say(s, `Toll Post: paid ${k} Pit Coin`, '#ffd23f');
       } else {
         heal(s, owner, pr.postStingHeal);
         say(s, `Sting Post: ${pr.postSting} damage`, '#ff5a5f');
@@ -1150,7 +1150,7 @@ function onLand(s: BoardState, def: BoardDef, id: string): void {
         say(s, 'Root Snare! Your next roll is capped at 3', '#8bc34a');
       } else {
         me.keys += pr.keySpace * dbl;
-        say(s, `+${pr.keySpace * dbl} keys`, '#5fb8ff');
+        say(s, `+${pr.keySpace * dbl} Pit Coin`, '#5fb8ff');
       }
       break;
     case 'event':
@@ -1339,7 +1339,7 @@ export function finishEvent(s: BoardState, ranking: { id: string; value: number 
       if (spot) s.players[top.id].node = spot;
       s.players[top.id].stats.wins++;
       fx(s, 'warp', s.players[top.id].node, top.id);
-      line = 'Duel winner jumps right behind the Crown Chest!';
+      line = 'Duel winner jumps right behind the Chobglob Chest!';
     } else line = 'The duel was a draw';
   } else if (ev?.kind === 'stew' && ev.teams) {
     const teamOf = (id: string) => ev.teams![id];
@@ -1353,7 +1353,7 @@ export function finishEvent(s: BoardState, ranking: { id: string; value: number 
         s.players[id].stats.wins++;
       }
       if (teamOf(ev.lander) === win) s.players[ev.lander].keys += s.preset.stewLanderBonus;
-      line = `Winning team gets +${s.preset.stewWin} keys each!`;
+      line = `Winning team gets +${s.preset.stewWin} Pit Coin each!`;
     } else line = 'The Stew Battle was a draw';
   }
   s.banner = null;

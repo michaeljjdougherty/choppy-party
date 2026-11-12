@@ -9,6 +9,7 @@ import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
 import type { Tag, View } from '../stage';
 import { crew, fitProp, pool } from './crew';
+import { makeBeam } from '../look/lightBeam';
 
 const GRAVES = ['graveyard/gravestone-round', 'graveyard/gravestone-cross', 'graveyard/gravestone-bevel', 'graveyard/gravestone-decorative'];
 
@@ -62,17 +63,11 @@ export function lanternView(env: THREE.Texture, state: LanternState, players: Pl
   spot.castShadow = true;
   spot.position.set(wx(KEEPER.x), 2.4, wz(KEEPER.y));
   scene.add(spot, spot.target);
-  const coneShape = new THREE.Shape();
-  coneShape.moveTo(0, 0);
-  coneShape.absarc(0, 0, BEAM_LEN * PX, -BEAM_HALF, BEAM_HALF, false);
-  coneShape.lineTo(0, 0);
-  const cone = new THREE.Mesh(
-    new THREE.ShapeGeometry(coneShape, 24),
-    new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }),
-  );
-  cone.rotation.x = -Math.PI / 2;
-  cone.position.set(wx(KEEPER.x), 0.04, wz(KEEPER.y));
-  scene.add(cone);
+  // a soft volumetric shaft with dust in it and a pool of light on the ground (not a flat polygon)
+  const beam = makeBeam('#ffd890', BEAM_LEN * PX, BEAM_HALF, { ground: true, groundY: 0.04, strength: 0.5 });
+  scene.add(beam.group);
+  const lamp = new THREE.PointLight('#ffb860', 6, 5, 2);
+  scene.add(lamp);
   const lantern = fitProp('graveyard/lantern-candle', 0.7, 'y');
   scene.add(lantern);
   const fx = new Fx(scene);
@@ -85,11 +80,16 @@ export function lanternView(env: THREE.Texture, state: LanternState, players: Pl
       last = s;
       // arena angle -> world: +y in the arena is +z in the world
       const dir = new THREE.Vector3(Math.cos(s.angle), 0, Math.sin(s.angle));
-      spot.target.position.set(wx(KEEPER.x) + dir.x * 8, 0, wz(KEEPER.y) + dir.z * 8);
-      cone.rotation.z = -s.angle;
-      (cone.material as THREE.MeshBasicMaterial).opacity = 0.14 + Math.sin(t * 9) * 0.02;
       const k = s.folk.find((f) => f.keeper)!;
       lantern.position.set(wx(k.x) + dir.x * 0.7, 1.4, wz(k.y) + dir.z * 0.7);
+      const src = lantern.position.clone().add(new THREE.Vector3(0, 0.35, 0));
+      // aim the shaft so it reaches the ground about at the end of the beam
+      beam.aim(src, new THREE.Vector3(dir.x * BEAM_LEN * PX, -src.y * 0.9, dir.z * BEAM_LEN * PX), 1, new THREE.Vector3(wx(k.x), 0, wz(k.y)));
+      beam.update(t, dt);
+      lamp.position.copy(src);
+      lamp.intensity = 6 * (1 + Math.sin(t * 13) * 0.06);
+      spot.position.set(src.x, 2.4, src.z);
+      spot.target.position.set(src.x + dir.x * 8, 0, src.z + dir.z * 8);
       for (const c of s.caughtNow) {
         fx.bonk(new THREE.Vector3(wx(c.x), 1.6, wz(c.y)));
         shake(0.15);

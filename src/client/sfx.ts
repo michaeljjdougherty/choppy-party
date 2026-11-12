@@ -81,6 +81,31 @@ function noise(dur: number, vol = 0.3, cutoff = 1200): void {
   src.start();
 }
 
+/** A soft air whoosh: band-passed noise that sweeps up then down (screen transitions). */
+function whoosh(dur = 0.45, vol = 0.18): void {
+  const a = ctx();
+  if (!a || !master || a.state !== 'running') return;
+  const buf = a.createBuffer(1, Math.floor(a.sampleRate * dur), a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    const k = i / d.length;
+    d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * k) ** 1.5;
+  }
+  const src = a.createBufferSource();
+  src.buffer = buf;
+  const f = a.createBiquadFilter();
+  f.type = 'bandpass';
+  f.Q.value = 1.2;
+  const t0 = a.currentTime;
+  f.frequency.setValueAtTime(400, t0);
+  f.frequency.exponentialRampToValueAtTime(2600, t0 + dur * 0.45);
+  f.frequency.exponentialRampToValueAtTime(700, t0 + dur);
+  const g = a.createGain();
+  g.gain.value = vol;
+  src.connect(f).connect(g).connect(master);
+  src.start();
+}
+
 // ---- recorded sounds (Kenney Interface Sounds, Impact Sounds, UI Audio) ------------------------
 const SAMPLES = [
   'move', 'select', 'back', 'join', 'leave', 'lose', 'drop', 'gem', 'bong', 'pluck', 'step1', 'step2', 'bump', 'bump-big',
@@ -123,6 +148,7 @@ let stepFlip = false;
 
 export const sfx = {
   /** Highlighting a different menu item or button. */
+  whoosh: () => whoosh(),
   move: () => play('move', 0.5, 1, 0.03) || tone(520, 640, 0.06, 'triangle', 0.18),
   /** The mouse moving onto a button: a lighter tick than the stick/keys highlight. */
   hover: () => play('click', 0.35, 1.25, 0.04) || tone(900, 1000, 0.03, 'triangle', 0.1),

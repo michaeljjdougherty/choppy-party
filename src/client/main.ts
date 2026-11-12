@@ -1067,31 +1067,83 @@ function countSfx(t: number, readyFor: number) {
   if (t > readyFor + 1) lastCount = 99;
 }
 
-/** Screen transition: candy-coloured diagonal bands sweep off the screen to reveal the new scene. */
+/**
+ * Screen transition: chunky candy slabs (shaded like the menu cards, with a lit leading edge and a
+ * shadowed trailing one) sweep off the screen to reveal the new scene, with a whoosh.
+ */
 let wipeT = 9;
 let seenSwitches = 0;
 const WIPE = ['#ff5a5f', '#ff9f1c', '#ffd23f', '#4cd97b', '#3fa9f5', '#b06cff'];
 function drawWipe(dt: number) {
-  if (wipeT > 1.2) return;
-  wipeT += dt;
-  const bandW = 260;
+  if (wipeT > 0.95) return;
+  if (wipeT === 0) sfx.whoosh();
+  wipeT += Math.min(dt, 1 / 30);
+  const bandW = 230;
   ctx.save();
-  WIPE.forEach((c, i) => {
-    // each band leaves a little after the one before it, with an ease-in so they whoosh away
-    const p = Math.min(1, Math.max(0, (wipeT - i * 0.05) / 0.5));
-    const e = p * p * (3 - 2 * p);
-    // far enough that even the last band ends fully off the left edge
-    const x0 = -200 + i * bandW * 0.5 - e * (VIEW_W + 1150);
-    ctx.fillStyle = c;
-    ctx.beginPath();
-    ctx.moveTo(x0, 0);
-    ctx.lineTo(x0 + VIEW_W + 600, 0);
-    ctx.lineTo(x0 + VIEW_W + 300, VIEW_H);
-    ctx.lineTo(x0 - 300, VIEW_H);
-    ctx.closePath();
+  // the bands are drawn back to front so each one's shadow falls on the band behind it
+  for (let i = WIPE.length - 1; i >= 0; i--) {
+    const c = WIPE[i];
+    // a short hold so a scene's first heavy frame hides under the bands, then an ease-in whoosh
+    const p = Math.min(1, Math.max(0, (wipeT - 0.08 - i * 0.045) / 0.42));
+    const e = p * p * p;
+    const x0 = -220 + i * bandW * 0.5 - e * (VIEW_W + 1250);
+    const tilt = 300;
+    const shape = () => {
+      ctx.beginPath();
+      ctx.moveTo(x0, 0);
+      ctx.lineTo(x0 + VIEW_W + 600, 0);
+      ctx.lineTo(x0 + VIEW_W + 600 - tilt, VIEW_H);
+      ctx.lineTo(x0 - tilt, VIEW_H);
+      ctx.closePath();
+    };
+    // shadow cast onto whatever is behind this band
+    ctx.save();
+    ctx.shadowColor = 'rgba(20,8,50,0.45)';
+    ctx.shadowBlur = 26;
+    ctx.shadowOffsetX = 14;
+    const g = ctx.createLinearGradient(x0 - tilt, 0, x0 + 260, VIEW_H * 0.3);
+    g.addColorStop(0, shade(c, 0.22));
+    g.addColorStop(1, c);
+    ctx.fillStyle = g;
+    shape();
     ctx.fill();
-  });
+    ctx.restore();
+    // lit bevel along the leading (left) edge
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 3, 0);
+    ctx.lineTo(x0 - tilt + 3, VIEW_H);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 12, 0);
+    ctx.lineTo(x0 - tilt + 12, VIEW_H);
+    ctx.stroke();
+    // dots pattern for a printed-toy feel
+    ctx.save();
+    shape();
+    ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.beginPath();
+    for (let row = 0, yy = 20; yy < VIEW_H; yy += 46, row++)
+      for (let xx = row % 2 ? 23 : 0; xx < VIEW_W + 600; xx += 46) {
+        const dx = x0 + xx - (yy / VIEW_H) * tilt;
+        if (dx < -10 || dx > VIEW_W + 10) continue;
+        ctx.moveTo(dx + 6, yy);
+        ctx.arc(dx, yy, 6, 0, Math.PI * 2);
+      }
+    ctx.fill();
+    ctx.restore();
+  }
   ctx.restore();
+}
+
+function shade(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (v: number) => Math.max(0, Math.min(255, v + 255 * amt)) | 0;
+  return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
 /** Name plates that follow characters around the 3D scene. */

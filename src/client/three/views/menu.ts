@@ -107,6 +107,14 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
   }
   // podium blocks spring up one after another: 3rd, 2nd, then 1st
   const GROW_DELAY = [0.7, 0.4, 0.1];
+  /** The ending only goes to the podium once the champion is announced. */
+  const champTime = (s: PartyState) => !s.ending || s.ending.stage === 'champ';
+  /** Bonus Chobglob winners cheer once their award is revealed. */
+  const awardCheer = (s: PartyState) => {
+    const e = s.ending;
+    const aw = e && e.stage === 'awards' && e.paid > e.i ? e.awards[e.i] : null;
+    return new Set(aw?.winners ?? []);
+  };
   const springOut = (p: number) => (p <= 0 ? 0 : p >= 1 ? 1 : 1 - Math.exp(-6 * p) * Math.cos(10 * p));
   let rankT = -1;
   const fx = new Fx(scene);
@@ -123,14 +131,14 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
     const sorted =
       s.phase === 'results'
         ? s.placements.map((p) => ({ id: p.id, place: p.place }))
-        : s.phase === 'final'
+        : s.phase === 'final' && champTime(s)
           ? standings(s).map((r) => ({ id: r.id, place: r.place }))
           : null;
     podium.visible = !!sorted;
     if (!sorted) {
       // the lobby and the minigame intro have a big preview window on the right, so everyone stands on
       // the left half; more than five players stand in two staggered rows so nobody hides behind a window
-      const windowed = s.phase === 'lobby' || s.phase === 'intro';
+      const windowed = s.phase === 'lobby' || s.phase === 'intro' || s.phase === 'final';
       const sorted = [...s.players].sort((a, b) => a.slot - b.slot);
       if (!windowed) {
         const gap = Math.min(1.9, 16 / Math.max(1, n));
@@ -199,7 +207,7 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
           models.delete(id);
         }
       }
-      const ranked = s.phase === 'results' || s.phase === 'final';
+      const ranked = s.phase === 'results' || (s.phase === 'final' && champTime(s));
       const prevRankT = rankT;
       rankT = ranked ? (rankT < 0 ? 0 : rankT + dt) : -1;
       blocks.forEach((b, i) => {
@@ -218,7 +226,9 @@ export function menuView(env: THREE.Texture, localIds: () => Set<string>, isOnli
 
       const winners =
         s.phase === 'final'
-          ? new Set(standings(s).filter((r) => r.place === 1).map((r) => r.id))
+          ? champTime(s)
+            ? new Set(standings(s).filter((r) => r.place === 1).map((r) => r.id))
+            : awardCheer(s)
           : s.phase === 'results'
             ? new Set(s.placements.filter((p) => p.place === 1).map((p) => p.id))
             : new Set<string>();

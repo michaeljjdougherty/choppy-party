@@ -1,5 +1,5 @@
 import { GAMES, getGame } from '../shared/games';
-import { GRID_COLS, MAX_PLAYERS, MIX_MODES, OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, mixPool, optionsOfKind, standings, type PartyOption, type PartyState } from '../shared/party';
+import { GRID_COLS, MAX_PLAYERS, MIX_MODES, OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, mixPool, optionsOfKind, standings, AWARD_REVEAL, AWARD_SPIN, CHAMP_HOLD, type PartyOption, type PartyState } from '../shared/party';
 import { getBoard, recommendedBoard } from '../shared/board/boards';
 import { crownIcon } from './boardHud';
 import { playerById, roundRect, text } from '../shared/draw';
@@ -587,7 +587,131 @@ export function drawResults(ctx: CanvasRenderingContext2D, s: PartyState, age: n
 let lastFireworks = 0;
 
 export function drawFinal(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
-  const age = s.phaseT;
+  const e = s.ending;
+  if (e?.stage === 'awards') return drawAward(ctx, s, t);
+  if (e?.stage === 'drum') return drawDrum(ctx, s, t);
+  drawChamp(ctx, s, t, e ? e.t : s.phaseT);
+}
+
+/** One Bonus Chobglob: a reel spins through award names, lands, the stats grow as bars, the winner gets +1. */
+function drawAward(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
+  const e = s.ending!;
+  const aw = e.awards[e.i];
+  if (!aw) return;
+  const age = e.t;
+  vignette(ctx, 0.5);
+  const cx = 930, w = 600, x0 = cx - w / 2;
+  ribbon(ctx, cx, 46, 430, 50, '#9a5bff', `BONUS CHOBGLOB ${e.i + 1} OF ${e.awards.length}`, 22);
+  // the reel: names flick past fast, slow down, then land
+  ctx.save();
+  ctx.fillStyle = 'rgba(20,10,50,0.82)';
+  roundRect(ctx, x0, 86, w, 96, 22);
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = age >= AWARD_SPIN ? '#ffd23f' : '#6b5bb0';
+  ctx.stroke();
+  ctx.beginPath();
+  roundRect(ctx, x0, 86, w, 96, 22);
+  ctx.clip();
+  if (age < AWARD_SPIN) {
+    const u = age / AWARD_SPIN;
+    const pos = (1 - (1 - u) * (1 - u)) * 14; // eases out
+    const f = pos % 1;
+    for (let k = -1; k <= 1; k++) {
+      const name = REEL[(Math.floor(pos) + k + e.i * 5 + REEL.length) % REEL.length];
+      text(ctx, name, cx, 134 + (k - f) * 70, Math.min(40, 1000 / Math.max(10, name.length)), { color: k === 0 ? '#ffffff' : '#8f86c4' });
+    }
+  } else {
+    const k = springIn(clamp01((age - AWARD_SPIN) / 0.35));
+    ctx.translate(cx, 134);
+    ctx.scale(0.6 + 0.4 * k, 0.6 + 0.4 * k);
+    text(ctx, aw.title.toUpperCase(), 0, 0, Math.min(50, 1100 / Math.max(8, aw.title.length)), { color: '#ffd23f' });
+  }
+  ctx.restore();
+  if (age < AWARD_SPIN) return;
+  ctx.save();
+  ctx.globalAlpha = clamp01((age - AWARD_SPIN - 0.2) / 0.3);
+  text(ctx, aw.line, cx, 214, 22, { weight: 800 });
+  ctx.restore();
+
+  // every player's stat as a bar (or just the lineup for the awards with no stat), then the winner pops
+  const ids = s.players.map((p) => p.id).filter((id) => s.board?.players[id]);
+  const vals = ids.map((id) => aw.values[id] ?? 0);
+  const max = Math.max(1, ...vals);
+  const hasStat = !!aw.unit;
+  const rowH = Math.min(52, 400 / Math.max(1, ids.length));
+  const y0 = 250;
+  const revealed = age >= AWARD_REVEAL;
+  ids.forEach((id, i) => {
+    const p = playerById(s.players, id);
+    if (!p) return;
+    const k = springIn(clamp01((age - AWARD_SPIN - 0.3 - i * 0.07) / 0.4));
+    if (k <= 0) return;
+    const y = y0 + i * rowH;
+    const cy = y + (rowH - 8) / 2;
+    const win = revealed && aw.winners.includes(id);
+    ctx.save();
+    ctx.translate((1 - k) * 500, 0);
+    ctx.fillStyle = win ? '#fff6d6' : 'rgba(255,255,255,0.9)';
+    roundRect(ctx, x0, y, w, rowH - 8, (rowH - 8) / 2);
+    ctx.fill();
+    ctx.lineWidth = win ? 5 : 3;
+    ctx.strokeStyle = win ? '#ffcf3a' : p.color;
+    ctx.stroke();
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(x0 + 26, cy, 10, 0, Math.PI * 2);
+    ctx.fill();
+    text(ctx, truncate(p.name, 14), x0 + 44, cy, Math.min(22, rowH * 0.42), { align: 'left', color: '#2a1b5e', outline: false, weight: 800 });
+    if (hasStat) {
+      // the bars grow together, so nobody can tell who's winning until they stop
+      const grow = easeOut(clamp01((age - AWARD_SPIN - 0.5) / 1.1));
+      const bw = 210 * (vals[i] / max) * grow;
+      const bx = x0 + 250;
+      ctx.fillStyle = 'rgba(42,27,94,0.12)';
+      roundRect(ctx, bx, cy - 9, 210, 18, 9);
+      ctx.fill();
+      if (bw > 2) {
+        ctx.fillStyle = win ? '#ffb400' : p.color;
+        roundRect(ctx, bx, cy - 9, Math.max(18, bw), 18, 9);
+        ctx.fill();
+      }
+      text(ctx, String(Math.round(vals[i] * grow)), bx + 222, cy, 20, { align: 'left', color: '#2a1b5e', outline: false });
+    }
+    const crowns = s.board?.players[id]?.crowns ?? 0;
+    crownIcon(ctx, x0 + w - 70, cy, 1);
+    text(ctx, String(crowns), x0 + w - 50, cy, 20, { align: 'left', color: '#2a1b5e', outline: false });
+    ctx.restore();
+    if (win) {
+      const q = age - AWARD_REVEAL;
+      ctx.save();
+      ctx.globalAlpha = clamp01(1.6 - q * 0.5);
+      text(ctx, '+1', x0 + w - 108, cy - 6 - Math.min(1, q * 3) * 22, 30, { color: '#ffd23f' });
+      ctx.restore();
+    }
+  });
+  if (hasStat) text(ctx, aw.unit.toUpperCase(), x0 + 355, y0 - 14, 16, { color: '#c9c2e8', weight: 800 });
+  if (revealed) {
+    const names = aw.winners.map((id) => playerById(s.players, id)?.name ?? '').join(' & ');
+    slam(ctx, `${names} gets a Chobglob!`, cx, Math.min(690, y0 + ids.length * rowH + 30), Math.min(36, 1100 / Math.max(10, names.length + 18)), age - AWARD_REVEAL, '#ffd23f', 0);
+  }
+}
+
+const REEL = ['MINIGAME MASTER', 'PUNCHING BAG', 'LUCKY SEVENS', 'DOUBLE TROUBLE', 'ROAD RUNNER', 'SLOWPOKE', 'BULLY', 'UNTOUCHABLE', 'NINE LIVES', 'COIN HOARDER', "BRIAN'S FAVORITE", 'PARTICIPATION TROPHY'];
+
+/** "And the champion is..." with a drumroll, before the podium. */
+function drawDrum(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
+  const age = s.ending!.t;
+  vignette(ctx, 0.35 + Math.min(0.4, age * 0.15));
+  ribbon(ctx, 640, 200, 520, 60, '#ffcf3a', s.board ? 'AND THE PARTY CHAMPION IS...' : 'AND THE CHAMPION IS...', 26, '#3a2a10');
+  const dots = Math.floor(age * 3) % 4;
+  ctx.save();
+  ctx.globalAlpha = 0.7 + Math.sin(t * 10) * 0.3;
+  text(ctx, '.'.repeat(dots), 640, 300, 80, { color: '#ffd23f' });
+  ctx.restore();
+}
+
+function drawChamp(ctx: CanvasRenderingContext2D, s: PartyState, t: number, age: number): void {
   const st = standings(s);
   const winners = st.filter((r) => r.place === 1).map((r) => playerById(s.players, r.id)!).filter(Boolean);
   const champ = winners[0];
@@ -648,7 +772,7 @@ export function drawFinal(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
     } else text(ctx, `${r.score} pts`, x0 + w - 20, cy, 20, { align: 'right', color: '#2a1b5e', outline: false });
     ctx.restore();
   });
-  if (age > 2) {
+  if (age > CHAMP_HOLD) {
     ctx.save();
     ctx.globalAlpha = 0.75 + Math.sin(t * 4) * 0.25;
     text(ctx, `Host: ${A()} to return to the lobby`, 970, 694, 20, { weight: 800 });

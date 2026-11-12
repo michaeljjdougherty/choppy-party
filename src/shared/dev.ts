@@ -1,8 +1,8 @@
 import type { PartyState } from './party';
-import { beginRound, finishGame, inGame, setPhase } from './party';
+import { beginRound, finishGame, inGame, setPhase, startEnding } from './party';
 import { GAMES, getGame } from './games';
 import { getBoard } from './board/boards';
-import { STEW_GAMES, beginStew, boardRanking, chunkSpace, currentPlayer, hurt, placeChest, roundEnd, startDuel } from './board/engine';
+import { STEW_GAMES, beginStew, chunkSpace, currentPlayer, hurt, placeChest, roundEnd, startDuel } from './board/engine';
 import type { BoardState, ItemId } from './board/types';
 import { ITEM_IDS } from './board/items';
 
@@ -16,7 +16,7 @@ export function boardIdle(b: BoardState | null): boolean {
   return !!b && (b.sub === 'roll' || b.sub === 'turnIntro') && b.rolls.length === 0;
 }
 
-const reseed = (s: PartyState) => (s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0);
+const reseed = (s: PartyState) => (s.rng.seed = (Math.imul(s.rng.seed, 1103515245) + 12345) | 0);
 
 /** The players a minigame can take: duels get two, Stew Battles get two even teams. */
 function lineup(s: PartyState, id: string, from = s.players) {
@@ -256,13 +256,12 @@ export function devSetMaxTurns(s: PartyState, n: number): void {
 export function devEndBoard(s: PartyState): void {
   const b = s.board;
   if (!b) return;
-  for (const r of boardRanking(b)) s.scores[r.id] = r.value;
   s.devBack = false;
   s.gameId = null;
   s.game = null;
   s.gamePlayers = null;
   s.boardEvent = null;
-  setPhase(s, 'final');
+  startEnding(s);
 }
 
 /** Loaded dice: both dice show these faces until cleared (null = fair dice). */

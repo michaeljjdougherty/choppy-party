@@ -1,4 +1,4 @@
-import { FINISH_T, type PartyState } from '../shared/party';
+import { AWARD_SPIN, FINISH_T, type PartyState } from '../shared/party';
 import { sfx } from './sfx';
 
 /**
@@ -55,6 +55,7 @@ export function drawConfetti(ctx: CanvasRenderingContext2D, dt: number, t: numbe
 }
 
 interface Seen {
+  end: string;
   phase: string;
   phaseT: number;
   players: number;
@@ -75,6 +76,11 @@ interface Seen {
   marks: Record<string, number>;
 }
 let seen: Seen | null = null;
+function endKey(s: PartyState): string {
+  const e = s.ending;
+  if (s.phase !== 'final' || !e) return '';
+  return `${e.stage}:${e.i}:${e.stage === 'awards' && e.t >= AWARD_SPIN ? 1 : 0}:${e.paid}`;
+}
 
 export function resetJuice(): void {
   seen = null;
@@ -94,6 +100,7 @@ export function watch(s: PartyState): void {
   const drops = (s.phase === 'play' && Array.isArray(g?.drops) ? g!.drops : []) as { kind: string; fall: number }[];
   const now: Seen = {
     phase: s.phase,
+    end: endKey(s),
     players: s.players.length,
     nodes: {},
     coins: {},
@@ -126,12 +133,26 @@ export function watch(s: PartyState): void {
 
   if (now.phase !== was.phase) {
     if (now.phase === 'results') sfx.finish();
-    if (now.phase === 'final') {
+  }
+  // the ending: each Bonus Chobglob lands and pays out, a drumroll, then the champion
+  if (now.phase === 'final' && now.end !== was.end) {
+    const [stage, , spun, paid] = now.end.split(':');
+    const [wStage, , wSpun, wPaid] = was.end.split(':');
+    if (stage === 'champ' && wStage !== 'champ') {
       sfx.victory();
       sfx.cheer();
       burst(260);
+    } else if (stage === 'drum' && wStage !== 'drum') sfx.horn();
+    else if (stage === 'awards') {
+      if (spun === '1' && wSpun !== '1') sfx.bell();
+      if (paid !== wPaid && wStage === 'awards') {
+        sfx.fanfare();
+        sfx.cheer();
+        burst(90);
+      }
     }
   }
+  if (now.phase === 'final' && now.end.startsWith('awards') && now.end.split(':')[2] === '0' && Math.floor(now.phaseT * 9) !== Math.floor(was.phaseT * 9)) sfx.tick(0.3);
   // the results are revealed after the FINISH! freeze
   if (now.phase === 'results' && was.phase === 'results' && was.phaseT < FINISH_T && now.phaseT >= FINISH_T) {
     sfx.fanfare();

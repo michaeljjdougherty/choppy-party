@@ -3,7 +3,8 @@ import { BOARDS } from '../shared/board/boards';
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
 import { CHARACTERS, DEFAULT_NAMES, PLAYER_COLORS } from '../shared/players';
-import { addBot, FINISH_T, FIRST_GAME, PAUSE_OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
+import { addBot, AWARD_SPIN, FINISH_T, FIRST_GAME, PAUSE_OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
+import { devEndBoard } from '../shared/dev';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
 import { loadHosted } from './net';
@@ -957,6 +958,18 @@ function hostFor(s: PartyState, view: View, t: number, dt: number) {
       break;
     }
     case 'final': {
+      const e = s.ending;
+      if (e && e.stage === 'awards') {
+        const aw = e.awards[e.i];
+        if (e.t < AWARD_SPIN) hostLine.say(e.i === 0 ? 'Before we crown anyone: Bonus Chobglobs!' : 'Next Bonus Chobglob...', 'wow');
+        else hostLine.say(aw ? `${aw.title}! ${aw.line}` : '', 'smug');
+        mood = 'smug';
+        break;
+      }
+      if (e && e.stage === 'drum') {
+        hostLine.say('And the winner of the whole party is...', 'wow');
+        break;
+      }
       const st = standings(s).filter((r) => r.place === 1);
       const name = s.players.find((p) => p.id === st[0]?.id)?.name ?? '';
       hostLine.say(st.length > 1 ? LINES.tie[0] : pick(LINES.champion(name), name.length), 'proud');
@@ -1122,6 +1135,13 @@ Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px '
     enter(new LocalSession(input, sel));
     const st = (session as any).state;
     for (let i = 0; i < n; i++) addBot(st, level);
+  },
+  /** Test helper: jump a local board game to its ending, with some made-up stats so the awards have winners. */
+  ending() {
+    const st = (session as any)?.state as PartyState | undefined;
+    if (!st?.board) return;
+    Object.values(st.board.players).forEach((p, i) => Object.assign(p.stats, { wins: i, damageTaken: 4 + i * 3, sevens: 3 - i, doubles: i % 3, spaces: 50 + i * 9, damageDealt: 12 - i * 2, kos: i }));
+    devEndBoard(st);
   },
   /** Test helper: start whatever is selected in a local lobby. */
   start() {

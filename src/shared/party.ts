@@ -2,7 +2,8 @@ import type { Inputs, PlayerInfo, ResultRow, TickInput } from './types';
 import { NO_INPUT } from './types';
 import { GAMES, getGame } from './games';
 import { CHARACTERS, PLAYER_COLORS, DEFAULT_NAMES } from './players';
-import { shuffle, type Rng } from './rng';
+import { rand, shuffle, type Rng } from './rng';
+import { pickAwards, type Award } from './board/bonus';
 import { BOARDS, getBoard, recommendedBoard } from './board/boards';
 import { DUEL_GAMES, STEW_GAMES, awardMinigame, boardRanking, createBoard, endBossDance, endTour, finishEvent, BOSS_INTRO, stepBoard, winnerGoesFirst } from './board/engine';
 import type { BoardState } from './board/types';
@@ -103,7 +104,28 @@ export interface PartyState {
   devNext?: string | null;
   /** Developer mode started this minigame from the board: afterwards, go back to the board mid-turn. */
   devBack?: boolean;
+  /** End of a board game: the Bonus Chobglob awards, a drumroll, then the champion. */
+  ending?: Ending | null;
 }
+
+export interface Ending {
+  awards: Award[];
+  /** Award being shown (awards.length = the drumroll and champion). */
+  i: number;
+  /** Seconds into the current award / the drumroll / the champion. */
+  t: number;
+  stage: 'awards' | 'drum' | 'champ';
+  /** How many awards have paid out their Chobglobs. */
+  paid: number;
+}
+
+/** One Bonus Chobglob: spin (0-1.8s), title and bars (to 3.4s), winner revealed at 3.4s. */
+export const AWARD_SPIN = 1.8;
+export const AWARD_REVEAL = 3.4;
+export const AWARD_T = 6.5;
+export const DRUM_T = 3.2;
+/** The champion screen can't be skipped for this long, so a mashed A never skips who won. */
+export const CHAMP_HOLD = 5;
 
 export const PAUSE_OPTIONS = ['Resume', 'How to play', 'Settings', 'End party (back to lobby)', 'Quit to main menu'] as const;
 
@@ -118,6 +140,7 @@ export function endParty(s: PartyState): void {
   s.pause = null;
   s.devBack = false;
   s.devNext = null;
+  s.ending = null;
   setPhase(s, 'lobby');
 }
 
@@ -320,6 +343,17 @@ function eligibleGames(n: number): string[] {
   return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && g.mode !== 'Duel' && !STEW_GAMES.includes(g.id)).map((g) => g.id);
 }
 
+/** The games played least so far (never the one just played, unless it's the only one). */
+export function freshGames(pool: string[], played: string[]): string[] {
+  if (!pool.length) return pool;
+  const count = new Map(pool.map((g) => [g, 0]));
+  for (const g of played) if (count.has(g)) count.set(g, count.get(g)! + 1);
+  const least = Math.min(...count.values());
+  const last = played[played.length - 1];
+  const pick = pool.filter((g) => count.get(g) === least && g !== last);
+  return pick.length ? pick : pool.filter((g) => g !== last).length ? pool.filter((g) => g !== last) : pool;
+}
+
 /** The games a Minigame Mix deals, for its mode. */
 export function mixPool(mode: number, n: number): string[] {
   if (mode === 1) return n >= 2 ? [...DUEL_GAMES] : [];
@@ -368,7 +402,7 @@ export function startParty(s: PartyState): void {
   s.board = null;
   s.round = 0;
   if (o.kind === 'board') {
-    s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
+    s.rng.seed = (Math.imul(s.rng.seed, 1103515245) + 12345) | 0;
     s.board = createBoard(o.id, s.players.map((p) => p.id), TURN_OPTIONS[s.turnsIdx], s.rng.seed, s.players.some((p) => !p.bot));
     s.playlist = [];
     setPhase(s, 'board');
@@ -401,7 +435,7 @@ export function beginRound(s: PartyState): void {
   s.gameId = id;
   s.gamePlayers = s.mode === 'mix' ? mixLineup(s) : null;
   s.boardEvent = null;
-  s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
+  s.rng.seed = (Math.imul(s.rng.seed, 1103515245) + 12345) | 0;
   s.game = g.setup(s.gamePlayers ?? s.players, s.rng.seed);
   setPhase(s, 'intro');
 }
@@ -485,22 +519,19 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
         s.gameId = ev.gameId;
         s.gamePlayers = who;
         s.boardEvent = ev.kind;
-        s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
+        s.rng.seed = (Math.imul(s.rng.seed, 1103515245) + 12345) | 0;
         s.game = g.setup(who, s.rng.seed);
         setPhase(s, 'intro');
         break;
       }
       if (b.sub === 'done') {
         // everyone has moved: time for this turn's minigame
-        const pool = eligibleGames(s.players.length);
-        const recent = s.playlist.slice(-2);
-        const fresh = pool.filter((g) => !recent.includes(g));
-        const pickFrom = fresh.length ? fresh : pool;
-        s.rng.seed = (s.rng.seed * 1103515245 + 12345) | 0;
+        // deal from the whole pool like a deck: nothing repeats until every game has had its turn
+        const pickFrom = freshGames(eligibleGames(s.players.length), s.playlist);
         // developer mode can force the next minigame
         const forced = s.devNext;
         s.devNext = null;
-        s.playlist.push(forced || pickFrom[Math.abs(s.rng.seed) % pickFrom.length]);
+        s.playlist.push(forced || pickFrom[Math.floor(rand(s.rng) * pickFrom.length)]);
         s.round = s.playlist.length - 1;
         beginRound(s);
       }
@@ -550,8 +581,7 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
         }
         if (s.board) {
           if (s.board.turn >= s.board.maxTurns) {
-            for (const r of boardRanking(s.board)) s.scores[r.id] = r.value;
-            setPhase(s, 'final');
+            startEnding(s);
           } else {
             s.board.turn++;
             s.board.cur = 0;
@@ -562,17 +592,55 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
           break;
         }
         s.round++;
-        if (s.round >= s.playlist.length) setPhase(s, 'final');
+        if (s.round >= s.playlist.length) startEnding(s);
         else beginRound(s);
       }
       break;
     }
     case 'final': {
-      if (hostIn.aPressed && s.phaseT > 2) {
-        endParty(s);
-      }
+      const e = s.ending;
+      if (e) {
+        stepEnding(s, e, hostIn.aPressed, dt);
+        if (e.stage !== 'champ' || e.t < CHAMP_HOLD) break;
+      } else if (s.phaseT < CHAMP_HOLD) break;
+      if (hostIn.aPressed) endParty(s);
       break;
     }
+  }
+}
+
+/** The game is over: a board game hands out its Bonus Chobglobs first, then everyone sees the champion. */
+export function startEnding(s: PartyState): void {
+  const b = s.board;
+  s.ending = null;
+  if (b) {
+    for (const r of boardRanking(b)) s.scores[r.id] = r.value;
+    const awards = pickAwards(b, s.rng);
+    s.ending = { awards, i: 0, t: 0, stage: awards.length ? 'awards' : 'drum', paid: 0 };
+  } else s.ending = { awards: [], i: 0, t: 0, stage: 'drum', paid: 0 };
+  setPhase(s, 'final');
+}
+
+function stepEnding(s: PartyState, e: Ending, a: boolean, dt: number): void {
+  e.t += dt;
+  if (e.stage === 'awards') {
+    const aw = e.awards[e.i];
+    if (e.paid <= e.i && e.t >= AWARD_REVEAL) {
+      e.paid = e.i + 1;
+      if (s.board) {
+        for (const id of aw.winners) if (s.board.players[id]) s.board.players[id].crowns++;
+        for (const r of boardRanking(s.board)) s.scores[r.id] = r.value;
+      }
+    }
+    // A moves on once the winner has had a moment
+    if (e.t >= AWARD_T || (a && e.t > AWARD_REVEAL + 1)) {
+      e.i++;
+      e.t = 0;
+      if (e.i >= e.awards.length) e.stage = 'drum';
+    }
+  } else if (e.stage === 'drum' && e.t >= DRUM_T) {
+    e.stage = 'champ';
+    e.t = 0;
   }
 }
 

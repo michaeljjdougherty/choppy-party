@@ -72,3 +72,30 @@ export function moltenMaterial(): THREE.MeshStandardMaterial & { userData: { glo
   m.customProgramCacheKey = () => 'molten';
   return m as THREE.MeshStandardMaterial & { userData: { glow: { value: number } } };
 }
+
+/** A smooth natural crater (bowl and raised, uneven rim) of about `radius`, `height` tall at the rim. */
+export function craterGeometry(radius: number, height: number, seed = 1): THREE.BufferGeometry {
+  const key = `crater:${radius}:${height}:${seed}`;
+  const hit = geoCache.get(key);
+  if (hit) return hit;
+  const pts: THREE.Vector2[] = [];
+  const N = 24;
+  for (let i = 0; i <= N; i++) {
+    const k = i / N; // 0 centre -> 1 outer edge
+    const r = k * radius;
+    // bowl dips below ground, rim peaks at ~70%, then falls away outside
+    const y = k < 0.7 ? -height * 0.35 * Math.cos((k / 0.7) * Math.PI * 0.5) + height * Math.pow(k / 0.7, 3) : height * Math.pow(1 - (k - 0.7) / 0.3, 1.6);
+    pts.push(new THREE.Vector2(r, y));
+  }
+  const g = new THREE.LatheGeometry(pts, 64);
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  const o = seed * 7.1;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const n = fbm(x * 2.2 + o, 0.3, z * 2.2 - o);
+    pos.setY(i, y * (0.7 + n * 0.7) + (n - 0.5) * height * 0.15);
+  }
+  g.computeVertexNormals();
+  geoCache.set(key, g);
+  return g;
+}

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { craterGeometry, rockGeometry, stoneMaterial } from './life/rocks';
 import { loadNature } from './nature';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -220,6 +221,19 @@ export async function preloadAll(onProgress: (done: number, total: number) => vo
             m.receiveShadow = true;
           }
         });
+        // the kit's meteor is a faceted low-poly blob: swap in a detailed noise rock of the same size
+        if (f === 'space/meteor.glb') {
+          const rock = new THREE.Mesh(rockGeometry(0.42, 4, 0.34), stoneMaterial('#7a6a62'));
+          rock.position.y = 0.32;
+          rock.castShadow = rock.receiveShadow = true;
+          g.scene = new THREE.Group().add(rock) as THREE.Group;
+        }
+        if (f === 'space/crater.glb' || f === 'space/craterLarge.glb') {
+          const big = f === 'space/craterLarge.glb';
+          const c = new THREE.Mesh(craterGeometry(big ? 0.44 : 0.4, 0.12, big ? 3 : 2), stoneMaterial('#c87a5e'));
+          c.receiveShadow = true;
+          g.scene = new THREE.Group().add(c) as THREE.Group;
+        }
         cache.set(f.replace(/\.glb$/, ''), g);
       } catch (e) {
         console.warn('Could not load model', f, e);

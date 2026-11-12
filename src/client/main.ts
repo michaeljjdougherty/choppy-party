@@ -695,6 +695,8 @@ function renderScreens(wallT: number, dt: number) {
     ctx.fillStyle = '#1a1033';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     text(ctx, session.status(), 640, 360, 36);
+    const why = (session as { detail?: () => string }).detail?.() ?? '';
+    if (why) text(ctx, why, 640, 410, 22);
     return;
   }
   bar.classList.add('hidden');

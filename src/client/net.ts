@@ -53,9 +53,20 @@ export function saveNet(n: NetSettings): void {
   }
 }
 
+/**
+ * Built-in relay (TURN) for friends whose routers block a direct connection. The repo is public,
+ * so this login is public too: the worst anyone can do is use up its free monthly allowance.
+ */
+const BUILT_IN_TURN: RTCIceServer[] = [];
+
 function peerOptions(): PeerOptions {
   const n = loadNet();
-  const ice: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+  const ice: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    ...BUILT_IN_TURN,
+  ];
   if (n.turnUrl.trim()) {
     ice.push({ urls: n.turnUrl.split(',').map((u) => u.trim()).filter(Boolean), username: n.turnUser || undefined, credential: n.turnPass || undefined });
   }

@@ -133,6 +133,7 @@ export class OnlineSession implements Session {
   private code: string | null = null;
   private err: string | null = null;
   private retrying = 0;
+  private why = '';
   private closed = false;
   private prevSnap: PartyState | null = null;
   private curSnap: PartyState | null = null;
@@ -187,6 +188,7 @@ export class OnlineSession implements Session {
     };
     this.t.onClose = (why, retry) => {
       if (this.closed) return;
+      this.why = why;
       // dropped mid-party: keep trying the same code; a CPU covers for us meanwhile
       if (retry && this.code && this.retrying < 30) {
         this.retrying++;
@@ -202,6 +204,11 @@ export class OnlineSession implements Session {
 
   private send(m: ClientMsg) {
     this.t.send(m);
+  }
+
+  /** Why the last connection attempt failed, shown under the status so it doesn't vanish with the toast. */
+  detail(): string {
+    return this.err ? this.why : '';
   }
 
   status() {

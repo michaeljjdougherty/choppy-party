@@ -51,18 +51,60 @@ export function digView(env: THREE.Texture, state: DigState, players: PlayerInfo
   const fx = new Fx(scene);
   const team = crew(scene, players, state.diggers, fx);
   const moundMat = sandMaterial('#e8c37e', 2);
-  const moundGeo = new THREE.SphereGeometry(0.85, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+  // a heaped sand mound (lumpy, with a flattened top) with a red X brushed into it
+  const moundGeo = (() => {
+    const pts: THREE.Vector2[] = [];
+    for (let i = 0; i <= 16; i++) {
+      const k = i / 16;
+      const r = 1.0 * (1 - k * 0.62);
+      const y = 0.42 * Math.pow(Math.sin((k * Math.PI) / 2), 0.7);
+      pts.push(new THREE.Vector2(r, y));
+    }
+    pts.push(new THREE.Vector2(0.001, 0.43));
+    const g = new THREE.LatheGeometry(pts, 36);
+    const pos = g.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), z = pos.getZ(i), a = Math.atan2(z, x);
+      const k = 1 + Math.sin(a * 3 + 1) * 0.06 + Math.sin(a * 7) * 0.03;
+      pos.setX(i, x * k);
+      pos.setZ(i, z * k);
+    }
+    g.computeVertexNormals();
+    return g;
+  })();
+  const xTex = (() => {
+    const S = 128;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d')!;
+    g.strokeStyle = '#c22a1e';
+    g.lineCap = 'round';
+    for (const [a, b, cc, d] of [[22, 24, 104, 106], [104, 20, 26, 104]]) {
+      // a few overlapping strokes so it looks brushed, not printed
+      for (let k = 0; k < 4; k++) {
+        g.globalAlpha = 0.45 + k * 0.12;
+        g.lineWidth = 16 - k * 3;
+        g.beginPath();
+        g.moveTo(a + (Math.random() - 0.5) * 4, b + (Math.random() - 0.5) * 4);
+        g.quadraticCurveTo((a + cc) / 2 + (Math.random() - 0.5) * 8, (b + d) / 2 + (Math.random() - 0.5) * 8, cc, d);
+        g.stroke();
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const xMat = new THREE.MeshStandardMaterial({ map: xTex, transparent: true, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  xMat.userData.noDetail = true;
   const mounds = pool(scene, () => {
     const g = new THREE.Group();
     const m = mesh(moundGeo, moundMat, { receive: true });
-    m.scale.set(1, 0.45, 1);
+    m.scale.set(0.85, 1, 0.85);
     g.add(m);
-    const x = mesh(new THREE.BoxGeometry(0.7, 0.04, 0.14), toy('#c0392b', 0.6), { cast: false });
-    x.rotation.y = Math.PI / 4;
-    x.position.y = 0.4;
-    const x2 = x.clone();
-    x2.rotation.y = -Math.PI / 4;
-    g.add(x, x2);
+    const x = mesh(new THREE.PlaneGeometry(0.62, 0.62).rotateX(-Math.PI / 2), xMat, { cast: false });
+    x.position.y = 0.435;
+    x.rotation.y = Math.random() * 0.5;
+    g.add(x);
     return g;
   });
   const shovels = pool(scene, () => fitProp('pirate/tool-shovel', 0.9, 'max'));

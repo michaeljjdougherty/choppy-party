@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { flame, onTop } from '../look/fxKit';
 import { snowMaterial } from '../look/snow';
 import type { PlayerInfo } from '../../../shared/types';
@@ -108,11 +109,37 @@ export function mineCartView(env: THREE.Texture, state: CartState, players: Play
   const sleeper = texture('floor_wood_planks', 1, 1);
   if (sleeper) sleeper.rotation = Math.PI / 2;
   const railMat = toy('#9aa3ad', 0.3);
+  const railDark = new THREE.MeshStandardMaterial({ color: '#4a4f58', metalness: 0.7, roughness: 0.5 });
   railMat.metalness = 0.6;
+  // real sleepers: separate chunky wooden ties under every lane (not a striped strip)
+  const tieGeo = new RoundedBoxGeometry(1.25, 0.12, 0.26, 1, 0.03);
+  const tieMat = new THREE.MeshStandardMaterial({ map: sleeper, color: '#8a5a32', roughness: 0.9 });
+  const tieSpots: THREE.Matrix4[] = [];
+  const TIE = 0.62 / PX;
+  for (let d = -PRE; d < end; d += TIE) {
+    if (segAt(state, d).gap || segAt(state, d + TIE * 0.5).gap) continue;
+    const { p, h, right } = at(d);
+    for (let l = 0; l < n; l++) {
+      const c = -half + (l + 0.5) * LANE_W;
+      const q = p.clone().addScaledVector(right, c);
+      tieSpots.push(new THREE.Matrix4().compose(q.setY(0.08), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -h + (((d * 7) % 3) - 1) * 0.02), new THREE.Vector3(1, 1, 1)));
+    }
+  }
+  const ties = new THREE.InstancedMesh(tieGeo, tieMat, tieSpots.length);
+  tieSpots.forEach((m, i) => ties.setMatrixAt(i, m));
+  ties.receiveShadow = true;
+  ties.castShadow = true;
+  scene.add(ties);
+  railMat.color.set('#c8d0da');
+  railMat.roughness = 0.25;
+  railMat.metalness = 0.85;
   for (let l = 0; l < n; l++) {
     const c = -half + (l + 0.5) * LANE_W;
-    ribbon(c - 0.6, c + 0.6, 0.05, new THREE.MeshStandardMaterial({ map: sleeper, color: '#9c6b3e', roughness: 0.9 }), 1.2);
-    for (const s of [-0.42, 0.42]) ribbon(c + s - 0.05, c + s + 0.05, 0.12, railMat);
+    for (const s of [-0.42, 0.42]) {
+      // a rail: a polished top on a darker web, so it reads as a raised steel rail
+      ribbon(c + s - 0.06, c + s + 0.06, 0.16, railMat);
+      ribbon(c + s - 0.09, c + s + 0.09, 0.15, railDark);
+    }
   }
   // canyon walls, warning signs before every gap, and a pit under it
   const rocks = ['pirate/rocks-a', 'pirate/rocks-b', 'pirate/rocks-c', 'forest/rocks-high', 'pirate/rocks-sand-b'];

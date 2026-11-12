@@ -1,3 +1,4 @@
+import { buildSetPieces } from '../life/setPieces';
 import { buzzPlayer } from '../../rumble';
 import { STORES } from '../../../shared/board/items';
 import * as THREE from 'three';
@@ -1437,6 +1438,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   // animation overhaul: per-space landing shows, coins that rain in and spill out, flinches and cheers
   const anims = new BoardAnims(scene, fx);
   const weather = buildWeather(scene, def, fx);
+  const pieces = buildSetPieces(scene, def, fx, gy);
   const kick = (nodeId: string, v: number) => {
     const sp = springs.get(nodeId);
     if (sp) sp.v -= v;
@@ -1607,6 +1609,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       // crowns
       crownPool.forEach((c) => (c.visible = false));
       weather.update(b, t, dt);
+      pieces.update(b, t, dt);
       // sandblind players can't see the chests on their own turn
       const blind = weather.chestsHidden(b, currentPlayer(b));
       const quiet = b.sub === 'tour' || b.sub === 'orderRoll' || b.sub === 'orderShow' || b.sub === 'done';
@@ -1674,6 +1677,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       // board effects: hits, heals, knockouts, items
       for (const e of b.fx) {
         if (seenFx.has(e.n)) continue;
+        // a falling pine, meteor or boulder hasn't reached this space yet: its hits wait for the impact
+        if (['hit', 'ko', 'block', 'pine', 'meteor', 'boulder'].includes(e.kind) && pieces.holds(b, e.node)) continue;
         seenFx.add(e.n);
         const n = def.nodes[e.node];
         if (!n) continue;

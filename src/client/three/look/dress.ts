@@ -75,6 +75,7 @@ export const GAME_LOOKS: Record<string, Look> = {
   'shrinking-rink': { theme: 'sea', keepOut: [{ circle: [0, 0, 10] }] },
   'quick-draw-cactus': { theme: 'desert', keepOut: [{ rect: [-12, -6, 12, 6] }] },
   'pancake-panic': { theme: 'indoor' },
+  'scope-snap': { theme: 'space', noScenery: true },
   'coin-cloudburst': { theme: 'meadow' },
   'meteor-shower': { theme: 'space' },
   'present-pile-up': { theme: 'snow' },

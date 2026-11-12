@@ -36,6 +36,10 @@ export interface View {
   tags(): Tag[];
   /** Square Brian, when he is in this scene, and where his head is (for the speech bubble). */
   host?: { brian: SquareBrian; head(): THREE.Vector3 };
+  /** Split screen: several cameras, each drawn into its own window of the screen (HUD coordinates). */
+  split?: { camera: THREE.PerspectiveCamera; x: number; y: number; w: number; h: number }[];
+  /** First person: no drifting camera sway or ambient motes in front of your eyes. */
+  fps?: boolean;
 }
 
 export class Stage {
@@ -99,7 +103,7 @@ export class Stage {
       photoSurfaces.on = gfx().surface >= 1;
       this.view = make();
       finishSurfaces(this.view.scene);
-      if (key.startsWith('game:')) {
+      if (key.startsWith('game:') && !this.view.fps) {
         try {
           this.ambience = new Ambience(this.view.scene);
         } catch (e) {
@@ -147,7 +151,8 @@ export class Stage {
     const sc = this.view.scene;
     const envI = sc.environmentIntensity;
     sc.environmentIntensity = envI * toneDown().env;
-    if (!this.post.frame(sc, cam, dt, t)) this.renderer.render(sc, cam);
+    if (this.view.split?.length) this.renderSplit(sc, this.view.split);
+    else if (!this.post.frame(sc, cam, dt, t)) this.renderer.render(sc, cam);
     sc.environmentIntensity = envI;
     undo();
     if (this.ambience) this.ambience.unswayCamera(cam);
@@ -175,6 +180,26 @@ export class Stage {
     r.setScissor(vx, vy, vw, vh);
     r.setViewport(vx, vy, vw, vh);
     r.render(view.scene, view.camera);
+    r.setScissorTest(false);
+    r.setViewport(0, 0, size.x, size.y);
+  }
+
+  /** Split screen: each camera into its own window (no post chain, which works on the whole screen). */
+  private renderSplit(sc: THREE.Scene, split: NonNullable<View['split']>): void {
+    const r = this.renderer;
+    const size = r.getSize(new THREE.Vector2());
+    const k = size.x / VIEW_W;
+    r.setScissorTest(true);
+    for (const v of split) {
+      const vx = v.x * k, vy = (VIEW_H - v.y - v.h) * k, vw = v.w * k, vh = v.h * k;
+      if (Math.abs(v.camera.aspect - v.w / v.h) > 1e-3) {
+        v.camera.aspect = v.w / v.h;
+        v.camera.updateProjectionMatrix();
+      }
+      r.setScissor(vx, vy, vw, vh);
+      r.setViewport(vx, vy, vw, vh);
+      r.render(sc, v.camera);
+    }
     r.setScissorTest(false);
     r.setViewport(0, 0, size.x, size.y);
   }

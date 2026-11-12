@@ -18,6 +18,7 @@ import { alienView, bowlView, crownView, lightsView, plazaView, seatView } from 
 import { chiliView, moonView, movingView, shantyView, sushiView, zombieView } from './wave6';
 import { barrelView, mimicView, mineCartView, risingTideView, saucerView, sledView } from './wave7';
 import { cannonFortView, crateCascadeView, crateStackerView, roadHopperView, sparkTrailsView, stewRelayView } from './wave8';
+import { scopeSnapView } from './scopeSnap';
 import { burgerView, cannonView, crazeView, digView, raftView, repairView } from './wave4';
 
 type Factory = (env: THREE.Texture, state: any, players: PlayerInfo[]) => View;
@@ -72,6 +73,7 @@ export const GAME_VIEWS: Record<string, Factory> = {
   'stew-relay': stewRelayView,
   'crate-cascade': crateCascadeView,
   'spark-trails': sparkTrailsView,
+  'scope-snap': scopeSnapView,
 };
 
 export { menuView } from './menu';

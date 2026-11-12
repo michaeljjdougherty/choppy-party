@@ -385,8 +385,22 @@ export function selectionLabel(s: PartyState): string {
   return getGame(o.id).name;
 }
 
-function eligibleGames(n: number): string[] {
-  return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && g.mode !== 'Duel' && !STEW_GAMES.includes(g.id)).map((g) => g.id);
+function eligibleGames(n: number, players?: PlayerInfo[]): string[] {
+  const crowded = !!players && crowdedScreen(players);
+  return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && g.mode !== 'Duel' && !STEW_GAMES.includes(g.id) && !(crowded && SPLIT_SCREEN_GAMES.includes(g.id))).map((g) => g.id);
+}
+
+/** First-person games split one screen at most 4 ways, so random picks skip them when more share a screen. */
+export const SPLIT_SCREEN_GAMES = ['scope-snap'];
+export function crowdedScreen(players: PlayerInfo[]): boolean {
+  const per = new Map<string, number>();
+  for (const p of players) {
+    if (p.bot) continue;
+    const dot = p.id.indexOf('.');
+    const screen = dot < 0 ? 'here' : p.id.slice(0, dot);
+    per.set(screen, (per.get(screen) ?? 0) + 1);
+  }
+  return [...per.values()].some((n) => n > 4);
 }
 
 /** The games played least so far (never the one just played, unless it's the only one). */
@@ -401,10 +415,10 @@ export function freshGames(pool: string[], played: string[]): string[] {
 }
 
 /** The games a Minigame Mix deals, for its mode. */
-export function mixPool(mode: number, n: number): string[] {
+export function mixPool(mode: number, n: number, players?: PlayerInfo[]): string[] {
   if (mode === 1) return n >= 2 ? [...DUEL_GAMES] : [];
   if (mode === 2) return n >= 2 ? [...STEW_GAMES] : [];
-  return eligibleGames(n);
+  return eligibleGames(n, players);
 }
 
 /** Who plays this mix round: everyone, or a fair pick of two duellists / two even teams. */
@@ -456,7 +470,7 @@ export function startParty(s: PartyState): void {
   }
   if (o.kind === 'mix') {
     s.mixPlays = {};
-    s.playlist = makePlaylist(s, mixPool(s.mixMode ?? 0, n), ROUND_OPTIONS[s.roundsIdx]);
+    s.playlist = makePlaylist(s, mixPool(s.mixMode ?? 0, n, s.players), ROUND_OPTIONS[s.roundsIdx]);
   } else {
     s.playlist = [o.id];
   }
@@ -576,7 +590,7 @@ export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void 
       if (b.sub === 'done') {
         // everyone has moved: time for this turn's minigame
         // deal from the whole pool like a deck: nothing repeats until every game has had its turn
-        const pickFrom = freshGames(eligibleGames(s.players.length), s.playlist);
+        const pickFrom = freshGames(eligibleGames(s.players.length, s.players), s.playlist);
         // developer mode can force the next minigame
         const forced = s.devNext;
         s.devNext = null;

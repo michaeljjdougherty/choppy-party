@@ -54,6 +54,11 @@ export function cleanRaw(r: any): RawInput | null {
     xCount: Math.floor(num(r.xCount, 0, 1e9)),
     yCount: Math.floor(num(r.yCount, 0, 1e9)),
     startCount: Math.floor(num(r.startCount, 0, 1e9)),
+    lookX: num(r.lookX, -1e7, 1e7),
+    lookY: num(r.lookY, -1e7, 1e7),
+    fire: r.fire === true,
+    fireCount: Math.floor(num(r.fireCount, 0, 1e9)),
+    scope: r.scope === true,
   };
 }
 

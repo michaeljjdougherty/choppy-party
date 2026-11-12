@@ -19,6 +19,15 @@ export interface RawInput {
   yCount?: number;
   /** Start / Menu presses (pause). */
   startCount?: number;
+  /**
+   * First-person games: running totals of how far the player has turned (radians; mouse or right stick),
+   * so no movement is lost between network packets. Plus the fire / scope triggers.
+   */
+  lookX?: number;
+  lookY?: number;
+  fire?: boolean;
+  fireCount?: number;
+  scope?: boolean;
 }
 
 /** Input as a minigame sees it on one tick. */
@@ -34,6 +43,12 @@ export interface TickInput {
   xPressed?: boolean;
   yPressed?: boolean;
   startPressed?: boolean;
+  /** First-person games: turn since last tick (radians), and the triggers. */
+  lookX?: number;
+  lookY?: number;
+  fire?: boolean;
+  firePressed?: boolean;
+  scope?: boolean;
 }
 
 export const NO_INPUT: TickInput = { x: 0, y: 0, a: false, b: false, aPressed: false, bPressed: false, aTaps: 0, bTaps: 0 };
@@ -108,6 +123,11 @@ export function toTickInput(raw: RawInput, prev: RawInput | undefined): TickInpu
     xPressed: (raw.xCount ?? 0) > (prev ? (prev.xCount ?? 0) : (raw.xCount ?? 0)),
     yPressed: (raw.yCount ?? 0) > (prev ? (prev.yCount ?? 0) : (raw.yCount ?? 0)),
     startPressed: (raw.startCount ?? 0) > (prev ? (prev.startCount ?? 0) : (raw.startCount ?? 0)),
+    lookX: prev ? clamp((raw.lookX ?? 0) - (prev.lookX ?? 0), -1.5, 1.5) : 0,
+    lookY: prev ? clamp((raw.lookY ?? 0) - (prev.lookY ?? 0), -1.5, 1.5) : 0,
+    fire: !!raw.fire,
+    firePressed: (raw.fireCount ?? 0) > (prev ? (prev.fireCount ?? 0) : (raw.fireCount ?? 0)),
+    scope: !!raw.scope,
   };
 }
 

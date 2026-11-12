@@ -131,6 +131,19 @@ export class InputManager {
   /** True once this device has been touched: the touch controls and touch prompts switch on. */
   touchSeen = false;
   private nudges = new Map<string, { x: number; y: number; until: number; polls: number }>();
+  /**
+   * First-person games (Scope Snap): the mouse turns kb1 (with pointer lock), arrows turn instead of
+   * walking, the right stick turns pads, and the triggers / mouse buttons fire and scope.
+   */
+  fps = false;
+  /** Look sensitivity multiplier (Settings), 0.3..2.5. */
+  lookSens = loadSens();
+  private mouseFire = false;
+  private mouseScope = false;
+  /** Phones: holding the on-screen A scopes in, letting go fires; dragging anywhere else aims. */
+  private virtScope = false;
+  private lookFingers = new Map<number, { x: number; y: number }>();
+  private lastPoll = 0;
 
   constructor(target: Window = window) {
     for (const p of KEY_PROFILES) {
@@ -185,10 +198,51 @@ export class InputManager {
         }
         if (p.x.includes(e.code)) d.raw.xCount = (d.raw.xCount ?? 0) + 1;
         if (p.y.includes(e.code)) d.raw.yCount = (d.raw.yCount ?? 0) + 1;
+        if (this.fps && p.key === 'kb1' && FPS_FIRE.includes(e.code)) d.raw.fireCount = (d.raw.fireCount ?? 0) + 1;
+        if (this.fps && p.key === 'kb1' && e.code === 'KeyF') {
+          d.raw.bCount++;
+        }
       }
     });
     target.addEventListener('pointermove', (e) => {
       if (e.pointerType === 'mouse') this.kind = 'mouse';
+    });
+    target.addEventListener('pointerdown', (e) => {
+      if (this.fps && e.pointerType === 'touch' && !(e.target as Element | null)?.closest?.('#touchPad')) this.lookFingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    });
+    target.addEventListener('pointermove', (e) => {
+      const f = this.lookFingers.get(e.pointerId);
+      if (!f || !this.fps) return;
+      const d = this.devices.get('kb1')!;
+      const k = 0.0065 * this.lookSens;
+      d.raw.lookX = (d.raw.lookX ?? 0) + clampMove(e.clientX - f.x) * k;
+      d.raw.lookY = (d.raw.lookY ?? 0) + clampMove(e.clientY - f.y) * k;
+      f.x = e.clientX;
+      f.y = e.clientY;
+    });
+    for (const ev of ['pointerup', 'pointercancel'] as const) target.addEventListener(ev, (e) => this.lookFingers.delete(e.pointerId));
+    target.addEventListener('mousemove', (e) => {
+      if (!this.fps || typeof document === 'undefined' || !document.pointerLockElement) return;
+      const d = this.devices.get('kb1')!;
+      const k = 0.0024 * this.lookSens;
+      d.raw.lookX = (d.raw.lookX ?? 0) + clampMove(e.movementX) * k;
+      d.raw.lookY = (d.raw.lookY ?? 0) + clampMove(e.movementY) * k;
+    });
+    target.addEventListener('mousedown', (e) => {
+      if (!this.fps) return;
+      const d = this.devices.get('kb1')!;
+      if (e.button === 0) {
+        this.mouseFire = true;
+        d.raw.fireCount = (d.raw.fireCount ?? 0) + 1;
+      } else if (e.button === 2) this.mouseScope = true;
+      else if (e.button === 3 || e.button === 4) d.raw.bCount++;
+    });
+    target.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseFire = false;
+      else if (e.button === 2) this.mouseScope = false;
+    });
+    target.addEventListener('contextmenu', (e) => {
+      if (this.fps) e.preventDefault();
     });
     target.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch' || e.pointerType === 'pen') {
@@ -231,6 +285,13 @@ export class InputManager {
     this.touchSeen = true;
     if (btn === 'a') this.virt.a = down;
     if (btn === 'b') this.virt.b = down;
+    if (!down && btn === 'a' && this.virtScope) {
+      // phones: let go of A to fire
+      this.virtScope = false;
+      const d = this.devices.get('kb1')!;
+      d.raw.fireCount = (d.raw.fireCount ?? 0) + 1;
+      return;
+    }
     if (!down) return;
     if (this.grab) {
       if (btn === 'a') this.grab({ kind: 'a' });
@@ -243,6 +304,10 @@ export class InputManager {
     }
     const d = this.devices.get('kb1')!;
     if (btn === 'start') return this.start('kb1');
+    if (this.fps && btn === 'a') {
+      this.virtScope = true;
+      return;
+    }
     if (btn === 'y') this.onYPress(d);
     if (btn === 'a') this.onAPress(d);
     if (btn === 'b') this.onBPress(d);
@@ -262,6 +327,9 @@ export class InputManager {
 
   /** Call once per animation frame. */
   poll(): void {
+    const nowP = performance.now();
+    const pdt = Math.min(0.1, Math.max(0, (nowP - (this.lastPoll || nowP)) / 1000));
+    this.lastPoll = nowP;
     if (this.soloKeys) {
       const d2 = this.devices.get('kb2')!;
       d2.raw.x = d2.raw.y = 0;
@@ -270,8 +338,20 @@ export class InputManager {
     for (const p of this.profiles()) {
       const d = this.devices.get(p.key)!;
       const any = (codes: string[]) => codes.some((c) => this.keys.has(c));
-      let x = (any(p.right) ? 1 : 0) - (any(p.left) ? 1 : 0);
-      let y = (any(p.down) ? 1 : 0) - (any(p.up) ? 1 : 0);
+      // first person: WASD walks and the arrows turn
+      const fpsKeys = this.fps && p.key === 'kb1';
+      const only = (codes: string[]) => (fpsKeys ? codes.filter((c) => c.startsWith('Key')) : codes);
+      let x = (any(only(p.right)) ? 1 : 0) - (any(only(p.left)) ? 1 : 0);
+      let y = (any(only(p.down)) ? 1 : 0) - (any(only(p.up)) ? 1 : 0);
+      if (fpsKeys) {
+        const k = (c: string) => (this.keys.has(c) ? 1 : 0);
+        const turn = 2.4 * this.lookSens * pdt;
+        d.raw.lookX = (d.raw.lookX ?? 0) + (k('ArrowRight') - k('ArrowLeft')) * turn;
+        d.raw.lookY = (d.raw.lookY ?? 0) + (k('ArrowDown') - k('ArrowUp')) * turn * 0.7;
+        d.raw.fire = this.mouseFire || FPS_FIRE.some((c) => this.keys.has(c));
+        d.raw.scope = this.mouseScope || this.virtScope || FPS_SCOPE.some((c) => this.keys.has(c));
+        if (this.virtScope) d.raw.a = false;
+      } else if (p.key === 'kb1') d.raw.fire = d.raw.scope = false;
       if (x && y) {
         x *= Math.SQRT1_2;
         y *= Math.SQRT1_2;
@@ -457,6 +537,20 @@ export class InputManager {
       d.raw.y = y;
       d.raw.a = a;
       d.raw.b = b;
+      if (this.fps) {
+        // right stick turns (curved, so small pushes aim finely); triggers fire and scope; R3 is knife too
+        const curve = (v: number) => (Math.abs(v) < 0.15 ? 0 : Math.sign(v) * ((Math.abs(v) - 0.15) / 0.85) ** 2);
+        const rx = curve(gp.axes[2] ?? 0), ry = curve(gp.axes[3] ?? 0);
+        d.raw.lookX = (d.raw.lookX ?? 0) + rx * 3.4 * this.lookSens * pdt;
+        d.raw.lookY = (d.raw.lookY ?? 0) + ry * 2.2 * this.lookSens * pdt;
+        const trig = (i: number) => (gp.buttons[i]?.value ?? 0) > 0.35 || pressed(i);
+        const fire = trig(7) || pressed(5);
+        if (fire && !d.raw.fire) d.raw.fireCount = (d.raw.fireCount ?? 0) + 1;
+        d.raw.fire = fire;
+        d.raw.scope = trig(6) || pressed(4);
+        if (pressed(11) && !this.padHeld.get(key + 'r3')) d.raw.bCount++;
+        this.padHeld.set(key + 'r3', pressed(11));
+      } else d.raw.fire = d.raw.scope = false;
     }
     for (const d of this.devices.values()) {
       if (d.key.startsWith('pad') && !seen.has(d.key)) {
@@ -501,6 +595,26 @@ export class InputManager {
 
   list(): Device[] {
     return [...this.devices.values()];
+  }
+}
+
+const FPS_FIRE = ['KeyJ'];
+const FPS_SCOPE = ['KeyK'];
+const clampMove = (v: number) => (Number.isFinite(v) ? Math.max(-300, Math.min(300, v)) : 0);
+const SENS_KEY = 'choppy.lookSens';
+function loadSens(): number {
+  try {
+    const v = Number(localStorage.getItem(SENS_KEY));
+    return v >= 0.3 && v <= 2.5 ? v : 1;
+  } catch {
+    return 1;
+  }
+}
+export function saveSens(v: number): void {
+  try {
+    localStorage.setItem(SENS_KEY, String(v));
+  } catch {
+    /* private mode */
   }
 }
 

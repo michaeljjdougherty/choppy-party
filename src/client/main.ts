@@ -26,6 +26,7 @@ import { customizeView } from './three/views/customize';
 import { roundRect, text } from '../shared/draw';
 import { Stage, type Tag } from './three/stage';
 import { GAME_VIEWS, boardView, mainMenuView, menuView } from './three/views';
+import { FPS_LOOK } from './three/views/scopeSnap';
 import { preloadAll } from './three/assets';
 import { logo } from './menu';
 import type { BotLevel } from '../shared/bots';
@@ -415,6 +416,32 @@ function addSecondKeyboard() {
 function hasLocal(dev: string): boolean {
   return [...(session?.localIds() ?? [])].some((id) => deviceOf(id) === dev);
 }
+/**
+ * First-person games: while one is being played, the mouse aims (pointer lock on the first click),
+ * arrows turn and the triggers fire. Menus, the pause screen and Settings get the mouse back.
+ */
+function fpsMode(s: PartyState): void {
+  const local = session?.localIds() ?? new Set<string>();
+  const on = s.phase === 'play' && s.gameId === 'scope-snap' && !s.pause && !settings.open && !ost.open && !devMode.busy && (s.gamePlayers ?? s.players).some((p) => !p.bot && local.has(p.id));
+  input.fps = on;
+  FPS_LOOK.online = () => session?.kind === 'online';
+  FPS_LOOK.total = (id) => {
+    const d = input.get(deviceOf(id));
+    return d ? { x: d.raw.lookX ?? 0, y: d.raw.lookY ?? 0 } : null;
+  };
+  if (!on && document.pointerLockElement) document.exitPointerLock();
+}
+canvas.addEventListener('mousedown', () => {
+  if (input.fps && !document.pointerLockElement && !input.touchSeen) {
+    try {
+      const r = (canvas as HTMLCanvasElement & { requestPointerLock(o?: unknown): Promise<void> | void }).requestPointerLock({ unadjustedMovement: true });
+      if (r && 'catch' in r) (r as Promise<void>).catch(() => canvas.requestPointerLock());
+    } catch {
+      /* pointer lock refused: the arrows still aim */
+    }
+  }
+});
+
 function deviceOf(id: string): string {
   return id.slice(id.lastIndexOf('.') + 1);
 }
@@ -766,6 +793,7 @@ function renderScreens(wallT: number, dt: number) {
     lobbyGameLive = false;
   }
   input.mouseHoldsA = s.phase === 'intro';
+  fpsMode(s);
   if (names.open && (s.phase !== 'lobby' || !s.players.some((p) => p.id === names.open!.playerId))) names.close(false);
   lastTags = view.tags();
   drawTags(lastTags);

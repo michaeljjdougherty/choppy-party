@@ -1,4 +1,4 @@
-import type { GrabEvent, InputManager } from './input';
+import { saveSens, type GrabEvent, type InputManager } from './input';
 import { roundRect, text } from '../shared/draw';
 import { button, clicked, inside, pointerAt, takeStrayClick } from './ui';
 import { A, B, STICK, isTouch, promptKind } from './prompts';
@@ -13,13 +13,14 @@ import { setShakeEnabled, shakeEnabled } from './three/fx';
  * While it is open it takes every controller, keyboard and touch button (input.grab), so the game
  * underneath hears nothing. Mouse and touch click the controls directly.
  */
-type Row = 'graphics' | 'advanced' | 'music' | 'sfx' | 'shake' | 'fullscreen' | 'dev' | 'done';
-const ROWS: Row[] = ['graphics', 'advanced', 'music', 'sfx', 'shake', 'fullscreen', 'dev', 'done'];
+type Row = 'graphics' | 'advanced' | 'music' | 'sfx' | 'aim' | 'shake' | 'fullscreen' | 'dev' | 'done';
+const ROWS: Row[] = ['graphics', 'advanced', 'music', 'sfx', 'aim', 'shake', 'fullscreen', 'dev', 'done'];
 const LABEL: Record<Row, string> = {
   graphics: 'Graphics',
   advanced: 'Graphics options',
   music: 'Music',
   sfx: 'Sound effects',
+  aim: 'Aim sensitivity',
   shake: 'Screen shake',
   fullscreen: 'Full screen',
   dev: 'Developer mode',
@@ -74,8 +75,8 @@ const G_ROW_Y0 = 56 + 140; // P.y + 140
 const G_ROW_H = 27;
 
 const P = { x: 300, y: 56, w: 680, h: 608 };
-const ROW_Y0 = P.y + 136;
-const ROW_H = 58;
+const ROW_Y0 = P.y + 128;
+const ROW_H = 52;
 /** Where a row's value control sits. */
 const CTRL = { x: P.x + 270, w: 370 };
 
@@ -182,13 +183,12 @@ export class Settings {
       if (wrap) j = (j + QUALITY_NAMES.length) % QUALITY_NAMES.length;
       j = Math.max(0, Math.min(QUALITY_NAMES.length - 1, j));
       if (j !== i) setQuality(QUALITY_NAMES[j]);
-    } else if (row === 'music' || row === 'sfx') {
-      const cur = Math.round((row === 'music' ? music.volume() : sfxVolume()) * 10);
+    } else if (row === 'music' || row === 'sfx' || row === 'aim') {
+      const cur = this.level(row);
       let n = cur + dir;
-      if (wrap && n > 10) n = 0;
-      n = Math.max(0, Math.min(10, n));
-      if (row === 'music') music.setVolume(n / 10);
-      else setSfxVolume(n / 10);
+      if (wrap && n > 10) n = row === 'aim' ? 1 : 0;
+      n = Math.max(row === 'aim' ? 1 : 0, Math.min(10, n));
+      this.setLevel(row, n);
     } else if (row === 'shake') setShakeEnabled(!shakeEnabled());
     else if (row === 'fullscreen') toggleFullscreen();
     else if (row === 'dev') {
@@ -225,13 +225,13 @@ export class Settings {
       const y = ROW_Y0 + i * ROW_H;
       const on = i === this.sel;
       // hovering a row with the mouse moves the highlight there
-      if (!fresh && inside(ptr, P.x + 30, y - 28, P.w - 60, 56) && promptKind() === 'mouse' && !isTouch() && this.sel !== i) this.sel = i;
+      if (!fresh && inside(ptr, P.x + 30, y - 24, P.w - 60, 48) && promptKind() === 'mouse' && !isTouch() && this.sel !== i) this.sel = i;
       if (row === 'done') {
         if (button(ctx, 'Done', P.x + P.w / 2 - 110, y - 22, 220, 50, { color: '#21c45a', size: 22, selected: on, sound: 'none' })) this.close();
         return;
       }
       ctx.fillStyle = on ? '#fff3b8' : '#f3f0ff';
-      roundRect(ctx, P.x + 30, y - 28, P.w - 60, 56, 18);
+      roundRect(ctx, P.x + 30, y - 24, P.w - 60, 48, 16);
       ctx.fill();
       if (on) {
         ctx.strokeStyle = '#ffd23f';
@@ -248,7 +248,7 @@ export class Settings {
         text(ctx, isCustom() ? 'Custom' : `${QUALITY_LABEL[qualityName()]} preset`, CTRL.x + 70, y + 1, 16, { color: '#8a7fb8', outline: false, weight: 800 });
       }
       else if (row === 'graphics') this.segments(ctx, y);
-      else if (row === 'music' || row === 'sfx') this.meter(ctx, row, y);
+      else if (row === 'music' || row === 'sfx' || row === 'aim') this.meter(ctx, row, y);
       else this.toggle(ctx, row as 'shake' | 'fullscreen', y);
     });
 
@@ -335,8 +335,22 @@ export class Settings {
     });
   }
 
-  private meter(ctx: CanvasRenderingContext2D, row: 'music' | 'sfx', y: number): void {
-    const v = Math.round((row === 'music' ? music.volume() : sfxVolume()) * 10);
+  /** Music, sound and aim sensitivity as 0..10 pips (aim: 4 pips is normal speed). */
+  private level(row: 'music' | 'sfx' | 'aim'): number {
+    if (row === 'aim') return Math.round(this.input.lookSens * 4);
+    return Math.round((row === 'music' ? music.volume() : sfxVolume()) * 10);
+  }
+  private setLevel(row: 'music' | 'sfx' | 'aim', n: number): void {
+    if (row === 'music') music.setVolume(n / 10);
+    else if (row === 'sfx') setSfxVolume(n / 10);
+    else {
+      this.input.lookSens = Math.max(1, n) / 4;
+      saveSens(this.input.lookSens);
+    }
+  }
+
+  private meter(ctx: CanvasRenderingContext2D, row: 'music' | 'sfx' | 'aim', y: number): void {
+    const v = this.level(row);
     const idx = ROWS.indexOf(row);
     if (button(ctx, '−', CTRL.x, y - 19, 44, 38, { color: '#6b6f86', size: 24, sound: 'none' })) {
       this.sel = idx;
@@ -352,18 +366,17 @@ export class Settings {
     const pw = span / 10;
     for (let i = 0; i < 10; i++) {
       const x = x0 + i * pw;
-      ctx.fillStyle = i < v ? (row === 'music' ? '#ff8a1f' : '#21c45a') : '#e2ddf5';
+      ctx.fillStyle = i < v ? (row === 'music' ? '#ff8a1f' : row === 'aim' ? '#2f8cff' : '#21c45a') : '#e2ddf5';
       roundRect(ctx, x + 2, y - 12, pw - 4, 24, 6);
       ctx.fill();
       if (clicked(x, y - 19, pw, 38)) {
         this.sel = idx;
         const n = v === i + 1 ? i : i + 1;
-        if (row === 'music') music.setVolume(n / 10);
-        else setSfxVolume(n / 10);
+        this.setLevel(row, row === 'aim' ? Math.max(1, n) : n);
         sfx.move();
       }
     }
-    text(ctx, v === 0 ? 'Off' : `${v * 10}%`, x0 + span + 26, y + 1, 16, { color: '#2a1b5e', outline: false, weight: 800 });
+    text(ctx, row === 'aim' ? `${(v / 4).toFixed(2).replace(/0$/, '')}x` : v === 0 ? 'Off' : `${v * 10}%`, x0 + span + 26, y + 1, 16, { color: '#2a1b5e', outline: false, weight: 800 });
   }
 
   private toggle(ctx: CanvasRenderingContext2D, row: 'shake' | 'fullscreen', y: number): void {

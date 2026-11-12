@@ -1,4 +1,10 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { flame, glowTex, wavingFlag } from '../look/fxKit';
+import { barkTexture, endGrainTexture } from '../look/wood';
+import { paintedCrateTexture, trussMaterial } from '../look/crate';
+import { ropeMaterial } from '../look/marble';
+import { rockGeometry, stoneMaterial } from '../life/rocks';
 import type { PlayerInfo } from '../../../shared/types';
 import { CELL as HCELL, COLS, FX0, FY0, ROWS as HROWS, laneKind, type HopState } from '../../../shared/games/roadHopper';
 import { CH, CW, craneX, sway, type StackState } from '../../../shared/games/crateStacker';
@@ -78,6 +84,11 @@ export function roadHopperView(env: THREE.Texture, state: HopState, players: Pla
       }
     }
   }
+  // meadow all round, so the field never ends in a void
+  const meadow = mesh(new THREE.PlaneGeometry(220, 160), new THREE.MeshStandardMaterial({ map: texture('floor_ground_grass', 50, 36), color: '#86c766', roughness: 1 }), { cast: false, receive: true });
+  meadow.rotation.x = -Math.PI / 2;
+  meadow.position.set(ax(W / 2), -0.41, az(HROWS / 2));
+  scene.add(meadow);
   const riverRows = [6, 7, 8, 9];
   const riverZ = (az(6) + az(9)) / 2;
   const river = mesh(new THREE.PlaneGeometry(fieldW + 30, C * 4), water.material, { cast: false, receive: true });
@@ -86,18 +97,33 @@ export function roadHopperView(env: THREE.Texture, state: HopState, players: Pla
   scene.add(river);
   // the far bank: a flag to reach
   place(scene, 'pirate/flag-high', ax(W / 2), 0, az(HROWS - 1) - C * 0.3, { s: 2.2 });
+  const riverStone = stoneMaterial('#8f969c');
+  const bankStone = stoneMaterial('#a59a8a');
   // trees and rocks down both sides, hiding where carts and logs wrap round
   for (let row = -1; row <= HROWS; row++) {
     for (const side of [-1, 1]) {
       const x = side < 0 ? ax(-HCELL * 1.4) : ax(W + HCELL * 1.4);
       const z = row < 0 ? az(0) + C : row >= HROWS ? az(HROWS - 1) - C : az(row);
-      if (laneKind(Math.max(0, Math.min(HROWS - 1, row))) === 'river') place(scene, 'pirate/rocks-c', x, -0.3, z, { s: 1.3, ry: row });
-      else place(scene, row % 2 ? 'forest/tree' : 'forest/tree-high', x, 0, z, { s: 2.6, ry: row });
-      place(scene, 'pirate/rocks-a', x + side * 2.6, -0.2, z, { s: 1.4, ry: row * 2 });
+      if (laneKind(Math.max(0, Math.min(HROWS - 1, row))) === 'river') {
+        const r = mesh(rockGeometry(1.3, row * 2 + (side > 0 ? 1 : 0), 0.3), riverStone, { receive: true });
+        r.position.set(x, -0.1, z);
+        r.rotation.y = row;
+        scene.add(r);
+      } else place(scene, row % 2 ? 'forest/tree' : 'forest/tree-high', x, 0, z, { s: 2.6, ry: row });
+      const b = mesh(rockGeometry(0.9 + ((row * 7) % 5) * 0.12, 20 + row * 3 + side, 0.32), bankStone, { receive: true });
+      b.position.set(x + side * 2.6, 0.1, z);
+      b.rotation.y = row * 2;
+      scene.add(b);
     }
   }
   // carts and logs
-  const logMat = new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', 1, 3), color: '#a0703f', roughness: 0.9 });
+  const barkMap = barkTexture().clone();
+  barkMap.repeat.set(2, 4);
+  barkMap.needsUpdate = true;
+  const logMat = new THREE.MeshStandardMaterial({ map: barkMap, bumpMap: barkMap, bumpScale: 2, roughness: 0.95 });
+  logMat.userData.noDetail = true;
+  const grainMat = new THREE.MeshStandardMaterial({ map: endGrainTexture(), roughness: 0.85 });
+  grainMat.userData.noDetail = true;
   const things = state.lanes.map((l) => {
     return l.things.map((th) => {
       const g = new THREE.Group();
@@ -106,7 +132,7 @@ export function roadHopperView(env: THREE.Texture, state: HopState, players: Pla
         const cart = boxed('train/train-carriage-coal', len * 0.92, C * 0.75, C * 0.72);
         g.add(cart);
       } else {
-        const log = mesh(new THREE.CylinderGeometry(C * 0.36, C * 0.36, len * 0.96, 12), logMat, { cast: true, receive: true });
+        const log = mesh(new THREE.CylinderGeometry(C * 0.36, C * 0.36, len * 0.96, 24, 1), [logMat, grainMat, grainMat], { cast: true, receive: true });
         log.rotation.z = Math.PI / 2;
         log.position.y = -0.05;
         g.add(log);
@@ -212,21 +238,21 @@ export function crateStackerView(env: THREE.Texture, state: StackState, players:
   place(scene, 'pirate/ship-medium', 22, -0.6, -32, { s: 4, ry: -0.6 });
   place(scene, 'pirate/tower-complete-large', 0, -0.6, -48, { s: 5 });
   for (let i = 0; i < 6; i++) place(scene, i % 2 ? 'pirate/barrel' : 'pirate/crate-bottles', -15 + i * 6 + (i > 2 ? 0 : 0), 0, -3.8, { s: 1.4, ry: i });
-  const crateMat = new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', 1, 1), color: '#d09a5a', roughness: 0.85 });
-  const edgeMat = toy('#7a4e26', 0.8);
+  // painted shipping crates (bevelled, braced, in the player's colour)
+  const crateGeo = new RoundedBoxGeometry(cw, ch, cw * 0.8, 2, 0.06);
+  const crateMats = new Map<string, THREE.Material>();
   const makeCrate = (tint?: string) => {
+    const key = tint ?? '#d09a5a';
+    let m = crateMats.get(key);
+    if (!m) {
+      m = new THREE.MeshStandardMaterial({ map: paintedCrateTexture(), color: new THREE.Color(key).lerp(new THREE.Color('#ffffff'), 0.25), roughness: 0.6 });
+      m.userData.noDetail = true;
+      crateMats.set(key, m);
+    }
     const g = new THREE.Group();
-    const b = mesh(new THREE.BoxGeometry(cw, ch, cw * 0.8), tint ? new THREE.MeshStandardMaterial({ map: crateMat.map, color: new THREE.Color(tint).lerp(new THREE.Color('#ffe2b8'), 0.55), roughness: 0.85 }) : crateMat);
+    const b = mesh(crateGeo, m);
     b.position.y = ch / 2;
     g.add(b);
-    for (const sx of [-1, 1]) {
-      const e = mesh(new THREE.BoxGeometry(0.1, ch, cw * 0.82), edgeMat, { cast: false });
-      e.position.set(sx * (cw / 2 - 0.04), ch / 2, 0);
-      g.add(e);
-    }
-    const x = mesh(new THREE.BoxGeometry(cw * 1.02, 0.1, cw * 0.82), edgeMat, { cast: false });
-    x.position.y = ch - 0.05;
-    g.add(x);
     return g;
   };
   const fx = new Fx(scene);
@@ -242,8 +268,10 @@ export function crateStackerView(env: THREE.Texture, state: StackState, players:
     root.add(stack);
     // the crane: a mast beside the tower, an arm above, a hook on a rope
     const crane = new THREE.Group();
-    const mast = mesh(new THREE.BoxGeometry(0.4, 1, 0.4), toy('#ffb020', 0.5));
-    const arm = mesh(new THREE.BoxGeometry(10, 0.35, 0.35), toy('#ffb020', 0.5));
+    const mastMat = trussMaterial(1, 2);
+    const mast = mesh(new THREE.BoxGeometry(0.45, 1, 0.45), mastMat);
+    const arm = mesh(new THREE.BoxGeometry(10, 0.4, 0.4), trussMaterial(22, 1));
+    mast.userData.mat = mastMat;
     const ropeM = mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 6), toy('#3a3a3a', 0.8), { cast: false });
     const hookCrate = makeCrate(colorOf(players, k.id));
     crane.add(mast, arm, ropeM, hookCrate);
@@ -284,6 +312,7 @@ export function crateStackerView(env: THREE.Texture, state: StackState, players:
         const hookY = (n + 3.2) * ch + 0.4;
         const hx = k.drop ? k.drop.x * PX : craneX(k) * PX;
         v.mast.scale.y = hookY + 1.2;
+        (v.mast.userData.mat as THREE.MeshStandardMaterial).map!.repeat.set(1, (hookY + 1.2) / 0.45);
         v.mast.position.set(i === 0 ? -5.6 : 5.6, (hookY + 1.2) / 2, -0.9);
         v.arm.position.set(0, hookY + 1.2, -0.9);
         const showHook = !k.over && !k.drop && k.next <= 0;
@@ -374,22 +403,32 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
   sea.rotation.x = -Math.PI / 2;
   sea.position.set(0, 0, -20);
   scene.add(sea);
-  place(scene, 'pirate/ship-pirate-large', -4, 0, -38, { s: 5, ry: 1.2 });
+  place(scene, 'pirate/ship-pirate-large', -14, 0, -75, { s: 4.2, ry: 1.2 });
   for (let i = 0; i < 5; i++) place(scene, i % 2 ? 'pirate/palm-detailed-bend' : 'pirate/palm-straight', -30 + i * 15, 0, -55, { s: 5 });
   const stone = new THREE.MeshStandardMaterial({ map: texture('wall_brick_stone_center', 1, 1), color: '#cfc6b4', roughness: 1 });
   const fw = FORT_W * PX, fh = FORT_H * PX;
   const bw = fw / FCOLS, bh = fh / FROWS;
+  // dressed stone blocks with bevelled edges, in a few tones so the wall doesn't read as one flat sheet
+  const blockGeo = new RoundedBoxGeometry(bw * 0.96, bh * 0.94, 3, 2, Math.min(bw, bh) * 0.1);
+  const stones = ['#d6ccb8', '#c4b8a2', '#ddd4c2', '#bfb39c'].map((c) => {
+    const m = stone.clone();
+    m.color.set(c);
+    return m;
+  });
   const fx = new Fx(scene);
   const forts = [0, 1].map((team) => {
     const g = new THREE.Group();
     g.position.set(sx(FORT_X[team] + FORT_W / 2), 0, 0);
     scene.add(g);
     // a rocky island under it
-    place(g, 'pirate/rocks-sand-a', 0, -0.6, 0, { s: 4.2 });
+    const isle = mesh(rockGeometry(fw * 0.62, 7 + team, 0.22), stoneMaterial('#b49a78'), { cast: false, receive: true });
+    isle.scale.set(1.15, 0.45, 0.75);
+    isle.position.set(0, -0.35, -0.4);
+    g.add(isle);
     const blocks: THREE.Mesh[] = [];
     for (let r = 0; r < FROWS; r++)
       for (let c = 0; c < FCOLS; c++) {
-        const b = mesh(new THREE.BoxGeometry(bw * 0.98, bh * 0.98, 3), stone, { cast: true, receive: true });
+        const b = mesh(blockGeo, stones[(r * 3 + c * 5) % stones.length], { cast: true, receive: true });
         b.position.set(-fw / 2 + (c + 0.5) * bw, (r + 0.5) * bh, -0.4);
         g.add(b);
         blocks.push(b);
@@ -400,12 +439,20 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
     for (const fxp of [-fw / 2 + 0.3, fw / 2 - 0.3]) {
       const pole = mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4), toy('#6b4a2e', 0.8));
       pole.position.set(fxp, fh + 1.2, -0.4);
-      const flag = mesh(new THREE.PlaneGeometry(1.1, 0.7), new THREE.MeshStandardMaterial({ color: TEAM_HEX[team], side: THREE.DoubleSide }), { cast: false });
-      flag.position.set(fxp + 0.55, fh + 2.0, -0.4);
+      const flag = wavingFlag(1.1, 0.7, TEAM_HEX[team]);
+      flag.position.set(fxp, fh + 2.0, -0.4);
       g.add(pole, flag);
     }
     return { g, blocks, order, gone: 0, flying: [] as { o: THREE.Mesh; v: THREE.Vector3; w: THREE.Vector3 }[] };
   });
+  // a cast-iron barrel: breech knob, reinforcing bands and a flared muzzle
+  const cannonGeo = new THREE.LatheGeometry(
+    ([[0, -0.68], [0.1, -0.7], [0.12, -0.62], [0.27, -0.6], [0.29, -0.5], [0.27, -0.42], [0.25, -0.1], [0.26, -0.06], [0.24, 0.0], [0.21, 0.45], [0.23, 0.5], [0.27, 0.58], [0.27, 0.65], [0.13, 0.65], [0.13, 0.4]] as [number, number][]).map(([r, y]) => new THREE.Vector2(r, y)),
+    28,
+  );
+  cannonGeo.computeVertexNormals();
+  const ironMat = new THREE.MeshPhysicalMaterial({ color: '#2c2d33', metalness: 0.85, roughness: 0.38, clearcoat: 0.3 });
+  ironMat.userData.noDetail = true;
   const guns = state.gunners.map((gn) => {
     const g = new THREE.Group();
     g.position.set(sx(gn.x), hy(gn.h - 14), 1.3);
@@ -413,7 +460,7 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
     ledge.position.y = -0.09;
     g.add(ledge);
     const barrel = new THREE.Group();
-    const tube = mesh(new THREE.CylinderGeometry(0.2, 0.26, 1.3, 12), toy('#3b3b44', 0.35));
+    const tube = mesh(cannonGeo, ironMat);
     tube.rotation.z = -Math.PI / 2;
     tube.position.x = 0.45;
     const rim = mesh(new THREE.TorusGeometry(0.22, 0.06, 6, 12), toy(colorOf(players, gn.id), 0.4), { cast: false });
@@ -442,8 +489,8 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
     scene.add(g);
     return { g, barrel, m, gaugeBg, fill, kick: 0 };
   });
-  const shellGeo = new THREE.SphereGeometry(0.2, 10, 8);
-  const shellMat = toy('#1e1e24', 0.3);
+  const shellGeo = new THREE.SphereGeometry(0.2, 20, 14);
+  const shellMat = ironMat;
   const shells: THREE.Mesh[] = [];
   let last = state;
   return {
@@ -492,7 +539,10 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
         const gn = s.gunners[i];
         if (!gn) continue;
         guns[i].kick = 1;
-        fx.emit(new THREE.Vector3(sx(gn.x) + (gn.team === 0 ? 1.2 : -1.2), hy(gn.h), 1.4), { tex: 'puff', color: ['#ffffff', '#d8d8d8'], n: 8, speed: [1, 3], life: [0.3, 0.6], size: [0.5, 1.2], drag: 3 });
+        const muzzle = new THREE.Vector3(sx(gn.x) + (gn.team === 0 ? 1.2 : -1.2), hy(gn.h), 1.4);
+        fx.flash(muzzle, '#ffc070', 40, 8);
+        fx.emit(muzzle, { tex: 'soft', color: ['#fff6d0', '#ffd27a'], to: '#ff5a10', n: 5, speed: [1.5, 4], spread: 0.4, life: [0.1, 0.22], size: [0.8, 1.6], additive: true, drag: 6 });
+        fx.emit(muzzle, { tex: 'puff', color: ['#ffffff', '#e0dcd6'], to: '#9a948e', n: 12, speed: [1, 4], up: 0.8, life: [0.5, 1.0], size: [0.6, 1.4], drag: 3.5, gravity: -0.8 });
         sfx.boom();
       }
       while (shells.length < s.shells.length) {
@@ -503,7 +553,11 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
       shells.forEach((m, i) => {
         const sh = s.shells[i];
         m.visible = !!sh;
-        if (sh) m.position.set(sx(sh.x), hy(sh.h), 1.3);
+        if (sh) {
+          m.position.set(sx(sh.x), hy(sh.h), 1.3);
+          // a wisp of smoke streaming off each ball in flight
+          if (Math.random() < dt * 30) fx.emit(m.position.clone(), { tex: 'puff', color: ['#e8e2da', '#c8c0b8'], n: 1, speed: [0.05, 0.3], life: [0.35, 0.7], size: [0.2, 0.55], drag: 2 });
+        }
       });
       for (const b of s.booms) {
         const at = new THREE.Vector3(sx(b.x), hy(b.h), 1.3);
@@ -544,7 +598,25 @@ export function stewRelayView(env: THREE.Texture, state: RelayState, players: Pl
   }
   // the fence down the middle
   const midZ = wz((LANE_Y[0] + LANE_H + LANE_Y[1]) / 2);
-  for (let i = 0; i < 14; i++) place(scene, 'pirate/structure-fence', wx(80 + i * 85), 0, midZ, { s: 1.6 });
+  // a low post-and-rope market fence (it must never hide the far lane)
+  {
+    const postGeo = new THREE.LatheGeometry([[0.12, 0], [0.12, 0.75], [0.15, 0.78], [0.15, 0.86], [0.09, 0.92], [0.001, 0.95]].map(([r, y]) => new THREE.Vector2(r, y)), 14);
+    const postMat = new THREE.MeshStandardMaterial({ map: barkTexture(), color: '#b08a66', roughness: 0.9 });
+    const rope = ropeMaterial('#d8b67a', 30);
+    const n = 15;
+    const xs = Array.from({ length: n }, (_, i) => wx(70 + i * (1150 / (n - 1))));
+    for (const x of xs) {
+      const p = mesh(postGeo, postMat);
+      p.position.set(x, 0, midZ);
+      scene.add(p);
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const a = new THREE.Vector3(xs[i], 0.78, midZ), b = new THREE.Vector3(xs[i + 1], 0.78, midZ);
+      const mid = a.clone().lerp(b, 0.5).setY(0.58);
+      const tube = mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(a, mid, b), 16, 0.04, 6), rope, { cast: true });
+      scene.add(tube);
+    }
+  }
   // market dressing around the outside
   for (let i = 0; i < 7; i++) {
     place(scene, i % 2 ? 'pirate/barrel' : 'pirate/crate', wx(120 + i * 170), 0, wz(LANE_Y[0] - 40), { s: 1.5, ry: i });
@@ -556,8 +628,11 @@ export function stewRelayView(env: THREE.Texture, state: RelayState, players: Pl
     const p = potAt(team);
     const g = new THREE.Group();
     g.position.set(wx(p.x), 0, wz(p.y));
-    const pot = mesh(new THREE.CylinderGeometry(1.2, 0.95, 1.3, 20, 1, true), new THREE.MeshStandardMaterial({ color: '#2d2d34', roughness: 0.4, metalness: 0.5, side: THREE.DoubleSide }));
-    pot.position.y = 0.95;
+    // a cast-iron cauldron: bellied sides and a rolled lip
+    const potGeo = new THREE.LatheGeometry([[0.001, 0], [0.6, 0.02], [1.05, 0.25], [1.28, 0.7], [1.25, 1.05], [1.12, 1.25], [1.18, 1.3], [1.12, 1.32], [1.05, 1.2], [1.12, 0.7], [0.9, 0.3], [0.001, 0.22]].map(([r, y]) => new THREE.Vector2(r, y)), 40);
+    potGeo.computeVertexNormals();
+    const pot = mesh(potGeo, new THREE.MeshPhysicalMaterial({ color: '#2a2a30', roughness: 0.45, metalness: 0.7, clearcoat: 0.2 }));
+    pot.position.y = 0.3;
     const bottom = mesh(new THREE.CircleGeometry(0.95, 20), toy('#2d2d34', 0.4));
     bottom.rotation.x = -Math.PI / 2;
     bottom.position.y = 0.31;
@@ -567,6 +642,12 @@ export function stewRelayView(env: THREE.Texture, state: RelayState, players: Pl
     const stew = mesh(new THREE.CircleGeometry(1.1, 24), new THREE.MeshStandardMaterial({ color: '#d86a2a', emissive: '#8a3a10', emissiveIntensity: 0.4, roughness: 0.5 }), { cast: false });
     stew.rotation.x = -Math.PI / 2;
     place(g, 'graveyard/fire-basket', 0, -0.1, 0, { s: 1.3, shadow: false });
+    // flames licking up round the pot
+    for (const a of [0, 2.1, 4.2]) {
+      const f = flame(0.7);
+      f.position.set(Math.cos(a) * 0.55, 0.15, Math.sin(a) * 0.55);
+      g.add(f);
+    }
     const light = new THREE.PointLight('#ff9a3c', 10, 6);
     light.position.y = 0.4;
     g.add(pot, bottom, rim, stew, light);
@@ -579,7 +660,7 @@ export function stewRelayView(env: THREE.Texture, state: RelayState, players: Pl
       const at = stallAt(state, k, team);
       const g = new THREE.Group();
       g.position.set(wx(at.x), 0, wz(at.y));
-      const counter = mesh(new THREE.BoxGeometry(1.7, 0.7, 1.2), new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', 1, 1), color: '#b98a58', roughness: 0.9 }), { receive: true });
+      const counter = mesh(new RoundedBoxGeometry(1.7, 0.7, 1.2, 2, 0.06), new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', 1, 1), color: '#b98a58', roughness: 0.9 }), { receive: true });
       counter.position.y = 0.35;
       g.add(counter);
       for (let j = 0; j < 3; j++) {
@@ -745,7 +826,7 @@ export function crateCascadeView(env: THREE.Texture, state: CascadeState, player
   scene.add(wall);
   // each well: a frame of posts with a back board
   const frameMat = toy('#6b4a2e', 0.8);
-  const backMat = new THREE.MeshStandardMaterial({ color: '#2a2230', roughness: 1, transparent: true, opacity: 0.85 });
+  const backMat = new THREE.MeshStandardMaterial({ color: '#3a3448', emissive: '#1c1830', roughness: 0.9, transparent: true, opacity: 0.9 });
   const backs = origin.map((o) => {
     const g = new THREE.Group();
     g.position.copy(o);
@@ -769,8 +850,11 @@ export function crateCascadeView(env: THREE.Texture, state: CascadeState, player
   });
   // all the crates in one instanced mesh
   const per = WELL_W * WELL_H + 8;
-  const crateTex = texture('floor_wood_planks', 1, 1);
-  const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(C * 0.94, C * 0.94, C * 0.94), new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.8 }), n * per);
+  // painted crates: a pale wood face with a darker frame and cross-brace, so the paint colour stays bright and readable
+  const crateTex = paintedCrateTexture();
+  const crateMat = new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.6 });
+  crateMat.userData.noDetail = true;
+  const crates = new THREE.InstancedMesh(new RoundedBoxGeometry(C * 0.95, C * 0.95, C * 0.95, 2, C * 0.08), crateMat, n * per);
   crates.castShadow = true;
   crates.receiveShadow = true;
   scene.add(crates);
@@ -909,9 +993,37 @@ export function sparkTrailsView(env: THREE.Texture, state: SparkState, players: 
   }
   for (let i = 0; i < 8; i++) place(scene, ['space/crater', 'space/rock_crystals', 'space/meteor'][i % 3], (i - 3.5) * 8, 0, z0 - 6 - (i % 2) * 3, { s: 3 });
   // trails: one instanced mesh of glowing wall blocks, coloured by rider
-  const trails = new THREE.InstancedMesh(new THREE.BoxGeometry(C * 1.02, 0.42, C * 1.02), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.55, roughness: 0.4 }), gw * gh);
+  // each block reads as a wall of light: dim glassy base rising to a white-hot top edge
+  const lc = document.createElement('canvas');
+  lc.width = 4;
+  lc.height = 64;
+  const lg = lc.getContext('2d')!;
+  const grad = lg.createLinearGradient(0, 64, 0, 0);
+  grad.addColorStop(0, '#303030');
+  grad.addColorStop(0.7, '#9a9a9a');
+  grad.addColorStop(0.86, '#ffffff');
+  grad.addColorStop(1, '#ffffff');
+  lg.fillStyle = grad;
+  lg.fillRect(0, 0, 4, 64);
+  const lightTex = new THREE.CanvasTexture(lc);
+  lightTex.colorSpace = THREE.SRGBColorSpace;
+  const trails = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(C * 1.02, 0.42, C * 1.02),
+    new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveMap: lightTex, emissiveIntensity: 1.25, roughness: 0.25, metalness: 0.1 }),
+    gw * gh,
+  );
   trails.count = 0;
   scene.add(trails);
+  // and spills coloured light onto the floor around it
+  const spill = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(C * 3, C * 3).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: glowTex(), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }),
+    gw * gh,
+  );
+  spill.count = 0;
+  spill.position.y = 0.025;
+  spill.renderOrder = 2;
+  scene.add(spill);
   const colors = state.riders.map((r) => new THREE.Color(colorOf(players, r.id)));
   const drawn = state.riders.map(() => 0);
   const m4 = new THREE.Matrix4();
@@ -950,6 +1062,12 @@ export function sparkTrailsView(env: THREE.Texture, state: SparkState, players: 
           const k = trails.count++;
           trails.setMatrixAt(k, m4);
           trails.setColorAt(k, colors[i]);
+          m4.setPosition(m4.elements[12], 0, m4.elements[14]);
+          spill.count = k + 1;
+          spill.setMatrixAt(k, m4);
+          spill.setColorAt(k, colors[i]);
+          spill.instanceMatrix.needsUpdate = true;
+          if (spill.instanceColor) spill.instanceColor.needsUpdate = true;
           drawn[i]++;
           trails.instanceMatrix.needsUpdate = true;
           if (trails.instanceColor) trails.instanceColor.needsUpdate = true;

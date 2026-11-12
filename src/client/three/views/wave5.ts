@@ -1,4 +1,11 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { flame, glowDisc, glowSprite, glowTex, groundFog, lampGlow, onTop } from '../look/fxKit';
+import { snowMaterial } from '../look/snow';
+import { moonMaterial } from '../look/moon';
+import { rugTexture } from '../look/marble';
+import { rockGeometry, stoneMaterial } from '../life/rocks';
+import { treeStump, woodFloorMaterial } from '../look/wood';
 import type { PlayerInfo } from '../../../shared/types';
 import { tileCentre, type PlazaState } from '../../../shared/games/paintPlaza';
 import type { CountState } from '../../../shared/games/alienCount';
@@ -26,12 +33,14 @@ function fitCamera(camera: THREE.PerspectiveCamera, w: number, h: number, cy = 3
   camera.lookAt(0, 0, wz(cy) + 1);
 }
 
-function ground(scene: THREE.Scene, color: string, r = 90, y = -0.02): void {
-  const g = mesh(new THREE.CircleGeometry(r, 48), toy(color, 0.95), { cast: false, receive: true });
+function ground(scene: THREE.Scene, color: string, r = 90, y = -0.02, mat?: THREE.Material): void {
+  const g = mesh(new THREE.CircleGeometry(r, 48), mat ?? toy(color, 0.95), { cast: false, receive: true });
   g.rotation.x = -Math.PI / 2;
   g.position.y = y;
   scene.add(g);
 }
+
+const XAXIS = new THREE.Vector3(1, 0, 0);
 
 /* ------------------------------------------------------------------ Paint the Plaza */
 
@@ -47,7 +56,7 @@ export function plazaView(env: THREE.Texture, state: PlazaState, players: Player
   rim.position.set(wx(state.x0 + W / 2), -0.1, wz(cy));
   scene.add(rim);
   const ts = state.tile * PX;
-  const tiles = new THREE.InstancedMesh(new THREE.BoxGeometry(ts * 0.94, 0.12, ts * 0.94), new THREE.MeshStandardMaterial({ roughness: 0.55 }), state.tiles.length);
+  const tiles = new THREE.InstancedMesh(new RoundedBoxGeometry(ts * 0.94, 0.12, ts * 0.94, 2, 0.03), new THREE.MeshStandardMaterial({ map: texture('floor_stone_pattern_small', 1, 1), roughness: 0.85 }), state.tiles.length);
   tiles.receiveShadow = true;
   const m = new THREE.Matrix4();
   state.tiles.forEach((_, i) => {
@@ -56,7 +65,52 @@ export function plazaView(env: THREE.Texture, state: PlazaState, players: Player
     tiles.setMatrixAt(i, m);
   });
   scene.add(tiles);
-  const stone = new THREE.Color('#bdb6a8');
+  // wet paint: a glossy splat with drips and spatter on top of each claimed tile (not a flat colour swap)
+  const splatTex = (() => {
+    const S = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    for (let i = 0; i <= 40; i++) {
+      const a = (i / 40) * Math.PI * 2;
+      const r = S * (0.36 + 0.06 * Math.sin(a * 5) + 0.04 * Math.sin(a * 11 + 1) + (i % 7 === 0 ? 0.07 : 0));
+      g.lineTo(S / 2 + Math.cos(a) * r, S / 2 + Math.sin(a) * r);
+    }
+    g.fill();
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2, d = S * (0.4 + Math.random() * 0.08), r = 3 + Math.random() * 9;
+      g.beginPath();
+      g.arc(S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, r, 0, Math.PI * 2);
+      g.fill();
+    }
+    // darker toward the rim so it reads as a thick blob
+    g.globalCompositeOperation = 'source-atop';
+    const sh = g.createRadialGradient(S / 2, S / 2, S * 0.2, S / 2, S / 2, S * 0.45);
+    sh.addColorStop(0, 'rgba(0,0,0,0)');
+    sh.addColorStop(1, 'rgba(0,0,0,0.18)');
+    g.fillStyle = sh;
+    g.fillRect(0, 0, S, S);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const paint = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(ts * 1.12, ts * 1.12).rotateX(-Math.PI / 2),
+    new THREE.MeshPhysicalMaterial({ map: splatTex, transparent: true, alphaTest: 0.35, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
+    state.tiles.length,
+  );
+  paint.receiveShadow = true;
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  for (let i = 0; i < state.tiles.length; i++) paint.setMatrixAt(i, zero);
+  scene.add(paint);
+  const spin = state.tiles.map((_, i) => (i * 2.39996) % (Math.PI * 2));
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const sc = new THREE.Vector3();
+  const pos = new THREE.Vector3();
+  const stone = new THREE.Color('#d8d2c4');
   const cols = state.painters.map((p) => new THREE.Color(who(players, p.id)?.color ?? '#fff'));
   const shown: number[] = state.tiles.map(() => -2);
   const pop: number[] = state.tiles.map(() => 0);
@@ -89,7 +143,9 @@ export function plazaView(env: THREE.Texture, state: PlazaState, players: Player
         if (s.tiles[i] !== shown[i]) {
           shown[i] = s.tiles[i];
           pop[i] = 0.25;
-          tiles.setColorAt(i, s.tiles[i] < 0 ? stone : cols[s.tiles[i]]);
+          tiles.setColorAt(i, stone);
+          if (s.tiles[i] >= 0) paint.setColorAt(i, cols[s.tiles[i]]);
+          spin[i] += 1.3;
           dirty = true;
         }
         if (pop[i] > 0) {
@@ -98,9 +154,15 @@ export function plazaView(env: THREE.Texture, state: PlazaState, players: Player
           m.makeTranslation(wx(x), 0.06 + pop[i] * 0.8, wz(y));
           tiles.setMatrixAt(i, m);
           tiles.instanceMatrix.needsUpdate = true;
+          // the splat slaps down: overshoots, then settles
+          const k = 1 - pop[i] / 0.25;
+          const size = s.tiles[i] < 0 ? 0 : 0.4 + 0.6 * k + Math.sin(k * Math.PI) * 0.25;
+          paint.setMatrixAt(i, m.compose(pos.set(wx(x), 0.13 + pop[i] * 0.8, wz(y)), q.setFromAxisAngle(up, spin[i]), sc.set(size, 1, size)));
+          paint.instanceMatrix.needsUpdate = true;
         }
       }
       if (dirty && tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
+      if (dirty && paint.instanceColor) paint.instanceColor.needsUpdate = true;
       for (const sp of s.splashes) {
         fx.emit(new THREE.Vector3(wx(sp.x), 0.4, wz(sp.y)), { tex: 'puff', color: [`#${cols[sp.who].getHexString()}`, '#ffffff'], n: 22, speed: [3, 6], spread: 1, up: 3, life: [0.3, 0.6], size: [0.7, 0.2], gravity: 10 });
         shake(0.12);
@@ -129,7 +191,7 @@ export function alienView(env: THREE.Texture, state: CountState, players: Player
   const camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 220);
   camera.position.set(0, 11.5, 15.5);
   camera.lookAt(0, 0, -1.2);
-  ground(scene, '#8a7fb0', 90);
+  ground(scene, '#8a7fb0', 90, -0.02, moonMaterial('#9488b8', 7));
   // the parade road: five lanes of dusty moon track
   const road = mesh(new THREE.PlaneGeometry(40, 11), new THREE.MeshStandardMaterial({ map: texture('floor_ground_dirt', 10, 3), color: '#c7b6e8', roughness: 1 }), { cast: false, receive: true });
   road.rotation.x = -Math.PI / 2;
@@ -141,7 +203,7 @@ export function alienView(env: THREE.Texture, state: CountState, players: Player
   ] as [string, number, number, number, number][])
     place(scene, n, x, 0, z, { s, ry: r });
   // the counters sit along the front, watching the road
-  const bench = mesh(new THREE.BoxGeometry(Math.max(8, state.guessers.length * 1.6), 0.3, 1), toy('#6b5aa8', 0.6), { receive: true });
+  const bench = mesh(new RoundedBoxGeometry(Math.max(8, state.guessers.length * 1.6), 0.3, 1, 3, 0.1), new THREE.MeshStandardMaterial({ color: '#6b5aa8', metalness: 0.5, roughness: 0.35 }), { receive: true });
   bench.position.set(0, 0.15, 6.2);
   scene.add(bench);
   const crowd = state.guessers.map((g, i) => {
@@ -214,7 +276,7 @@ export function lightsView(env: THREE.Texture, state: LightsState, players: Play
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 220);
   const L = TRACK * PX; // 100 units of snowy path
   const hw = state.halfW * PX;
-  const snow = mesh(new THREE.PlaneGeometry(L + 60, 60), toy('#f2f6ff', 0.9), { cast: false, receive: true });
+  const snow = mesh(new THREE.PlaneGeometry(L + 60, 60), snowMaterial((L + 60) / 9, 60 / 9), { cast: false, receive: true });
   snow.rotation.x = -Math.PI / 2;
   snow.position.set(L / 2, -0.02, 0);
   scene.add(snow);
@@ -232,17 +294,36 @@ export function lightsView(env: THREE.Texture, state: LightsState, players: Play
   place(scene, 'holiday/present-b-round', L + 1.4, 0, -2.4, { s: 1.4 });
   // pines, snowmen and lamp posts along both sides, and a string of bulbs on each edge
   const bulbs: THREE.Mesh[] = [];
+  const halos: THREE.Sprite[] = [];
+  const wireMat = new THREE.MeshStandardMaterial({ color: '#2a2f3a', roughness: 0.6 });
+  const bulbGeo = new THREE.SphereGeometry(0.13, 14, 10);
+  const postGeo = new THREE.CylinderGeometry(0.04, 0.05, 1.5, 6);
   const bulbCols = ['#ff4040', '#ffd23f', '#3fa9f5', '#4cd97b', '#ff7bd5'];
   for (let x = -6; x < L + 8; x += 5) {
     for (const side of [-1, 1]) {
       const z = side * (hw + 2.2 + ((x * 7) % 3));
       place(scene, (x / 5) % 2 ? 'holiday/tree-snow-a' : 'holiday/tree-snow-b', x, 0, z + side * 1.6, { s: 3 + ((x * 13) % 4) * 0.4 });
       if (((x / 5) | 0) % 4 === 1) place(scene, 'holiday/snowman', x + 2, 0, side * (hw + 1.4), { s: 1.2, ry: side > 0 ? Math.PI : 0 });
+      // a sagging wire between little posts, with bulbs hanging off it that really glow
+      const wz0 = side * (hw + 0.6);
+      const sag = (u: number) => 1.45 - Math.sin(u * Math.PI) * 0.4;
+      const wire = new THREE.CatmullRomCurve3(Array.from({ length: 9 }, (_, j) => new THREE.Vector3(x + (j / 8) * 5, sag(j / 8), wz0)));
+      scene.add(mesh(new THREE.TubeGeometry(wire, 16, 0.025, 5), wireMat, { cast: false }));
+      const post = mesh(postGeo, wireMat, { cast: true });
+      post.position.set(x, 0.75, wz0);
+      scene.add(post);
       for (let k = 0; k < 4; k++) {
-        const b = mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshStandardMaterial({ color: bulbCols[(k + x) % 5 | 0] ?? '#fff', emissive: bulbCols[(k + x) % 5 | 0] ?? '#fff', emissiveIntensity: 2 }), { cast: false });
-        b.position.set(x + k * 1.25, 1.2 + Math.sin((k / 4) * Math.PI) * -0.35, side * (hw + 0.6));
+        const col = bulbCols[(k + x) % 5 | 0] ?? '#fff';
+        const b = mesh(bulbGeo, new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 2, roughness: 0.25 }), { cast: false });
+        const u = (k + 0.6) / 4.4;
+        b.position.set(x + u * 5, sag(u) - 0.16, wz0);
+        b.scale.set(1, 1.35, 1);
+        const halo = glowSprite(col, 1.3, 0.85);
+        b.add(halo);
+        halo.scale.set(1.3, 1.3 / 1.35, 1);
         scene.add(b);
         bulbs.push(b);
+        halos.push(halo);
       }
     }
   }
@@ -268,7 +349,12 @@ export function lightsView(env: THREE.Texture, state: LightsState, players: Play
       last = s;
       // the lights: steady when on, stuttering during the flicker, black in the dark
       const flick = s.phase === 'warn' ? (Math.sin(t * 60) > 0 ? 1 : 0.15) : s.phase === 'dark' ? 0 : 1;
-      for (const b of bulbs) ((b.material as THREE.MeshStandardMaterial).emissiveIntensity = flick * 2.2);
+      bulbs.forEach((b, i) => {
+        // each bulb has its own faint shimmer, and they don't all die at exactly the same instant
+        const own = s.phase === 'warn' ? (Math.sin(t * 60 + i * 1.7) > -0.2 ? 1 : 0.1) : flick;
+        (b.material as THREE.MeshStandardMaterial).emissiveIntensity = own * (2 + Math.sin(t * 3 + i) * 0.2);
+        halos[i].material.opacity = own * (0.75 + Math.sin(t * 2.3 + i * 0.7) * 0.1);
+      });
       hemi.intensity = 0.25 + flick * 0.6;
       sun.intensity = 0.15 + flick * 1.05;
       glow.intensity = flick * 40;
@@ -349,10 +435,29 @@ export function bowlView(env: THREE.Texture, state: BowlState, players: PlayerIn
     ['graveyard/pine-crooked', -wide / 2 - 4, -8, 3], ['graveyard/pine-crooked', wide / 2 + 4, -12, 3.4], ['graveyard/pine-fall', -wide / 2 - 5, 2, 3],
     ['graveyard/lightpost-double', -wide / 2 - 1.5, 4, 2], ['graveyard/lightpost-double', wide / 2 + 1.5, 4, 2], ['graveyard/pumpkin-tall-carved', wide / 2 + 3, 6, 1.4],
     ['graveyard/fire-basket', -wide / 2 - 3, -2, 1.4], ['graveyard/candle-multiple', wide / 2 + 3, -4, 1.2],
-  ] as [string, number, number, number][])
-    place(scene, nm, x, 0, z, { s });
+  ] as [string, number, number, number][]) {
+    const o = place(scene, nm, x, 0, z, { s });
+    // everything that should glow, glows: lamps, the brazier, the jack-o'-lantern
+    if (nm === 'graveyard/lightpost-double') {
+      onTop(o, lampGlow('#ffc070', 1.8), 0.9);
+      const l = new THREE.PointLight('#ffb35c', 14, 12, 1.6);
+      onTop(o, l, 0.9);
+    }
+    if (nm === 'graveyard/fire-basket') onTop(o, flame(0.9, { light: 6 }), 0.85);
+    if (nm === 'graveyard/pumpkin-tall-carved' || nm === 'graveyard/candle-multiple') onTop(o, lampGlow('#ff9a3a', 1.6), 0.5);
+  }
+  scene.add(groundFog([-wide / 2 - 8, back - 6, wide / 2 + 8, 9], { count: 16, opacity: 0.3 }));
   const pins = pool(scene, () => fitProp('graveyard/gravestone-round', 0.62, 'y'));
-  const balls = pool(scene, () => fitProp('graveyard/pumpkin-carved', BALL_R * 2 * PX * 1.3, 'max'));
+  // the pumpkin balls glow from inside as they roll
+  const balls = pool(scene, () => {
+    const g = new THREE.Group();
+    g.add(fitProp('graveyard/pumpkin-carved', BALL_R * 2 * PX * 1.3, 'max'));
+    const glow = glowSprite('#ffa040', BALL_R * 2 * PX * 2.6, 0.75);
+    glow.position.y = BALL_R * PX * 1.3;
+    glow.name = 'glow';
+    g.add(glow);
+    return g;
+  });
   const aims = pool(scene, () => {
     const g = new THREE.Group();
     for (let k = 0; k < 6; k++) {
@@ -401,6 +506,8 @@ export function bowlView(env: THREE.Texture, state: BowlState, players: PlayerIn
           const bx = aiming ? b.aim * (LANE_W / 2 - BALL_R) : b.bx;
           o.position.set(x0 + bx * PX, 0.12, zOf(aiming ? 0 : b.by) + (aiming ? 0.2 : 0));
           o.rotation.set(-b.spin, 0, 0);
+          // keep the inner glow at the pumpkin's middle however far it has rolled
+          o.children[1]?.position.set(0, BALL_R * PX * 1.3, 0).applyAxisAngle(XAXIS, b.spin);
         }
         if (aiming) {
           const a = aims.take();
@@ -439,17 +546,57 @@ export function crownView(env: THREE.Texture, state: CrownState, players: Player
   const scene = makeScene(env, { sky: 'day', skyTop: '#7cc8ff', skyBottom: '#ffeacc', fog: ['#dff0d0', 45, 120], shadowSize: 26 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 220);
   fitCamera(camera, state.w + 80, state.h + 120, 410);
-  ground(scene, '#7fbf55');
+  ground(scene, '#7fbf55', 90, -0.02, new THREE.MeshStandardMaterial({ map: texture('floor_ground_grass', 40, 40), color: '#a6d488', roughness: 1 }));
   const fw = state.w * PX, fd = state.h * PX;
   const camp = mesh(new THREE.PlaneGeometry(fw, fd), new THREE.MeshStandardMaterial({ map: texture('floor_ground_grass', fw / 3, fd / 3), color: '#bfe8a0', roughness: 1 }), { cast: false, receive: true });
   camp.rotation.x = -Math.PI / 2;
   camp.position.set(0, 0, wz(410));
   scene.add(camp);
+  // a border of stones marks the camp's edge (instead of the lawn just ending)
+  {
+    const geo = rockGeometry(0.28, 4, 0.35);
+    const per = Math.round((fw + fd) * 2 / 0.75);
+    const stones = new THREE.InstancedMesh(geo, stoneMaterial('#8a8478'), per);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
+    let n = 0;
+    const edge = (x0: number, z0: number, x1: number, z1: number) => {
+      const L = Math.hypot(x1 - x0, z1 - z0), k = Math.floor(L / 0.75);
+      for (let i = 0; i < k && n < per; i++) {
+        const f = (i + 0.5) / k;
+        pos.set(x0 + (x1 - x0) * f, 0.04, z0 + (z1 - z0) * f);
+        q.setFromEuler(new THREE.Euler(Math.random() * 0.4, Math.random() * 6, Math.random() * 0.4));
+        const r = 0.55 + Math.random() * 0.8;
+        sc.set(r, r * 0.6, r);
+        stones.setMatrixAt(n++, m4.compose(pos, q, sc));
+      }
+    };
+    const cz = wz(410), hx = fw / 2 + 0.25, hz = fd / 2 + 0.25;
+    edge(-hx, cz - hz, hx, cz - hz);
+    edge(hx, cz - hz, hx, cz + hz);
+    edge(hx, cz + hz, -hx, cz + hz);
+    edge(-hx, cz + hz, -hx, cz - hz);
+    stones.count = n;
+    stones.castShadow = true;
+    stones.receiveShadow = true;
+    scene.add(stones);
+  }
   bases(state).forEach(([bx, by], team) => {
-    const pad = mesh(new THREE.CircleGeometry(70 * PX, 32), new THREE.MeshBasicMaterial({ color: TEAM_COLORS[team], transparent: true, opacity: 0.45, depthWrite: false }), { cast: false });
-    pad.rotation.x = -Math.PI / 2;
-    pad.position.set(wx(bx), 0.03, wz(by));
-    scene.add(pad);
+    // a woven camp rug in the team colour, a soft glow and two torches
+    const rug = mesh(new THREE.CircleGeometry(70 * PX, 48), new THREE.MeshStandardMaterial({ map: rugTexture(TEAM_COLORS[team]), roughness: 0.95 }), { cast: false, receive: true });
+    rug.rotation.x = -Math.PI / 2;
+    rug.position.set(wx(bx), 0.025, wz(by));
+    scene.add(rug);
+    const aura = glowDisc(TEAM_COLORS[team], 70 * PX, 0.35);
+    aura.position.set(wx(bx), 0.04, wz(by));
+    scene.add(aura);
+    for (const dz of [-1, 1]) {
+      const post = mesh(new THREE.CylinderGeometry(0.07, 0.1, 1.5, 8), toy('#6b4428', 0.8));
+      post.position.set(wx(bx) + (team ? 1 : -1) * 70 * PX * 0.9, 0.75, wz(by) + dz * 70 * PX * 0.75);
+      scene.add(post);
+      const f = flame(0.55);
+      f.position.set(post.position.x, 1.55, post.position.z);
+      scene.add(f);
+    }
     place(scene, 'forest/tent', wx(bx) + (team ? 1.2 : -1.2), 0, wz(by) - 2.4, { s: 2.6, ry: team ? -0.4 : 0.4 });
     place(scene, 'forest/flag', wx(bx) + (team ? -1.6 : 1.6), 0, wz(by) - 1.4, { s: 1.8 });
   });
@@ -463,8 +610,8 @@ export function crownView(env: THREE.Texture, state: CrownState, players: Player
   place(scene, 'forest/rocks-high', -fw / 2 - 1, 0, wz(410) + fd / 2, { s: 2 });
   place(scene, 'forest/rocks-low', fw / 2 + 1, 0, wz(410) + fd / 2, { s: 2 });
   // the stump in the middle, and the crown
-  const stump = mesh(new THREE.CylinderGeometry(0.7, 0.85, 0.5, 18), toy('#8a5a32', 0.8), { receive: true });
-  stump.position.set(0, 0.25, wz(410));
+  const stump = treeStump(0.75, 0.5);
+  stump.position.set(0, 0, wz(410));
   scene.add(stump);
   const crownM = makeCrown();
   crownM.scale.setScalar(0.8);
@@ -525,11 +672,11 @@ export function seatView(env: THREE.Texture, state: SeatState, players: PlayerIn
   fitCamera(camera, (R + 230) * 2, (R * 0.62 + 160) * 2, 400, 0.8);
   // a parlour: wooden floor, a big round rug, lamps and plants round the walls
   const fw = ((R + 260) * 2) * PX, fd = ((R * 0.62 + 190) * 2) * PX;
-  const floor = mesh(new THREE.PlaneGeometry(fw + 20, fd + 20), new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks_wide', (fw + 20) / 2, (fd + 20) / 2), color: '#e0b88a', roughness: 0.8 }), { cast: false, receive: true });
+  const floor = mesh(new THREE.PlaneGeometry(fw + 20, fd + 20), woodFloorMaterial((fw + 20) / 5, (fd + 20) / 5, '#cfb8a4'), { cast: false, receive: true });
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(0, 0, wz(400));
   scene.add(floor);
-  const rug = mesh(new THREE.CircleGeometry(1, 48), toy('#a83a5a', 0.95), { cast: false, receive: true });
+  const rug = mesh(new THREE.CircleGeometry(1, 64), new THREE.MeshStandardMaterial({ map: rugTexture('#a83a5a'), roughness: 0.95 }), { cast: false, receive: true });
   rug.rotation.x = -Math.PI / 2;
   rug.scale.set(R * PX * 1.25, R * PX * 0.62 * 1.25, 1);
   rug.position.set(0, 0.02, wz(400));
@@ -551,6 +698,31 @@ export function seatView(env: THREE.Texture, state: SeatState, players: PlayerIn
   const lamp = new THREE.PointLight('#ffcf8a', 40, 30);
   lamp.position.set(0, 7, wz(400));
   scene.add(lamp);
+  // a mirror ball over the rug: it turns and scatters light specks while the music plays, and
+  // freezes the instant it stops (so you can SEE the music cut, not just hear it)
+  const ball = mesh(new THREE.IcosahedronGeometry(0.75, 2), new THREE.MeshStandardMaterial({ color: '#e8eef8', metalness: 1, roughness: 0.12, flatShading: true, envMapIntensity: 1.6 }), { cast: false });
+  ball.position.set(0, 6.2, wz(400));
+  scene.add(ball);
+  const cord = mesh(new THREE.CylinderGeometry(0.02, 0.02, 4, 4), toy('#222', 0.5), { cast: false });
+  cord.position.set(0, 8.6, wz(400));
+  scene.add(cord);
+  const ballGlow = glowSprite('#ffffff', 2.4, 0.5);
+  ballGlow.position.copy(ball.position);
+  scene.add(ballGlow);
+  const SPECKS = 70;
+  const specks = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(0.32, 0.32).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: glowTex(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+    SPECKS,
+  );
+  const speckAt = Array.from({ length: SPECKS }, (_, i) => [((i * 2.39996) % (Math.PI * 2)), 1.2 + ((i * 7) % 23) * 0.45]);
+  const speckCol = ['#ffffff', '#ffd6f0', '#d6f0ff', '#fff2c0'].map((c) => new THREE.Color(c));
+  for (let i = 0; i < SPECKS; i++) specks.setColorAt(i, speckCol[i % 4]);
+  specks.position.set(0, 0.05, wz(400));
+  specks.renderOrder = 4;
+  scene.add(specks);
+  let spin = 0;
+  const sm = new THREE.Matrix4();
   const chairs = pool(scene, () => fitProp('furniture/chair', 1.25, 'y'));
   const fx = new Fx(scene);
   const team = crew(scene, players, state.sitters, fx);
@@ -570,6 +742,17 @@ export function seatView(env: THREE.Texture, state: SeatState, players: PlayerIn
         o.rotation.y = yaw(Math.atan2(sy - 400, sx - 640));
       }
       lamp.intensity = s.phase === 'scramble' ? 60 + Math.sin(t * 20) * 15 : 40;
+      if (s.phase === 'hum') spin += dt * 0.6;
+      ball.rotation.y = spin;
+      const glowOn = s.phase === 'hum' ? 1 : 0.35;
+      (specks.material as THREE.MeshBasicMaterial).opacity = glowOn;
+      for (let i = 0; i < SPECKS; i++) {
+        const [a, r] = speckAt[i];
+        const aa = a + spin;
+        sm.makeTranslation(Math.cos(aa) * r * 1.4, 0, Math.sin(aa) * r * 0.9);
+        specks.setMatrixAt(i, sm);
+      }
+      specks.instanceMatrix.needsUpdate = true;
       for (const id of s.outNow)
         if (!wasOut.has(id)) {
           wasOut.add(id);

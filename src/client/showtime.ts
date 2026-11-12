@@ -91,7 +91,7 @@ export function slam(ctx: CanvasRenderingContext2D, label: string, x: number, y:
   ctx.translate(x, y);
   ctx.rotate(rot);
   ctx.scale(s, s);
-  ctx.globalAlpha = clamp01(p * 3);
+  ctx.globalAlpha *= clamp01(p * 7);
   // chunky shadow layer, then the face
   ctx.save();
   ctx.translate(0, size * 0.09);
@@ -110,21 +110,67 @@ export function countIn(ctx: CanvasRenderingContext2D, t: number, readyFor: numb
     if (left > 3) return;
     const n = Math.ceil(left);
     const age = 1 - (left - Math.floor(left) || 1) + 0.0001;
-    const s = 1.8 - 0.8 * springIn(clamp01(age / 0.35));
+    // a chunky coloured token pops up for each number, holds, then ducks away
+    const pop = 1 - Math.exp(-9 * age) * Math.cos(13 * age);
+    const out = clamp01((age - 0.8) / 0.2);
+    const s = Math.max(0, pop * (1 - out * out));
+    const col = n === 1 ? '#ff5a5f' : n === 2 ? '#ffb020' : '#4cd97b';
     ctx.save();
     ctx.translate(640, 330);
+    ringBurst(ctx, 0, 0, 100 + age * 140, col, (1 - age) * 0.8);
+    ctx.rotate((1 - pop) * 0.4 + (n % 2 ? -0.05 : 0.05));
     ctx.scale(s, s);
-    ctx.globalAlpha = clamp01((1 - age) * 3);
-    ringBurst(ctx, 0, 0, 90 + age * 80, n === 1 ? '#ff5a5f' : n === 2 ? '#ffd23f' : '#4cd97b', 1 - age);
-    text(ctx, String(n), 0, 0, 170, { color: '#ffffff' });
+    // extruded side, face, gloss
+    ctx.fillStyle = shade(col, -0.35);
+    ctx.beginPath();
+    ctx.arc(0, 12, 98, 0, Math.PI * 2);
+    ctx.fill();
+    const g = ctx.createLinearGradient(0, -98, 0, 98);
+    g.addColorStop(0, shade(col, 0.2));
+    g.addColorStop(1, col);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 98, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(0, -46, 66, 30, 0, 0, Math.PI * 2);
+    ctx.fill();
+    text(ctx, String(n), 0, 4, 150, { color: '#ffffff' });
     ctx.restore();
     return;
   }
   const age = t - readyFor;
-  sunburst(ctx, 640, 330, 520, age * 4, '#ffd23f', 0.4 * clamp01(1 - age), 22);
+  // a white flash, two stripes cutting across, and the word slammed on top, sized to fit the screen
+  if (age < 0.18) {
+    ctx.save();
+    ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - age / 0.18)})`;
+    ctx.fillRect(0, 0, 1280, 720);
+    ctx.restore();
+  }
+  sunburst(ctx, 640, 330, 560, age * 4, '#ffd23f', 0.4 * clamp01(1 - age), 22);
+  const fade = clamp01((0.9 - age) * 4);
+  const p = easeOut(age / 0.22);
   ctx.save();
-  ctx.globalAlpha = clamp01((0.9 - age) * 4);
-  slam(ctx, word, 640, 330, 150, age, '#ffd23f');
+  ctx.globalAlpha = fade;
+  ctx.translate(640, 330);
+  ctx.rotate(-0.05);
+  ctx.fillStyle = '#ff5a5f';
+  ctx.fillRect(-700 * p - 20, -96, 1400 * p, 58);
+  ctx.fillStyle = '#4cd97b';
+  ctx.fillRect(700 - 1400 * p, 40, 1400 * p, 58);
+  ctx.restore();
+  ctx.save();
+  ctx.font = "150px 'Kenney Future Narrow', system-ui, sans-serif";
+  const w = ctx.measureText(word).width * 0.9;
+  ctx.restore();
+  const size = Math.max(60, Math.min(150, (150 * 980) / Math.max(1, w)));
+  ctx.save();
+  ctx.globalAlpha = fade;
+  slam(ctx, word, 640, 330, size, age, '#ffd23f');
   ctx.restore();
 }
 
@@ -311,9 +357,13 @@ export function bubble(ctx: CanvasRenderingContext2D, line: HostLine, x: number,
 }
 
 /** Brian's head and shoulders in a corner, with his bubble beside him. */
-export function hostCorner(ctx: CanvasRenderingContext2D, line: HostLine, t: number, corner: 'bl' | 'br' | 'tl' | 'tr' = 'bl', w = 420, lift = 0): void {
+export function hostCorner(ctx: CanvasRenderingContext2D, line: HostLine, t: number, corner: 'bl' | 'br' | 'tl' | 'tr' = 'bl', w = 420, lift = 0, linger = Infinity): void {
   if (!line.text) return;
-  const enter = easeOut(line.age / 0.35);
+  // with `linger`, Brian ducks back out of the way that many seconds after he finishes talking
+  const doneAt = line.text.length / 42 + linger;
+  const leave = clamp01((line.age - doneAt) / 0.4);
+  if (leave >= 1) return;
+  const enter = easeOut(line.age / 0.35) * (1 - leave * leave);
   const left = corner === 'bl' || corner === 'tl';
   const top = corner === 'tl' || corner === 'tr';
   const hx = left ? 70 - (1 - enter) * 160 : 1210 + (1 - enter) * 160;
@@ -322,7 +372,10 @@ export function hostCorner(ctx: CanvasRenderingContext2D, line: HostLine, t: num
   ctx.save();
   ctx.globalAlpha = enter;
   const bx = left ? 128 : 1152 - w;
-  bubble(ctx, line, bx, top ? 24 : hy - 70, w, { x: left ? hx + 40 : hx - 40, y: hy - 10 }, 20);
+  // long lines grow the bubble upward so it never runs off the bottom of the screen
+  ctx.font = '700 20px system-ui, sans-serif';
+  const bh = wrap(ctx, line.text, w - 44).length * 26 + 46;
+  bubble(ctx, line, bx, top ? 24 : Math.min(hy - 70, 704 - bh), w, { x: left ? hx + 40 : hx - 40, y: hy - 10 }, 20);
   ctx.restore();
 }
 

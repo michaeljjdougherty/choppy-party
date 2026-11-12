@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import { TEAM_HEX } from '../../../shared/games/hud';
 import { EYE, SNAP_HUD, ZOOM_IN, type SnapState, type Wall } from '../../../shared/games/scopeSnap';
-import { place, texture } from '../assets';
+import { place } from '../assets';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { hazardMaterial, panelMaterial, treadMaterial } from '../look/scifi';
 import { ChoppyModel, LOCAL } from '../choppy';
 import { Fx, shake } from '../fx';
 import { makeScene, mesh, toy, yaw } from '../kit';
@@ -83,7 +85,7 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
   const scene = makeScene(env, { sky: 'space-nebula', skyTop: '#0b0e2a', skyBottom: '#2b2060', fog: ['#1a1d44', 45, 140], sunColor: '#dfe6ff', sunIntensity: 2.0, shadowSize: 22, sunDir: [10, 24, 6] });
   const W = state.hw, D = state.hd;
   // deck
-  const floor = mesh(new THREE.BoxGeometry(W * 2 + 2, 0.3, D * 2 + 2), new THREE.MeshStandardMaterial({ map: texture('floor_tiles_blue_small', W, D), color: '#c4cff5', roughness: 0.55 }), { receive: true });
+  const floor = mesh(new THREE.BoxGeometry(W * 2 + 2, 0.3, D * 2 + 2), treadMaterial(W / 1.5, D / 1.5, '#d0d8ff'), { receive: true });
   floor.position.y = -0.15;
   floor.userData.noDetail = true;
   scene.add(floor);
@@ -98,8 +100,13 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.02;
   scene.add(ring);
-  const wallMat = new THREE.MeshStandardMaterial({ color: '#8f9bd2', roughness: 0.55, metalness: 0.15 });
-  const pillarMat = toy('#ffb020', 0.4);
+  const wallMats = new Map<string, THREE.Material>();
+  const wallMat = (sx: number, h: number, sz: number) => {
+    const k = `${Math.round(Math.max(sx, sz))}:${Math.round(h)}`;
+    let m = wallMats.get(k);
+    if (!m) wallMats.set(k, (m = panelMaterial(Math.max(1, Math.round(Math.max(sx, sz) / 2)), Math.max(1, Math.round(h / 2)))));
+    return m;
+  };
   const trim = new THREE.MeshBasicMaterial({ color: '#57e1ff' });
   const addWall = (w: Wall) => {
     const sx = w.x1 - w.x0, sz = w.z1 - w.z0;
@@ -116,7 +123,7 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
       scene.add(b);
       return;
     }
-    const m = mesh(new THREE.BoxGeometry(sx, w.h, sz), w.kind === 'pillar' ? pillarMat : wallMat, { receive: true });
+    const m = mesh(new RoundedBoxGeometry(sx, w.h, sz, 2, Math.min(0.08, sx * 0.2, sz * 0.2)), w.kind === 'pillar' ? hazardMaterial(Math.max(1, Math.round(sx)), Math.max(1, Math.round(w.h))) : wallMat(sx, w.h, sz), { receive: true });
     m.position.set(cx, w.h / 2, cz);
     m.userData.noDetail = true;
     scene.add(m);
@@ -206,7 +213,7 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
   const tracers: THREE.Mesh[] = [];
   const tracerAt = (i: number) => {
     while (tracers.length <= i) {
-      const t = mesh(tracerGeo, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, depthWrite: false }), { cast: false });
+      const t = mesh(tracerGeo, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), { cast: false });
       scene.add(t);
       tracers.push(t);
     }
@@ -271,6 +278,10 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
             muzzleOf.localToWorld(start.set(0, 0, 0.8));
           }
           starts.set(sk, start);
+          // a muzzle flash that really lights the deck, and a pop of sparks where the shot lands
+          const col = ps.find((q) => q.id === tr.by)?.color ?? '#ffffff';
+          fx.flash(start, '#fff0c0', 14, 5);
+          fx.emit(new THREE.Vector3(tr.x1, tr.hit ? 1.1 : EYE - 0.1, tr.z1), { tex: 'star', color: [col, '#ffffff'], n: tr.hit ? 10 : 5, speed: [2, 4], spread: 0.9, up: 1, life: [0.15, 0.35], size: [0.3, 0.05], gravity: 8, additive: true });
           if (!e && shooter) fx.sparkle(start, '#ffe066', 4);
           if (e) {
             e.kick = 1;
@@ -292,7 +303,7 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
         const end = tmpEnd.set(tr.x1, tr.hit ? 1.1 : EYE - 0.1, tr.z1);
         m.visible = true;
         m.position.copy(a).add(end).multiplyScalar(0.5);
-        m.scale.set(0.045, 0.045, a.distanceTo(end));
+        m.scale.set(0.06 * (1 - age / 0.28) + 0.02, 0.06 * (1 - age / 0.28) + 0.02, a.distanceTo(end));
         m.lookAt(end);
         const mat = m.material as THREE.MeshBasicMaterial;
         mat.color.set(ps.find((q) => q.id === tr.by)?.color ?? '#ffffff').lerp(new THREE.Color('#ffffff'), 0.4);

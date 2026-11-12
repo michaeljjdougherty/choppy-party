@@ -1,3 +1,4 @@
+import { buzzColor } from '../rumble';
 import * as THREE from 'three';
 import { CHARACTERS, PLAYER_COLORS } from '../../shared/players';
 import { character } from './assets';
@@ -211,6 +212,7 @@ export class ChoppyModel {
 
   /** Knocked back: squash, a recoil tilt and twist, and stars over the head. Views can call it on any hit. */
   flinch(power = 1): void {
+    buzzColor(this.color, power > 1.2 ? 'ko' : power > 0.5 ? 'hit' : 'bump');
     this.sqv -= 7 * power;
     this.pitchV -= 7 * power;
     this.yawV += (Math.random() < 0.5 ? -1 : 1) * 9 * power;
@@ -235,6 +237,7 @@ export class ChoppyModel {
   celebrate(): void {
     if (this.clock - this.cheerAt < 0.9) return;
     this.cheerAt = this.clock;
+    buzzColor(this.color, 'win');
     this.spin = 0;
     this.spinDir = Math.random() < 0.5 ? -1 : 1;
     this.ringPop = 1;

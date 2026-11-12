@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { flame, groundFog, lampGlow, onTop } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { GRAVES, GX0, GX1, GY0, GY1, type GraveyardState } from '../../../shared/games/graveyardShift';
 import { place, texture } from '../assets';
@@ -63,15 +64,15 @@ export function graveyardView(env: THREE.Texture, state: GraveyardState, players
   for (let i = 0; i < 6; i++) place(scene, 'graveyard/pine-crooked', cx - fw / 2 + 2 + i * (fw / 5.5), 0, T - 5.5 - (i % 2) * 2, { s: 3.4, ry: i * 1.3 });
   // lamp posts with real light at the corners
   for (const [x, z] of [[L + 0.6, T + 0.6], [R - 0.6, T + 0.6], [L + 0.6, B - 0.6], [R - 0.6, B - 0.6]] as [number, number][]) {
-    place(scene, 'graveyard/lightpost-single', x, 0, z, { s: 2.6 });
+    onTop(place(scene, 'graveyard/lightpost-single', x, 0, z, { s: 2.6 }), lampGlow('#ffb35a', 1.8), 0.88);
     const l = new THREE.PointLight('#ffb35a', 12, 12, 1.6);
     l.position.set(x, 2.6, z);
     scene.add(l);
   }
   for (const [x, z, n] of [[L - 1.5, B - 1, 0], [R + 1.4, B - 2, 1], [L - 1.6, cz, 0], [R + 1.8, cz - 2, 1]] as [number, number, number][])
     place(scene, n ? 'graveyard/pumpkin-tall-carved' : 'graveyard/pumpkin-carved', x, 0, z, { s: 2.2, ry: x });
-  place(scene, 'graveyard/fire-basket', L - 1.4, 0, T + 1.5, { s: 2.2 });
-  place(scene, 'graveyard/fire-basket', R + 1.4, 0, T + 1.5, { s: 2.2 });
+  onTop(place(scene, 'graveyard/fire-basket', L - 1.4, 0, T + 1.5, { s: 2.2 }), flame(1.1, { light: 8 }), 0.85);
+  onTop(place(scene, 'graveyard/fire-basket', R + 1.4, 0, T + 1.5, { s: 2.2 }), flame(1.1, { light: 8 }), 0.85);
   // the solid gravestones from the sim, each with a little dirt mound
   const dirt = toy('#4a3a2a', 0.95);
   GRAVES.forEach(([x, y], i) => {
@@ -82,6 +83,8 @@ export function graveyardView(env: THREE.Texture, state: GraveyardState, players
     scene.add(m);
   });
 
+  // low mist rolling between the graves
+  scene.add(groundFog([L - 6, T - 4, R + 6, B + 4], { count: 22, opacity: 0.5 }));
   const fx = new Fx(scene);
   const team = crew(scene, players, state.keepers, fx);
   const glowTex = (() => {

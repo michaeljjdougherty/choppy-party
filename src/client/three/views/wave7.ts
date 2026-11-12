@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { flame, glowSprite, onTop } from '../look/fxKit';
+import { snowMaterial } from '../look/snow';
+import { gasGiant, hexPlating } from '../look/moon';
+import { rockGeometry, stoneMaterial } from '../life/rocks';
 import type { PlayerInfo } from '../../../shared/types';
 import { GAP_LEN, TRACK, TURN, segAt, type CartState } from '../../../shared/games/mineCart';
 import { ROW, ROWS, P_H, type TideState } from '../../../shared/games/risingTide';
@@ -106,11 +111,37 @@ export function mineCartView(env: THREE.Texture, state: CartState, players: Play
   const sleeper = texture('floor_wood_planks', 1, 1);
   if (sleeper) sleeper.rotation = Math.PI / 2;
   const railMat = toy('#9aa3ad', 0.3);
+  const railDark = new THREE.MeshStandardMaterial({ color: '#4a4f58', metalness: 0.7, roughness: 0.5 });
   railMat.metalness = 0.6;
+  // real sleepers: separate chunky wooden ties under every lane (not a striped strip)
+  const tieGeo = new RoundedBoxGeometry(1.25, 0.12, 0.26, 1, 0.03);
+  const tieMat = new THREE.MeshStandardMaterial({ map: sleeper, color: '#8a5a32', roughness: 0.9 });
+  const tieSpots: THREE.Matrix4[] = [];
+  const TIE = 0.62 / PX;
+  for (let d = -PRE; d < end; d += TIE) {
+    if (segAt(state, d).gap || segAt(state, d + TIE * 0.5).gap) continue;
+    const { p, h, right } = at(d);
+    for (let l = 0; l < n; l++) {
+      const c = -half + (l + 0.5) * LANE_W;
+      const q = p.clone().addScaledVector(right, c);
+      tieSpots.push(new THREE.Matrix4().compose(q.setY(0.08), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -h + (((d * 7) % 3) - 1) * 0.02), new THREE.Vector3(1, 1, 1)));
+    }
+  }
+  const ties = new THREE.InstancedMesh(tieGeo, tieMat, tieSpots.length);
+  tieSpots.forEach((m, i) => ties.setMatrixAt(i, m));
+  ties.receiveShadow = true;
+  ties.castShadow = true;
+  scene.add(ties);
+  railMat.color.set('#c8d0da');
+  railMat.roughness = 0.25;
+  railMat.metalness = 0.85;
   for (let l = 0; l < n; l++) {
     const c = -half + (l + 0.5) * LANE_W;
-    ribbon(c - 0.6, c + 0.6, 0.05, new THREE.MeshStandardMaterial({ map: sleeper, color: '#9c6b3e', roughness: 0.9 }), 1.2);
-    for (const s of [-0.42, 0.42]) ribbon(c + s - 0.05, c + s + 0.05, 0.12, railMat);
+    for (const s of [-0.42, 0.42]) {
+      // a rail: a polished top on a darker web, so it reads as a raised steel rail
+      ribbon(c + s - 0.06, c + s + 0.06, 0.16, railMat);
+      ribbon(c + s - 0.09, c + s + 0.09, 0.15, railDark);
+    }
   }
   // canyon walls, warning signs before every gap, and a pit under it
   const rocks = ['pirate/rocks-a', 'pirate/rocks-b', 'pirate/rocks-c', 'forest/rocks-high', 'pirate/rocks-sand-b'];
@@ -381,13 +412,29 @@ export function sledView(env: THREE.Texture, state: SledState, players: PlayerIn
   const camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 240);
   const W = state.w * PX;
   const L = (COURSE + 1600) * PX;
-  const snow = new THREE.MeshStandardMaterial({ color: '#f4f8ff', roughness: 0.85 });
+  const snow = snowMaterial((W + 60) / 9, (L + 60) / 9);
   const slope = mesh(new THREE.PlaneGeometry(W + 60, L + 60), snow, { cast: false, receive: true });
   slope.rotation.x = -Math.PI / 2;
   slope.position.set(0, 0, -L / 2 + 10);
   scene.add(slope);
   // the run: groomed snow with blue edge lines
-  const run = mesh(new THREE.PlaneGeometry(W, L), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), { cast: false, receive: true });
+  // groomed piste: fine corduroy ridges from the snow groomer, over the same glittery snow
+  const runMat = snowMaterial(W / 5, L / 5);
+  const cord = document.createElement('canvas');
+  cord.width = 64;
+  cord.height = 4;
+  const cg = cord.getContext('2d')!;
+  for (let i = 0; i < 64; i++) {
+    const v = 128 + Math.sin((i / 64) * Math.PI * 16) * 60;
+    cg.fillStyle = `rgb(${v},${v},${v})`;
+    cg.fillRect(i, 0, 1, 4);
+  }
+  const cordTex = new THREE.CanvasTexture(cord);
+  cordTex.wrapS = cordTex.wrapT = THREE.RepeatWrapping;
+  cordTex.repeat.set(W / 3, L / 3);
+  runMat.bumpMap = cordTex;
+  runMat.bumpScale = 1.2;
+  const run = mesh(new THREE.PlaneGeometry(W, L), runMat, { cast: false, receive: true });
   run.rotation.x = -Math.PI / 2;
   run.position.set(0, 0.01, -L / 2 + 10);
   scene.add(run);
@@ -524,15 +571,16 @@ export function saucerView(env: THREE.Texture, state: SaucerState, players: Play
   scene.add(pivot);
   // the platform: a dark deck with a glowing rim of lights, and an engine glow underneath
   const disc = new THREE.Group();
-  const deck = mesh(new THREE.CylinderGeometry(R0, R0 * 0.94, 0.5, 64), new THREE.MeshStandardMaterial({ map: texture('proto-purple', R0 / 2, R0 / 2), color: '#9aa0c8', roughness: 0.55, metalness: 0.2 }), { cast: true, receive: true });
+  const deckMat = new THREE.MeshStandardMaterial({ color: '#3a3f66', roughness: 0.35, metalness: 0.6, emissive: '#5fd8ff', emissiveMap: hexPlating(R0 / 1.6), emissiveIntensity: 0.55 });
+  deckMat.userData.noDetail = true;
+  const deck = mesh(new THREE.CylinderGeometry(R0, R0 * 0.94, 0.5, 64), deckMat, { cast: true, receive: true });
   deck.position.y = -0.25;
   const rim = mesh(new THREE.TorusGeometry(R0, 0.12, 8, 80), new THREE.MeshStandardMaterial({ color: '#7cf3ff', emissive: '#3fd8ff', emissiveIntensity: 1.6 }), { cast: false });
   rim.rotation.x = Math.PI / 2;
   const belly = mesh(new THREE.ConeGeometry(R0 * 0.9, R0 * 0.8, 48), toy('#4b4f6b', 0.4), { cast: false });
   belly.rotation.x = Math.PI;
   belly.position.y = -0.5 - R0 * 0.4;
-  const glow = new THREE.Mesh(new THREE.CircleGeometry(R0 * 0.35, 32), new THREE.MeshBasicMaterial({ color: '#ff8a3d', transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
-  glow.rotation.x = Math.PI / 2;
+  const glow = glowSprite('#ff8a3d', R0 * 1.4, 0.9);
   glow.position.y = -0.52 - R0 * 0.8;
   disc.add(deck, rim, belly, glow);
   const ring = mesh(new THREE.RingGeometry(R0 * 0.48, R0 * 0.5, 64), new THREE.MeshBasicMaterial({ color: '#b06cff', transparent: true, opacity: 0.6 }), { cast: false });
@@ -541,13 +589,15 @@ export function saucerView(env: THREE.Texture, state: SaucerState, players: Play
   disc.add(ring);
   pivot.add(disc);
   // scenery: a planet, drifting rocks, a far-off station
-  const planet = mesh(new THREE.SphereGeometry(14, 40, 30), new THREE.MeshStandardMaterial({ color: '#ff9a5c', roughness: 0.9 }), { cast: false });
+  const planet = gasGiant(14, ['#ff9a5c', '#ffd2a0', '#c8603a'], true);
   planet.position.set(-34, -22, -46);
   scene.add(planet);
   const rocks: THREE.Object3D[] = [];
   for (let i = 0; i < 9; i++) {
     const a = (i / 9) * Math.PI * 2;
-    const o = place(scene, 'space/meteor', Math.cos(a) * (R0 + 8 + (i % 3) * 3), -3 - (i % 4) * 1.5, wz(CY) + Math.sin(a) * (R0 + 6), { s: 1 + (i % 3) * 0.6 });
+    const o = mesh(rockGeometry(0.5 + (i % 3) * 0.3, i + 2, 0.35), stoneMaterial(i % 2 ? '#8a7a70' : '#6e6470'));
+    o.position.set(Math.cos(a) * (R0 + 8 + (i % 3) * 3), -3 - (i % 4) * 1.5, wz(CY) + Math.sin(a) * (R0 + 6));
+    scene.add(o);
     rocks.push(o);
   }
   place(scene, 'space/satelliteDish_large', R0 + 9, -2, wz(CY) - R0 - 6, { s: 3 });
@@ -651,7 +701,7 @@ export function mimicView(env: THREE.Texture, state: MimicState, players: Player
   }
   const torches: THREE.PointLight[] = [];
   for (const x of [-9, -3.5, 3.5, 9]) {
-    place(scene, 'graveyard/fire-basket', x, 0, -5, { s: 1.6 });
+    onTop(place(scene, 'graveyard/fire-basket', x, 0, -5, { s: 1.6 }), flame(0.9), 0.85);
     const l = new THREE.PointLight('#ff9a3c', 22, 14);
     l.position.set(x, 1.6, -4.6);
     scene.add(l);

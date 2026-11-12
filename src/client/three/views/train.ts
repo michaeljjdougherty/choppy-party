@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { CAR_LEN, TRACKS, TRACK_HALF, TX0, TX1, TY0, TY1, type TrainState } from '../../../shared/games/trainHop';
 import { place, prop } from '../assets';
@@ -113,10 +114,48 @@ export function trainView(env: THREE.Texture, state: TrainState, players: Player
     scene.add(c);
   });
 
+  // a red warning glow that floods the whole track while a train is coming, so nobody misses it
+  const warnTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 4;
+    c.height = 64;
+    const g = c.getContext('2d')!;
+    const gr = g.createLinearGradient(0, 0, 0, 64);
+    gr.addColorStop(0, 'rgba(255,40,30,0)');
+    gr.addColorStop(0.2, 'rgba(255,40,30,0.7)');
+    gr.addColorStop(0.5, 'rgba(255,90,60,0.35)');
+    gr.addColorStop(0.8, 'rgba(255,40,30,0.7)');
+    gr.addColorStop(1, 'rgba(255,40,30,0)');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 4, 64);
+    return new THREE.CanvasTexture(c);
+  })();
+  const warnStrips = TRACKS.map((ty) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(fw + 4, TRACK_HALF * PX * 2.8).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: warnTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.position.set(cx, 0.24, wz(ty));
+    m.renderOrder = 3;
+    scene.add(m);
+    return m;
+  });
+  const signalGlows = signals.map((pair, k) =>
+    pair.map((_, side) => {
+      const gs = glowSprite('#ff3020', 1.6, 0);
+      gs.position.set(side === 0 ? wx(TX0) - 1 : wx(TX1) + 1, 2.3, wz(TRACKS[k]) - TRACK_HALF * PX - 0.2);
+      scene.add(gs);
+      return gs;
+    }),
+  );
   const fx = new Fx(scene);
   const team = crew(scene, players, state.hoppers, fx);
   // trains: a pool of locomotives and cars, reused as trains come and go
-  const locos = pool(scene, () => car('train/train-locomotive-a'));
+  const locos = pool(scene, () => {
+    const c = car('train/train-locomotive-a');
+    // a headlamp burning on the nose
+    const lamp = glowSprite('#fff2c0', 2.2, 0.95);
+    lamp.position.set(CAR_LEN * PX * 0.98, 1.3, 0);
+    c.add(lamp);
+    return c;
+  });
   const carPools = CARS.map((n) => pool(scene, () => car(n)));
   const coins = pool(scene, () => prop('platformer/coin-gold', 1.2));
   const seenOut = new Set<string>();
@@ -130,6 +169,8 @@ export function trainView(env: THREE.Texture, state: TrainState, players: Player
     update(s: TrainState, _p, t, dt) {
       last = s;
       for (const l of signals) for (const m of l) m.emissiveIntensity = 0;
+      for (const w of warnStrips) (w.material as THREE.MeshBasicMaterial).opacity = 0;
+      for (const p of signalGlows) for (const g of p) g.material.opacity = 0;
       locos.begin();
       for (const p of carPools) p.begin();
       const nowMoving = new Set<string>();
@@ -139,6 +180,8 @@ export function trainView(env: THREE.Texture, state: TrainState, players: Player
           // flash the signal on the end the train is coming from
           const on = Math.floor(t * 8) % 2 === 0 ? 2.5 : 0.2;
           signals[tr.track][tr.dir > 0 ? 0 : 1].emissiveIntensity = on;
+          signalGlows[tr.track][tr.dir > 0 ? 0 : 1].material.opacity = on > 1 ? 1 : 0.1;
+          (warnStrips[tr.track].material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.35 * Math.max(0, Math.sin(t * 16));
           continue;
         }
         const key = `${tr.track}:${tr.dir}`;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { snowMaterial } from '../look/snow';
 import type { PlayerInfo } from '../../../shared/types';
 import { DROP_TIME, GIFT_H, GIFT_W, swingX, type PileState } from '../../../shared/games/presentPileUp';
 import { ChoppyModel } from '../choppy';
@@ -37,7 +38,7 @@ export function presentView(env: THREE.Texture, state: PileState, players: Playe
   const scene = makeScene(env, { sky: 'morning', skyTop: '#ffb7a0', skyBottom: '#fff0e0', fog: ['#f4ecf4', 40, 110], shadowSize: 22 });
   const camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 300);
 
-  const snow = mesh(new THREE.CircleGeometry(90, 48), toy('#f4f8ff', 0.9), { cast: false, receive: true });
+  const snow = mesh(new THREE.CircleGeometry(90, 48), snowMaterial(30), { cast: false, receive: true });
   snow.rotation.x = -Math.PI / 2;
   scene.add(snow);
   for (let i = 0; i < 9; i++) place(scene, 'holiday/tree-decorated', -24 + i * 6 + (i % 2), 0, -13 - (i % 3) * 3, { s: 3.4 + (i % 3) * 0.6, ry: i });

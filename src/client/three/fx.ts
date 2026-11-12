@@ -88,6 +88,8 @@ interface Particle {
   drag: number;
   spin: number;
   fade: number; // fraction of life spent fading out at the end
+  c0: THREE.Color;
+  c1: THREE.Color | null; // colour it cools/fades toward over its life
 }
 
 export interface Burst {
@@ -105,6 +107,8 @@ export interface Burst {
   jitter?: number; // spawn position randomness
   /** Extra velocity every particle starts with (wind, rain). */
   vel?: [number, number, number];
+  /** Colour each particle shifts toward over its life (fire cooling into smoke). */
+  to?: THREE.ColorRepresentation;
 }
 
 export class Fx {
@@ -114,6 +118,7 @@ export class Fx {
 
   constructor(parent: THREE.Object3D) {
     this.group.renderOrder = 10;
+    this.group.add(this.light);
     parent.add(this.group);
   }
 
@@ -126,6 +131,8 @@ export class Fx {
       const m = p.sprite.material;
       m.map = t[o.tex ?? 'soft'];
       m.color.set(colors[i % colors.length]);
+      p.c0.copy(m.color);
+      p.c1 = o.to !== undefined ? (p.c1 ?? new THREE.Color()).set(o.to) : null;
       m.blending = o.additive ? THREE.AdditiveBlending : THREE.NormalBlending;
       m.opacity = 1;
       m.rotation = Math.random() * Math.PI * 2;
@@ -152,7 +159,7 @@ export class Fx {
   private make(): Particle {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, fog: false }));
     this.group.add(sprite);
-    return { sprite, vel: new THREE.Vector3(), life: 0, max: 1, size0: 1, size1: 1, gravity: 0, drag: 0, spin: 0, fade: 0.5 };
+    return { sprite, vel: new THREE.Vector3(), life: 0, max: 1, size0: 1, size1: 1, gravity: 0, drag: 0, spin: 0, fade: 0.5, c0: new THREE.Color(), c1: null };
   }
 
   // ---- presets -------------------------------------------------------------------------------
@@ -184,13 +191,32 @@ export class Fx {
     this.emit(at, { tex: 'star', color: ['#ffd23f', '#ffffff', '#ff9f1c'], n: 7, speed: [3, 5], spread: 0.6, up: 1.5, life: [0.3, 0.5], size: [0.55, 0.2], drag: 3, additive: true });
   }
 
-  /** Big explosion: flash, fireball puffs, smoke and a shockwave ring. */
+  /** Big explosion: a light flash, a hot fireball that cools into rolling smoke, sparks and a shockwave. */
   blast(at: THREE.Vector3, radius = 1.5): void {
-    this.emit(at, { tex: 'soft', color: '#fff6c8', n: 1, speed: [0, 0], life: [0.18, 0.18], size: [radius * 2.2, radius * 3.5], additive: true });
-    this.emit(at, { tex: 'puff', color: ['#ffb020', '#ff6a1a', '#ffd23f'], n: 12, speed: [2 * radius, 4 * radius], spread: 0.7, up: 2, life: [0.25, 0.45], size: [radius * 0.6, radius * 1.1], drag: 5 });
-    this.emit(at, { tex: 'puff', color: ['#5c5664', '#7a7482'], n: 8, speed: [1, 2.5 * radius], spread: 0.6, up: 2.5, life: [0.6, 1.0], size: [radius * 0.5, radius * 1.3], drag: 3, gravity: -1.5 });
-    this.emit(at, { tex: 'ring', color: '#ffe0a0', n: 1, speed: [0, 0], life: [0.35, 0.35], size: [0.5, radius * 3.2] });
+    this.emit(at, { tex: 'soft', color: '#fff6c8', n: 1, speed: [0, 0], life: [0.16, 0.16], size: [radius * 2.6, radius * 4], additive: true });
+    // the fireball: additive hot cores that swell and cool from white-yellow to deep orange
+    this.emit(at, { tex: 'soft', color: ['#fff3c0', '#ffd27a'], to: '#ff3a08', n: 10, speed: [1.2 * radius, 2.6 * radius], spread: 0.8, up: 1.5, life: [0.22, 0.4], size: [radius * 0.9, radius * 1.6], drag: 6, additive: true, jitter: radius * 0.3 });
+    // billowing puffs that start orange-lit and darken into smoke as they rise
+    this.emit(at, { tex: 'puff', color: ['#ffb24a', '#ff8a30'], to: '#4a4450', n: 12, speed: [1.5 * radius, 3.4 * radius], spread: 0.7, up: 2.2, life: [0.55, 0.95], size: [radius * 0.55, radius * 1.4], drag: 4.5, gravity: -1.2, jitter: radius * 0.3 });
+    this.emit(at, { tex: 'puff', color: ['#6a6470', '#857e8c'], n: 7, speed: [0.6, 1.8 * radius], spread: 0.5, up: 2.8, life: [0.9, 1.5], size: [radius * 0.6, radius * 1.7], drag: 2.5, gravity: -1.8, jitter: radius * 0.4 });
+    // sparks flung out and falling
+    this.emit(at, { tex: 'star', color: ['#ffe9a0', '#ffb040'], n: 14, speed: [4 * radius, 7 * radius], spread: 0.8, up: 3, life: [0.35, 0.7], size: [0.22, 0.05], gravity: 14, drag: 1.2, additive: true });
+    this.emit(at, { tex: 'ring', color: '#ffe0a0', n: 1, speed: [0, 0], life: [0.32, 0.32], size: [0.5, radius * 3.4] });
+    this.flash(at, '#ffa040', 40 * radius, radius * 7);
   }
+
+  /** A brief burst of real light that lights up the surroundings and fades. */
+  flash(at: THREE.Vector3, color: THREE.ColorRepresentation, intensity: number, distance: number): void {
+    this.light.color.set(color);
+    this.light.position.copy(at).setY(at.y + 0.8);
+    this.light.distance = distance;
+    this.lightPeak = intensity;
+    this.lightT = 0;
+  }
+  // made up front (at zero) so the first explosion doesn't add a light and stall to recompile shaders
+  private light = new THREE.PointLight('#ffffff', 0, 10, 2);
+  private lightPeak = 0;
+  private lightT = 1;
 
   /** Water splash for falling into the sea. */
   splash(at: THREE.Vector3): void {
@@ -205,6 +231,10 @@ export class Fx {
 
   update(dt: number): void {
     const d = Math.min(dt, 0.1);
+    {
+      this.lightT += d;
+      this.light.intensity = this.lightT < 0.45 ? this.lightPeak * (1 - this.lightT / 0.45) ** 2 : 0;
+    }
     for (let i = this.live.length - 1; i >= 0; i--) {
       const p = this.live[i];
       p.life -= d;
@@ -223,6 +253,7 @@ export class Fx {
       p.sprite.scale.set(s, s, 1);
       p.sprite.material.rotation += p.spin * d;
       p.sprite.material.opacity = k > 1 - p.fade ? (1 - k) / p.fade : 1;
+      if (p.c1) p.sprite.material.color.copy(p.c0).lerp(p.c1, Math.min(1, k * 1.6));
     }
   }
 }

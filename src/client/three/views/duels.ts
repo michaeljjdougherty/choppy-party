@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite, softShadowMat, trail, trailMaterial } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import type { FuseState } from '../../../shared/games/fuseDraw';
 import { BALL_R, PADDLE_H, PX0, PX1, PY0, PY1, type PaddleState } from '../../../shared/games/paddleClash';
@@ -33,6 +34,8 @@ export function fuseView(env: THREE.Texture, state: FuseState, players: PlayerIn
   scene.add(fuse);
   const spark = new THREE.PointLight('#ffb347', 0, 6, 1.5);
   scene.add(spark);
+  const sparkGlow = glowSprite('#ffc060', 1, 1);
+  scene.add(sparkGlow);
   const fx = new Fx(scene);
   const models = state.ids.map((id, i) => {
     const p = players.find((q) => q.id === id);
@@ -57,6 +60,10 @@ export function fuseView(env: THREE.Texture, state: FuseState, players: PlayerIn
       fuse.visible = s.phase === 'fuse';
       spark.intensity = s.phase === 'fuse' ? 3 + Math.sin(t * 40) * 1.5 : 0;
       spark.position.set(0, 1.1 + fuse.scale.y, 0);
+      sparkGlow.visible = s.phase === 'fuse';
+      sparkGlow.position.copy(spark.position);
+      sparkGlow.scale.setScalar(0.7 + Math.random() * 0.5);
+      if (s.phase === 'fuse' && Math.random() < dt * 14) fx.emit(spark.position, { tex: 'puff', color: ['#cfc8c0', '#a8a19a'], n: 1, speed: [0.1, 0.3], up: 1.2, life: [0.6, 1.1], size: [0.12, 0.5], drag: 1, vel: [0.25, 0.4, 0] });
       if (s.phase === 'fuse' && Math.floor(t * 20) !== Math.floor((t - dt) * 20)) fx.emit(spark.position, { tex: 'star', n: 2, color: ['#ffd23f', '#ff7a1a'], speed: [0.5, 1.5], up: 1, life: [0.2, 0.4], size: [0.25, 0] });
       keg.visible = s.phase !== 'bang';
       if (s.phase !== lastPhase) {
@@ -126,7 +133,12 @@ export function paddleView(env: THREE.Texture, state: PaddleState, players: Play
   });
   const ball = fitProp('pirate/cannon-ball', BALL_R * PX * 2.4);
   scene.add(ball);
-  const shadow = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * PX * 1.2, 16), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.25, depthWrite: false }));
+  const streakMat = trailMaterial('#fff6d0', '#ff8a3a');
+  const streak = trail(streakMat, 1, 1);
+  scene.add(streak);
+  const UP = new THREE.Vector3(0, 1, 0);
+  const tmpV = new THREE.Vector3();
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry((BALL_R * PX * 1.2) * 2.4, (BALL_R * PX * 1.2) * 2.4), softShadowMat(0.40));
   shadow.rotation.x = -Math.PI / 2;
   scene.add(shadow);
   const fx = new Fx(scene);
@@ -150,6 +162,15 @@ export function paddleView(env: THREE.Texture, state: PaddleState, players: Play
       });
       ball.visible = s.serve <= 0 || Math.floor(t * 8) % 2 === 0;
       ball.position.set(wx(s.ball.x), 0.4, wz(s.ball.y));
+      // a hot streak behind the ball that grows the faster it's going (rallies speed it up)
+      const v = Math.hypot(s.ball.vx, s.ball.vy);
+      streak.visible = ball.visible && v > 1;
+      if (streak.visible) {
+        streak.position.copy(ball.position);
+        streak.quaternion.setFromUnitVectors(UP, tmpV.set(-s.ball.vx, 0, -s.ball.vy).normalize());
+        streak.scale.set(BALL_R * PX * 0.9, Math.min(5, v * PX * 0.12), BALL_R * PX * 0.9);
+        streakMat.userData.time.value = t;
+      }
       ball.rotation.z -= s.ball.vx * dt * 0.05;
       shadow.position.set(wx(s.ball.x), 0.01, wz(s.ball.y));
       if (s.hits > hits) {

@@ -1,11 +1,14 @@
 import * as THREE from 'three';
+import { glowSprite, telegraph, trail, trailMaterial, type Telegraph } from '../look/fxKit';
+import { moltenMaterial, rockGeometry } from '../life/rocks';
+import { emberTex, scorchTex } from '../life/setPieces';
 import type { PlayerInfo } from '../../../shared/types';
 import { BLAST, FALL, MCX, MCY, MR, type MeteorState } from '../../../shared/games/meteorShower';
 import { place, texture } from '../assets';
 import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
 import type { View } from '../stage';
-import { crew, fitProp, pool } from './crew';
+import { crew, pool } from './crew';
 
 /** Meteor Shower: a round moon base under a nebula sky, ringed by Space Kit gear. */
 export function meteorView(env: THREE.Texture, state: MeteorState, players: PlayerInfo[]): View {
@@ -76,24 +79,29 @@ export function meteorView(env: THREE.Texture, state: MeteorState, players: Play
   const fx = new Fx(scene);
   const team = crew(scene, players, state.astros, fx);
   // meteor models + the red target rings under them
-  const meteorPool = pool(scene, () => fitProp('space/meteor', 1.5));
-  const ringGeo = new THREE.RingGeometry(0.82, 1, 40);
-  const ringPool = pool(scene, () => {
-    const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: '#ff3b3b', transparent: true, opacity: 0.7, depthWrite: false }));
-    m.rotation.x = -Math.PI / 2;
-    return m;
+  // molten rocks with a hot halo and a soft fire tail, over a telegraph that closes in as they arrive
+  const molten = moltenMaterial();
+  const tailMat = trailMaterial('#fff0b0', '#ff3a10');
+  const meteorPool = pool(scene, () => {
+    const g = new THREE.Group();
+    const rock = new THREE.Mesh(rockGeometry(0.75, 3 + Math.random() * 5, 0.3), molten);
+    rock.castShadow = true;
+    rock.name = 'rock';
+    g.add(rock, glowSprite('#ff8a3a', 3.4, 0.9));
+    return g;
   });
-  const fillGeo = new THREE.CircleGeometry(1, 40);
-  const fillPool = pool(scene, () => {
-    const m = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color: '#ff3b3b', transparent: true, opacity: 0.25, depthWrite: false }));
-    m.rotation.x = -Math.PI / 2;
-    return m;
+  const telePool = pool(scene, () => telegraph('#ff4030'));
+  // craters: a charred scorch with embers still glowing in it (they cool as the crater fades)
+  const craterPool = pool(scene, () => {
+    const g = new THREE.Group();
+    const scorch = new THREE.Mesh(new THREE.CircleGeometry(1.25, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: scorchTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    const ember = new THREE.Mesh(new THREE.CircleGeometry(0.95, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: emberTex(), color: '#ff7a2a', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    ember.position.y = 0.01;
+    ember.name = 'ember';
+    g.add(scorch, ember);
+    return g;
   });
-  const craterPool = pool(scene, () => fitProp('space/crater', 2.1));
-  const trailMat = new THREE.MeshBasicMaterial({ color: '#ffb347', transparent: true, opacity: 0.55, depthWrite: false });
-  const trailGeo = new THREE.ConeGeometry(0.55, 3.2, 12, 1, true);
-  trailGeo.translate(0, 1.6, 0);
-  const trailPool = pool(scene, () => new THREE.Mesh(trailGeo, trailMat));
+  const trailPool = pool(scene, () => trail(tailMat, 0.75, 6));
   const hearts = new Map(state.astros.map((a) => [a.id, a.hearts]));
   let last = state;
 
@@ -105,8 +113,9 @@ export function meteorView(env: THREE.Texture, state: MeteorState, players: Play
       rimMat.emissiveIntensity = 1.4 + Math.sin(t * 3) * 0.4;
       rocket.position.y = 0;
       meteorPool.begin();
-      ringPool.begin();
-      fillPool.begin();
+      telePool.begin();
+      tailMat.userData.time.value = t;
+      molten.userData.glow.value = 1.6 + Math.sin(t * 7) * 0.25;
       trailPool.begin();
       craterPool.begin();
       const tilt = new THREE.Vector3(0.45, 1, 0.25).normalize();
@@ -117,23 +126,23 @@ export function meteorView(env: THREE.Texture, state: MeteorState, players: Play
         const h = k * 18;
         const obj = meteorPool.take();
         obj.position.set(x + tilt.x * h, 0.6 + tilt.y * h, z + tilt.z * h);
-        obj.rotation.set(t * 3, t * 2 + m.x, 0);
+        obj.getObjectByName('rock')!.rotation.set(t * 3, t * 2 + m.x, 0);
         const tr = trailPool.take();
         tr.position.copy(obj.position);
         tr.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tilt);
         const rad = BLAST * PX;
-        const rg = ringPool.take();
-        rg.position.set(x, 0.04, z);
-        const pulse = 1 + Math.sin(t * 14) * 0.05 * (1 - k);
-        rg.scale.set(rad * pulse, rad * pulse, 1);
-        const fl = fillPool.take();
-        fl.position.set(x, 0.035, z);
-        fl.scale.set(rad * (1 - k), rad * (1 - k), 1);
+        const tg = telePool.take() as Telegraph;
+        tg.position.set(x, 0.04, z);
+        tg.scale.set(rad, 1, rad);
+        tg.userData.prog.value = 1 - k;
+        tg.userData.time.value = t;
       }
       for (const c of s.craters) {
         const o = craterPool.take();
         const shrink = Math.min(1, c.life / 0.8);
-        o.scale.setScalar((o.userData.s ??= o.scale.x) * shrink);
+        o.scale.setScalar(shrink);
+        const em = o.getObjectByName('ember') as THREE.Mesh;
+        (em.material as THREE.MeshBasicMaterial).opacity = Math.min(1, c.life * 0.6) * (0.75 + Math.sin(t * 5 + c.x) * 0.2);
         o.position.set(wx(c.x), 0.01, wz(c.y));
       }
       for (const b of s.booms) {

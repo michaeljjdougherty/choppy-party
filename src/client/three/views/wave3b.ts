@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { snowMaterial } from '../look/snow';
 import type { PlayerInfo } from '../../../shared/types';
 import { BEAM_HALF, BEAM_LEN, CRYPT_Y, KEEPER, LX0, LX1, LY0, LY1, STONES, type LanternState } from '../../../shared/games/lanternHunt';
 import { STONE_COLORS, lit, type MemoryState } from '../../../shared/games/hauntedMemory';
@@ -9,6 +10,9 @@ import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
 import type { Tag, View } from '../stage';
 import { crew, fitProp, pool } from './crew';
+import { makeBeam, type Beam } from '../look/lightBeam';
+import { glowDisc, groundFog, lampGlow, onTop } from '../look/fxKit';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 const GRAVES = ['graveyard/gravestone-round', 'graveyard/gravestone-cross', 'graveyard/gravestone-bevel', 'graveyard/gravestone-decorative'];
 
@@ -62,17 +66,12 @@ export function lanternView(env: THREE.Texture, state: LanternState, players: Pl
   spot.castShadow = true;
   spot.position.set(wx(KEEPER.x), 2.4, wz(KEEPER.y));
   scene.add(spot, spot.target);
-  const coneShape = new THREE.Shape();
-  coneShape.moveTo(0, 0);
-  coneShape.absarc(0, 0, BEAM_LEN * PX, -BEAM_HALF, BEAM_HALF, false);
-  coneShape.lineTo(0, 0);
-  const cone = new THREE.Mesh(
-    new THREE.ShapeGeometry(coneShape, 24),
-    new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }),
-  );
-  cone.rotation.x = -Math.PI / 2;
-  cone.position.set(wx(KEEPER.x), 0.04, wz(KEEPER.y));
-  scene.add(cone);
+  // a soft volumetric shaft with dust in it and a pool of light on the ground (not a flat polygon)
+  const beam = makeBeam('#ffd890', BEAM_LEN * PX, BEAM_HALF, { ground: true, groundY: 0.04, strength: 0.5 });
+  scene.add(beam.group);
+  const lamp = new THREE.PointLight('#ffb860', 6, 5, 2);
+  scene.add(lamp);
+  scene.add(groundFog([wx(LX0) - 5, wz(LY0) - 4, wx(LX1) + 5, wz(LY1) + 4], { count: 18, opacity: 0.35 }));
   const lantern = fitProp('graveyard/lantern-candle', 0.7, 'y');
   scene.add(lantern);
   const fx = new Fx(scene);
@@ -85,11 +84,16 @@ export function lanternView(env: THREE.Texture, state: LanternState, players: Pl
       last = s;
       // arena angle -> world: +y in the arena is +z in the world
       const dir = new THREE.Vector3(Math.cos(s.angle), 0, Math.sin(s.angle));
-      spot.target.position.set(wx(KEEPER.x) + dir.x * 8, 0, wz(KEEPER.y) + dir.z * 8);
-      cone.rotation.z = -s.angle;
-      (cone.material as THREE.MeshBasicMaterial).opacity = 0.14 + Math.sin(t * 9) * 0.02;
       const k = s.folk.find((f) => f.keeper)!;
       lantern.position.set(wx(k.x) + dir.x * 0.7, 1.4, wz(k.y) + dir.z * 0.7);
+      const src = lantern.position.clone().add(new THREE.Vector3(0, 0.35, 0));
+      // aim the shaft so it reaches the ground about at the end of the beam
+      beam.aim(src, new THREE.Vector3(dir.x * BEAM_LEN * PX, -src.y * 0.9, dir.z * BEAM_LEN * PX), 1, new THREE.Vector3(wx(k.x), 0, wz(k.y)));
+      beam.update(t, dt);
+      lamp.position.copy(src);
+      lamp.intensity = 6 * (1 + Math.sin(t * 13) * 0.06);
+      spot.position.set(src.x, 2.4, src.z);
+      spot.target.position.set(src.x + dir.x * 8, 0, src.z + dir.z * 8);
       for (const c of s.caughtNow) {
         fx.bonk(new THREE.Vector3(wx(c.x), 1.6, wz(c.y)));
         shake(0.15);
@@ -127,6 +131,8 @@ export function memoryView(env: THREE.Texture, state: MemoryState, players: Play
   // stones: up (back), right, down (front), left
   const spots: [number, number][] = [[0, -6.5], [4.6, -3.6], [0, -0.8], [-4.6, -3.6]];
   const lights: THREE.PointLight[] = [];
+  const pillars: Beam[] = [];
+  const discs: THREE.Mesh[] = [];
   const glows: THREE.MeshStandardMaterial[] = [];
   spots.forEach(([x, z], i) => {
     const plinth = mesh(new THREE.CylinderGeometry(1.4, 1.6, 0.4, 24), toy('#4a4a5a', 0.8), { receive: true });
@@ -139,6 +145,15 @@ export function memoryView(env: THREE.Texture, state: MemoryState, players: Play
     ring.position.set(x, 0.45, z);
     scene.add(ring);
     glows.push(gm);
+    // when it lights: a pillar of spirit light rising off the plinth and a glow pooled on the ground
+    const pillar = makeBeam(STONE_COLORS[i], 6, 0.2, { strength: 0.8 });
+    pillar.aim(new THREE.Vector3(x, 0.3, z), new THREE.Vector3(0, 1, 0), 0);
+    scene.add(pillar.group);
+    pillars.push(pillar);
+    const disc = glowDisc(STONE_COLORS[i], 2.2, 0);
+    disc.position.set(x, 0.42, z);
+    scene.add(disc);
+    discs.push(disc);
     const l = new THREE.PointLight(STONE_COLORS[i], 0, 9, 2);
     l.position.set(x, 2.4, z + 0.6);
     scene.add(l);
@@ -188,6 +203,10 @@ export function memoryView(env: THREE.Texture, state: MemoryState, players: Play
         l.intensity += (hot * 40 - l.intensity) * Math.min(1, dt * 18);
         glows[i].emissiveIntensity = 0.15 + hot * 2.5;
         glows[i].opacity = 0.5 + hot * 0.5;
+        const k = Math.min(1, l.intensity / 40);
+        pillars[i].aim(pillars[i].group.children[0].position, new THREE.Vector3(0, 1, 0), k);
+        pillars[i].update(t, dt);
+        (discs[i].material as THREE.MeshBasicMaterial).opacity = k * 0.8;
       });
       for (const f of s.folk) {
         const m = models.get(f.id)!;
@@ -227,7 +246,7 @@ export function snowView(env: THREE.Texture, state: SnowState, players: PlayerIn
   const fd = (SY1 - SY0) * PX;
   const cx = wx((SX0 + SX1) / 2);
   const cz = wz((SY0 + SY1) / 2);
-  const snow = mesh(new THREE.CircleGeometry(90, 48), toy('#f4f8ff', 0.9), { cast: false, receive: true });
+  const snow = mesh(new THREE.CircleGeometry(90, 48), snowMaterial(30), { cast: false, receive: true });
   snow.rotation.x = -Math.PI / 2;
   scene.add(snow);
   const square = mesh(new THREE.PlaneGeometry(fw, fd), new THREE.MeshStandardMaterial({ map: texture('floor_stone_pattern_small', fw / 2, fd / 2), color: '#dfe8ff', roughness: 0.8 }), {
@@ -237,23 +256,47 @@ export function snowView(env: THREE.Texture, state: SnowState, players: PlayerIn
   square.rotation.x = -Math.PI / 2;
   square.position.set(cx, 0.01, cz);
   scene.add(square);
-  const fortMat = toy('#ffffff', 0.85);
+  // snow forts built from packed snow blocks (staggered like bricks), a drifted cap and a ready pile of snowballs
+  const fortMat = snowMaterial(1.5);
+  const blockMat = new THREE.MeshStandardMaterial({ color: '#f4f8ff', roughness: 0.8 });
   for (const [x, y, hw, hh] of FORTS) {
-    const f = mesh(new THREE.BoxGeometry(hw * 2 * PX, 1.1, hh * 2 * PX), fortMat, { receive: true });
-    f.position.set(wx(x), 0.55, wz(y));
-    scene.add(f);
-    // rounded snow cap
+    const along = hw >= hh;
+    const len = (along ? hw : hh) * 2 * PX, thick = (along ? hh : hw) * 2 * PX;
+    for (let row = 0; row < 2; row++) {
+      const bl = 0.62;
+      const n = Math.max(1, Math.round(len / bl));
+      const w = len / n;
+      for (let i = 0; i < n + (row % 2 ? 1 : 0); i++) {
+        const u = -len / 2 + (i + (row % 2 ? 0 : 0.5)) * w;
+        const ww = row % 2 && (i === 0 || i === n) ? w / 2 : w;
+        const uu = row % 2 ? (i === 0 ? -len / 2 + w / 4 : i === n ? len / 2 - w / 4 : u) : u;
+        const b = mesh(new RoundedBoxGeometry(along ? ww * 0.97 : thick, 0.5, along ? thick : ww * 0.97, 2, 0.09), blockMat, { receive: true });
+        b.position.set(wx(x) + (along ? uu : 0), 0.26 + row * 0.5, wz(y) + (along ? 0 : uu));
+        b.rotation.y = (((i * 7 + row) % 5) - 2) * 0.012;
+        scene.add(b);
+      }
+    }
     const cap = mesh(new THREE.CapsuleGeometry(Math.min(hw, hh) * PX, Math.abs(hw - hh) * 2 * PX, 6, 12), fortMat, { receive: true });
     cap.rotation.z = hw > hh ? Math.PI / 2 : 0;
     cap.rotation.x = hw > hh ? 0 : Math.PI / 2;
-    cap.position.set(wx(x), 1.1, wz(y));
+    cap.scale.set(1, 0.55, 1);
+    cap.position.set(wx(x), 1.05, wz(y));
     scene.add(cap);
+    for (let k = 0; k < 3; k++) {
+      const sb = mesh(new THREE.SphereGeometry(0.2, 14, 10), blockMat);
+      sb.position.set(wx(x) + (along ? (k - 1) * 0.36 : thick / 2 + 0.3), 0.2 + (k === 1 ? 0.3 : 0), wz(y) + (along ? thick / 2 + 0.3 : (k - 1) * 0.36));
+      if (k === 1) sb.position.set(wx(x) + (along ? 0 : thick / 2 + 0.3), 0.5, wz(y) + (along ? thick / 2 + 0.3 : 0));
+      scene.add(sb);
+    }
   }
   const ring: [string, number, number, number][] = [
     ['holiday/tree-snow-a', -1, -1, 3.4], ['holiday/tree-snow-b', 1, -1, 3.6], ['holiday/snowman', -1, 1, 2.6], ['holiday/tree-snow-a', 1, 1, 3.2],
     ['holiday/cabin-wall', 0, -1, 3], ['holiday/lantern', -0.5, -1, 2.4], ['holiday/lantern', 0.5, -1, 2.4], ['holiday/sled', 1, 0, 2.4], ['holiday/bench', -1, 0, 2.4],
   ];
-  for (const [n, sx, sz, s] of ring) place(scene, n, cx + sx * (fw / 2 + 1.6), 0, cz + sz * (fd / 2 + 1.2), { s, ry: sx > 0 ? -Math.PI / 2 : sx < 0 ? Math.PI / 2 : 0 });
+  for (const [n, sx, sz, s] of ring) {
+    const o = place(scene, n, cx + sx * (fw / 2 + 1.6), 0, cz + sz * (fd / 2 + 1.2), { s, ry: sx > 0 ? -Math.PI / 2 : sx < 0 ? Math.PI / 2 : 0 });
+    if (n === 'holiday/lantern') onTop(o, lampGlow('#ffc070', 1.4), 0.55);
+  }
   place(scene, 'holiday/tree-decorated', cx, 0, cz - fd / 2 - 3, { s: 5 });
   const fx = new Fx(scene);
   const team = crew(scene, players, state.folk, fx);

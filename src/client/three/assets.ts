@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { craterGeometry, rockGeometry, stoneMaterial } from './life/rocks';
 import { loadNature } from './nature';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -12,6 +13,8 @@ import { CHARACTERS } from '../../shared/players';
 const MODEL_SUFFIX: string = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_MODEL_SUFFIX ?? '';
 
 export const PROPS = [
+  // board residents (Kenney mini characters, animated)
+  'chars/character-male-b', 'chars/character-male-e', 'chars/character-female-a', 'chars/character-female-c', 'chars/character-knight', 'chars/character-robot', 'chars/character-zombie',
   // pirate kit
   'pirate/palm-detailed-straight', 'pirate/palm-detailed-bend', 'pirate/palm-bend', 'pirate/ship-pirate-large', 'pirate/ship-pirate-medium',
   'pirate/ship-small', 'pirate/ship-wreck', 'pirate/chest', 'pirate/barrel', 'pirate/crate', 'pirate/crate-bottles', 'pirate/bottle-large',
@@ -103,7 +106,7 @@ export function sky(name: SkyName): THREE.Texture | null {
  */
 const PH: Partial<Record<TexName, string>> = {
   floor_wood_planks: 'wood_planks',
-  floor_wood_planks_wide: 'plank_flooring',
+  floor_wood_planks_wide: 'wood_floor', // plank_flooring read as a noisy patchwork
   floor_ground_grass: 'leafy_grass',
   floor_ground_sand: 'sand_01',
   floor_ground_dirt: 'park_dirt',
@@ -218,6 +221,19 @@ export async function preloadAll(onProgress: (done: number, total: number) => vo
             m.receiveShadow = true;
           }
         });
+        // the kit's meteor is a faceted low-poly blob: swap in a detailed noise rock of the same size
+        if (f === 'space/meteor.glb') {
+          const rock = new THREE.Mesh(rockGeometry(0.42, 4, 0.34), stoneMaterial('#7a6a62'));
+          rock.position.y = 0.32;
+          rock.castShadow = rock.receiveShadow = true;
+          g.scene = new THREE.Group().add(rock) as THREE.Group;
+        }
+        if (f === 'space/crater.glb' || f === 'space/craterLarge.glb') {
+          const big = f === 'space/craterLarge.glb';
+          const c = new THREE.Mesh(craterGeometry(big ? 0.44 : 0.4, 0.12, big ? 3 : 2), stoneMaterial('#c87a5e'));
+          c.receiveShadow = true;
+          g.scene = new THREE.Group().add(c) as THREE.Group;
+        }
         cache.set(f.replace(/\.glb$/, ''), g);
       } catch (e) {
         console.warn('Could not load model', f, e);

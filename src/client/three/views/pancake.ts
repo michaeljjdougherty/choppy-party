@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { PlayerInfo } from '../../../shared/types';
 import type { PancakeState } from '../../../shared/games/pancakePanic';
 import { ChoppyModel } from '../choppy';
@@ -57,14 +58,60 @@ export function pancakeView(env: THREE.Texture, state: PancakeState, players: Pl
   const n = state.ids.length;
   const gap = Math.min(2.3, 17 / Math.max(1, n));
   const plateMat = toy('#ffffff', 0.15);
-  const cakeGeo = new THREE.CylinderGeometry(0.72, 0.76, 0.16, 36);
-  const cakeMat = toy('#e9a24a', 0.55);
-  const butterMat = toy('#ffe680', 0.3);
+  // a pillowy pancake: rounded edge, golden-brown griddle-spotted faces and a pale crumb rim
+  const prof: THREE.Vector2[] = [new THREE.Vector2(0, -0.08)];
+  for (let i = 0; i <= 10; i++) {
+    const a = -Math.PI / 2 + (i / 10) * Math.PI;
+    prof.push(new THREE.Vector2(0.68 + Math.cos(a) * 0.08, Math.sin(a) * 0.08));
+  }
+  prof.push(new THREE.Vector2(0, 0.085));
+  const cakeGeo = new THREE.LatheGeometry(prof, 40);
+  const cakeTex = (() => {
+    const W = 256, H = 128;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const g = c.getContext('2d')!;
+    // v runs bottom face -> rim -> top face
+    const grd = g.createLinearGradient(0, H, 0, 0);
+    grd.addColorStop(0, '#9a5418');
+    grd.addColorStop(0.12, '#c27a2c');
+    grd.addColorStop(0.32, '#e8b866');
+    grd.addColorStop(0.5, '#f4d79a');
+    grd.addColorStop(0.68, '#e8b866');
+    grd.addColorStop(0.88, '#c27a2c');
+    grd.addColorStop(1, '#9a5418');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, W, H);
+    // griddle mottling on both faces
+    for (let i = 0; i < 260; i++) {
+      const top = i % 2 === 0;
+      const y = top ? Math.random() * H * 0.22 : H - Math.random() * H * 0.22;
+      const x = Math.random() * W, r = 2 + Math.random() * 7;
+      g.fillStyle = `rgba(${Math.random() < 0.5 ? '120,60,15' : '235,190,110'},${0.15 + Math.random() * 0.3})`;
+      g.beginPath();
+      g.ellipse(x, y, r * 1.6, r * 0.6, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const cakeMat = new THREE.MeshStandardMaterial({ map: cakeTex, roughness: 0.7 });
+  cakeMat.userData.noDetail = true;
+  const butterMat = new THREE.MeshPhysicalMaterial({ color: '#ffe48a', roughness: 0.25, clearcoat: 0.6, sheen: 0.5, sheenColor: new THREE.Color('#fff4c0') });
+  // glossy amber syrup pooled on top, running down the sides in drips
+  const syrupMat = new THREE.MeshPhysicalMaterial({ color: '#8a3a0a', roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.03, transmission: 0.25, thickness: 0.2 });
+  const syrupGeo = (() => {
+    const g = new THREE.CylinderGeometry(0.6, 0.62, 0.03, 40, 1);
+    return g;
+  })();
+  const dripGeo = new THREE.CapsuleGeometry(0.045, 0.12, 4, 8);
   interface Col {
     x: number;
     model: ChoppyModel;
     stack: THREE.InstancedMesh;
-    butter: THREE.Mesh;
+    butter: THREE.Object3D;
     flyer: THREE.Mesh;
   }
   const cols = new Map<string, Col>();
@@ -90,7 +137,19 @@ export function pancakeView(env: THREE.Texture, state: PancakeState, players: Pl
     stack.receiveShadow = true;
     stack.count = 0;
     scene.add(stack);
-    const butter = mesh(new THREE.BoxGeometry(0.32, 0.12, 0.32), butterMat);
+    const butter = new THREE.Group();
+    const pat = mesh(new RoundedBoxGeometry(0.34, 0.13, 0.3, 3, 0.04), butterMat);
+    pat.position.set(0.05, 0.08, -0.03);
+    pat.rotation.y = 0.5;
+    const syrup = mesh(syrupGeo, syrupMat, { cast: false });
+    butter.add(syrup, pat);
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2 + 0.4;
+      const d = mesh(dripGeo, syrupMat, { cast: false });
+      d.position.set(Math.cos(a) * 0.7, -0.08 - (k % 2) * 0.04, Math.sin(a) * 0.7);
+      d.scale.y = 1 + (k % 3) * 0.4;
+      butter.add(d);
+    }
     scene.add(butter);
     const flyer = mesh(cakeGeo, cakeMat);
     flyer.visible = false;
@@ -128,7 +187,7 @@ export function pancakeView(env: THREE.Texture, state: PancakeState, players: Pl
           c.stack.setMatrixAt(k, tmp.matrix);
         }
         c.stack.instanceMatrix.needsUpdate = true;
-        c.butter.position.set(c.x, 0.2 + h * unitSmooth + 0.04, 0);
+        c.butter.position.set(c.x, 0.18 + (h - 1) * unitSmooth + 0.09 * Math.max(0.35, unitSmooth / 0.16), 0);
         c.butter.visible = h > 0;
         const f = s.flip[id] / 0.18;
         c.flyer.visible = f > 0;

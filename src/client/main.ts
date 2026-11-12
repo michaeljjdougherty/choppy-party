@@ -1,3 +1,8 @@
+import { setRumbleOwners } from './rumble';
+import { drawPortrait, pumpPortraits } from './three/portraits';
+import { setPortraitDrawer } from '../shared/draw';
+setPortraitDrawer((c, color, x, y, r) => drawPortrait(c, color, x, y, r, 2.5));
+import { lookAtPointer, stepLook } from './uiDepth';
 import { drawCoinFly } from './coinFly';
 import { drawChestMarkers } from './chestMarker';
 import { BOARDS } from '../shared/board/boards';
@@ -30,7 +35,7 @@ import { FPS_LOOK } from './three/views/scopeSnap';
 import { preloadAll } from './three/assets';
 import { logo } from './menu';
 import type { BotLevel } from '../shared/bots';
-import { HostLine, LINES, countIn, finishBanner, hostCorner, pick } from './showtime';
+import { HostLine, LINES, countIn, finishBanner, hostCorner, pick, sunburst } from './showtime';
 import { getBoard } from '../shared/board/boards';
 import type { View } from './three/stage';
 import { setCharacters, setOutlined } from './three/choppy';
@@ -510,8 +515,8 @@ function frame(now: number) {
     const before = `${menu.screen}:${menu.sel}`;
     if (joinBox.classList.contains('hidden') && !netDialogOpen() && !splashActive()) act(menu.update(dt));
     const after = `${menu.screen}:${menu.sel}`;
-    if (session) sfx.select();
-    else if (before !== after) {
+    // picks play their own select sound the moment they're pressed (MainMenu.pick)
+    if (!session && before !== after) {
       const [from, to] = [before.split(':')[0], after.split(':')[0]];
       const depth = { title: 0, main: 1, online: 2 } as Record<string, number>;
       if (from === to) sfx.move();
@@ -530,6 +535,13 @@ function frame(now: number) {
 
 function render(wallT: number, dt: number) {
   beginUi();
+  const lp = pointerAt();
+  if (lp && input.kind === 'mouse' && (lp.x !== lastLook.x || lp.y !== lastLook.y)) {
+    lookAtPointer(lp.x, lp.y);
+    lastLook = lp;
+  }
+  stepLook(dt, wallT);
+  pumpPortraits(dt);
   // developer mode's panel gets the click, not the buttons drawn under it
   const held = devMode.busy ? takeStrayClick() : null;
   renderScreens(wallT, dt);
@@ -542,6 +554,8 @@ function render(wallT: number, dt: number) {
   endUi();
 }
 
+let lastLook = { x: -1, y: -1 };
+
 /** A click that no button used acts like A for the right local player (roll, ready, continue). */
 function mouseFallback() {
   const c = takeStrayClick();
@@ -551,7 +565,7 @@ function mouseFallback() {
     if (joinBox.classList.contains('hidden') && !netDialogOpen()) {
       const before = menu.screen;
       act(menu.click(c.x, c.y));
-      if (session || menu.screen !== before) sfx.select();
+      if (menu.screen !== before) sfx.select();
     }
     return;
   }
@@ -728,6 +742,7 @@ function renderScreens(wallT: number, dt: number) {
   if (s) {
     setCharacters(s.players);
     setOutlined(s.players, session.localIds());
+    setRumbleOwners(s.players, session.localIds(), s.phase !== 'lobby' && s.phase !== 'intro');
   }
   statusEl.textContent = session.status();
   if (!s) {
@@ -827,7 +842,7 @@ function renderScreens(wallT: number, dt: number) {
       drawBoardHud(ctx, s, wallT, mapCam.on);
       drawChestMarkers(ctx, s, wallT, (v) => stage.project(v), mapCam.on);
       drawCoinFly(ctx, s, dt, (v) => stage.project(v));
-      hostCorner(ctx, hostLine, wallT, 'br', 340, 70);
+      hostCorner(ctx, hostLine, wallT, 'br', 340, 70, s.board?.sub === 'tour' ? Infinity : 4);
       // mouse / touch: clickable board menus, path markers and tour buttons
       boardPointer(ctx, s, input, session.localIds(), (v) => stage.project(v), mapCam.on);
       break;
@@ -1025,10 +1040,10 @@ function hostFor(s: PartyState, view: View, t: number, dt: number) {
       const def = getBoard(bd.boardId);
       if (bd.sub === 'tour' && bd.tour) hostLine.say(bd.tour.steps[bd.tour.i]?.text ?? '', bd.tour.i === 0 ? 'proud' : 'pout');
       // (with no tour, an all-CPU game, he just gives the summary)
-      else if (bd.turn === 1 && bd.cur === 0 && bd.sub !== 'move' && s.players.every((p) => p.bot)) hostLine.say(`Welcome to ${def.name}. ${def.gimmick}`);
-      else if (bd.turn === bd.maxTurns - bd.preset.doubleTurns + 1 && bd.cur === 0 && bd.sub !== 'move' && bd.turn > 1)
+      else if (bd.turn === 1 && bd.cur === 0 && s.players.every((p) => p.bot)) hostLine.say(`Welcome to ${def.name}. ${def.gimmick}`);
+      else if (bd.turn === bd.maxTurns - bd.preset.doubleTurns + 1 && bd.cur === 0 && bd.turn > 1)
         hostLine.say('The final turns are upon us. Coin and Heart Spaces now pay double.', 'wow');
-      else if (bd.turn === bd.maxTurns && bd.cur === 0 && bd.sub !== 'move') hostLine.say('The last turn. Make it a good one.', 'smug');
+      else if (bd.turn === bd.maxTurns && bd.cur === 0) hostLine.say('The last turn. Make it a good one.', 'smug');
       else hostLine.say('');
       break;
     }
@@ -1058,50 +1073,119 @@ function countSfx(t: number, readyFor: number) {
   if (t > readyFor + 1) lastCount = 99;
 }
 
-/** Screen transition: candy-coloured diagonal bands sweep off the screen to reveal the new scene. */
+/**
+ * Screen transition: chunky candy slabs (shaded like the menu cards, with a lit leading edge and a
+ * shadowed trailing one) sweep off the screen to reveal the new scene, with a whoosh.
+ */
 let wipeT = 9;
 let seenSwitches = 0;
 const WIPE = ['#ff5a5f', '#ff9f1c', '#ffd23f', '#4cd97b', '#3fa9f5', '#b06cff'];
 function drawWipe(dt: number) {
-  if (wipeT > 1.2) return;
-  wipeT += dt;
-  const bandW = 260;
+  if (wipeT > 0.95) return;
+  if (wipeT === 0) sfx.whoosh();
+  wipeT += Math.min(dt, 1 / 30);
+  const bandW = 230;
   ctx.save();
-  WIPE.forEach((c, i) => {
-    // each band leaves a little after the one before it, with an ease-in so they whoosh away
-    const p = Math.min(1, Math.max(0, (wipeT - i * 0.05) / 0.5));
-    const e = p * p * (3 - 2 * p);
-    // far enough that even the last band ends fully off the left edge
-    const x0 = -200 + i * bandW * 0.5 - e * (VIEW_W + 1150);
-    ctx.fillStyle = c;
-    ctx.beginPath();
-    ctx.moveTo(x0, 0);
-    ctx.lineTo(x0 + VIEW_W + 600, 0);
-    ctx.lineTo(x0 + VIEW_W + 300, VIEW_H);
-    ctx.lineTo(x0 - 300, VIEW_H);
-    ctx.closePath();
+  // the bands are drawn back to front so each one's shadow falls on the band behind it
+  for (let i = WIPE.length - 1; i >= 0; i--) {
+    const c = WIPE[i];
+    // a short hold so a scene's first heavy frame hides under the bands, then an ease-in whoosh
+    const p = Math.min(1, Math.max(0, (wipeT - 0.08 - i * 0.045) / 0.42));
+    const e = p * p * p;
+    const x0 = -220 + i * bandW * 0.5 - e * (VIEW_W + 1250);
+    const tilt = 300;
+    const shape = () => {
+      ctx.beginPath();
+      ctx.moveTo(x0, 0);
+      ctx.lineTo(x0 + VIEW_W + 600, 0);
+      ctx.lineTo(x0 + VIEW_W + 600 - tilt, VIEW_H);
+      ctx.lineTo(x0 - tilt, VIEW_H);
+      ctx.closePath();
+    };
+    // shadow cast onto whatever is behind this band
+    ctx.save();
+    ctx.shadowColor = 'rgba(20,8,50,0.45)';
+    ctx.shadowBlur = 26;
+    ctx.shadowOffsetX = 14;
+    const g = ctx.createLinearGradient(x0 - tilt, 0, x0 + 260, VIEW_H * 0.3);
+    g.addColorStop(0, shade(c, 0.22));
+    g.addColorStop(1, c);
+    ctx.fillStyle = g;
+    shape();
     ctx.fill();
-  });
+    ctx.restore();
+    // lit bevel along the leading (left) edge
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 3, 0);
+    ctx.lineTo(x0 - tilt + 3, VIEW_H);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 12, 0);
+    ctx.lineTo(x0 - tilt + 12, VIEW_H);
+    ctx.stroke();
+    // dots pattern for a printed-toy feel
+    ctx.save();
+    shape();
+    ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.beginPath();
+    for (let row = 0, yy = 20; yy < VIEW_H; yy += 46, row++)
+      for (let xx = row % 2 ? 23 : 0; xx < VIEW_W + 600; xx += 46) {
+        const dx = x0 + xx - (yy / VIEW_H) * tilt;
+        if (dx < -10 || dx > VIEW_W + 10) continue;
+        ctx.moveTo(dx + 6, yy);
+        ctx.arc(dx, yy, 6, 0, Math.PI * 2);
+      }
+    ctx.fill();
+    ctx.restore();
+  }
   ctx.restore();
 }
 
+function shade(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (v: number) => Math.max(0, Math.min(255, v + 255 * amt)) | 0;
+  return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+
 /** Name plates that follow characters around the 3D scene. */
+const localTagIds = new Set<string>();
 function drawTags(tags: Tag[]) {
+  localTagIds.clear();
+  for (const id of session?.localIds() ?? []) localTagIds.add(id);
   for (const tg of tags) {
     const p = stage.project(tg.pos);
     if (!p.visible) continue;
+    // an ink pill rimmed in the player's colour, with a little pointer down to them
+    const col = tg.color ?? '#ffffff';
+    const mine = !!tg.id && localTagIds.has(tg.id);
     ctx.save();
-    ctx.font = '700 17px system-ui, sans-serif';
-    const w = ctx.measureText(tg.text).width + 22;
-    ctx.fillStyle = 'rgba(20,12,40,0.62)';
+    ctx.font = '800 16px system-ui, sans-serif';
+    const w = ctx.measureText(tg.text).width + 24;
+    ctx.fillStyle = 'rgba(10,4,30,0.35)';
+    roundRect(ctx, p.x - w / 2 + 1, p.y - 11, w, 26, 13);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(26,12,52,0.86)';
     roundRect(ctx, p.x - w / 2, p.y - 13, w, 26, 13);
     ctx.fill();
-    ctx.fillStyle = tg.color ?? '#fff';
-    ctx.beginPath();
-    ctx.arc(p.x - w / 2 + 2, p.y, 6, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.lineWidth = mine ? 3 : 2;
+    ctx.strokeStyle = col;
+    ctx.stroke();
+    if (tg.bar === undefined) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(p.x - 6, p.y + 12);
+      ctx.lineTo(p.x + 6, p.y + 12);
+      ctx.lineTo(p.x, p.y + 19);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
-    text(ctx, tg.text, p.x + 3, p.y + 1, 16, { outline: false, weight: 700 });
+    text(ctx, tg.text, p.x, p.y + 1, 16, { outline: false, weight: 800, color: mine ? '#ffffff' : '#e9e2ff' });
     if (tg.badge) text(ctx, tg.badge, p.x, p.y - 24, 13, { color: '#ffd23f', weight: 800 });
     if (tg.bar !== undefined) {
       // hold-to-ready meter
@@ -1121,25 +1205,91 @@ function drawTags(tags: Tag[]) {
 
 // load every model first, with a little loading screen
 let loadT = 0;
+const LOAD_TIPS = [
+  'Roll doubles for +5 Pit Coin.',
+  'A Chobglob costs 40 Pit Coin at the chest.',
+  'Win the Crust Game and you go first next round.',
+  'Square Brian sells the helpful stuff. Mista Chunk sells the nasty stuff.',
+  'Press Y or M on the board for the map.',
+  'One item per turn. Make it count.',
+  'Bonus Chobglobs are handed out at the very end. Nobody is safe.',
+];
+let loadDone = 0;
+let loadTotal = 1;
+let loading = true;
 function drawLoading(done: number, total: number) {
-  loadT += 0.05;
+  loadDone = done;
+  loadTotal = total;
+}
+/** The loading screen: the title's dusk sky, the logo, a chunky candy progress bar and a rotating tip. */
+function loadingFrame() {
+  if (!loading) return;
+  loadT += 1 / 60;
+  const done = loadDone, total = loadTotal;
   ctx.clearRect(0, 0, VIEW_W, VIEW_H);
   const g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
-  g.addColorStop(0, '#3ba7ff');
-  g.addColorStop(1, '#c9f0ff');
+  g.addColorStop(0, '#1d0f45');
+  g.addColorStop(0.55, '#7a2a7a');
+  g.addColorStop(1, '#ff8a4a');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-  logo(ctx, 640, 255, 1.3, loadT);
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  roundRect(ctx, 390, 470, 500, 34, 17);
+  sunburst(ctx, 640, 250, 620, loadT, '#ffd23f', 0.16, 20);
+  // drifting lanterns
+  for (let i = 0; i < 14; i++) {
+    const x = ((i * 173 + loadT * (8 + (i % 4) * 4)) % 1400) - 60;
+    const y = 720 - ((loadT * (14 + (i % 5) * 5) + i * 97) % 820);
+    ctx.fillStyle = `rgba(255,${190 + (i % 3) * 20},120,${0.25 + (i % 3) * 0.12})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 3 + (i % 3) * 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  logo(ctx, 640, 250, 1.3, loadT);
+  const k = Math.max(0, Math.min(1, done / Math.max(1, total)));
+  const bx = 390, by = 474, bw = 500, bh = 30;
+  // extruded track, then a striped candy fill that slides along, then gloss
+  ctx.fillStyle = '#12082c';
+  roundRect(ctx, bx, by + 7, bw, bh, bh / 2);
   ctx.fill();
+  ctx.fillStyle = '#2b1858';
+  roundRect(ctx, bx, by, bw, bh, bh / 2);
+  ctx.fill();
+  const fw = Math.max(bh, (bw - 8) * k);
+  ctx.save();
+  roundRect(ctx, bx + 4, by + 4, fw, bh - 8, (bh - 8) / 2);
+  ctx.clip();
   ctx.fillStyle = '#ffd23f';
-  roundRect(ctx, 394, 474, Math.max(26, 492 * (done / Math.max(1, total))), 26, 13);
-  ctx.fill();
-  text(ctx, `Loading party supplies… ${done}/${total}`, 640, 540, 22, { weight: 700 });
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = '#ff9f1c';
+  for (let x = -40 + ((loadT * 60) % 40); x < bw + 40; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(bx + x, by + bh);
+    ctx.lineTo(bx + x + 16, by + bh);
+    ctx.lineTo(bx + x + 36, by);
+    ctx.lineTo(bx + x + 20, by);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(bx, by + 5, bw, 6);
+  ctx.restore();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  roundRect(ctx, bx, by, bw, bh, bh / 2);
+  ctx.stroke();
+  text(ctx, `Loading party supplies… ${Math.round(k * 100)}%`, 640, 540, 20, { weight: 800 });
+  const tip = LOAD_TIPS[Math.floor(loadT / 4) % LOAD_TIPS.length];
+  const ta = Math.min(1, (loadT % 4) * 3, (4 - (loadT % 4)) * 3);
+  ctx.save();
+  ctx.globalAlpha = ta;
+  text(ctx, `TIP  ·  ${tip}`, 640, 640, 19, { weight: 700, color: '#ffe6b0' });
+  ctx.restore();
+  requestAnimationFrame(loadingFrame);
 }
-drawLoading(0, 1);
-Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px 'Kenney Future Narrow'").catch(() => undefined)]).then(() => requestAnimationFrame(frame));
+loadingFrame();
+Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px 'Kenney Future Narrow'").catch(() => undefined)]).then(() => {
+  loading = false;
+  requestAnimationFrame(frame);
+});
 
 // expose for automated smoke tests
 (window as any).__choppy = {

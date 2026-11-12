@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { glowDisc, softShadowMat } from '../look/fxKit';
+import { sandMaterial } from '../nature';
+import { mudMaterial, ropeMaterial } from '../look/marble';
 import type { PlayerInfo } from '../../../shared/types';
 import { LINE, type RopeState } from '../../../shared/games/ropePull';
 import { BASE_W, CX0, CX1, CY0, CY1, type CrateGrabState } from '../../../shared/games/crateGrab';
@@ -20,7 +23,7 @@ export function ropeView(env: THREE.Texture, state: RopeState, players: PlayerIn
   const grass = mesh(new THREE.CircleGeometry(80, 48), new THREE.MeshStandardMaterial({ map: texture('floor_ground_grass', 40, 40), color: '#cfe8b8', roughness: 0.95 }), { cast: false, receive: true });
   grass.rotation.x = -Math.PI / 2;
   scene.add(grass);
-  const mud = mesh(new THREE.CircleGeometry(2.4, 32), toy('#5b3a22', 0.95), { cast: false, receive: true });
+  const mud = mesh(new THREE.CircleGeometry(2.4, 48), mudMaterial(), { cast: false, receive: true });
   mud.rotation.x = -Math.PI / 2;
   mud.scale.set(1, 1.6, 1);
   mud.position.y = 0.02;
@@ -34,7 +37,7 @@ export function ropeView(env: THREE.Texture, state: RopeState, players: PlayerIn
   for (let i = 0; i < 10; i++) place(scene, i % 2 ? 'forest/tree' : 'forest/tree-high', -16 + i * 3.6, 0, -8 - (i % 3) * 2, { s: 2.6, ry: i });
   place(scene, 'forest/tent', -11, 0, -3.5, { s: 2.2, ry: 0.6 });
   place(scene, 'forest/flag', 11, 0, -3.5, { s: 2.2 });
-  const rope = mesh(new THREE.CylinderGeometry(0.07, 0.07, 26, 8), toy('#d8b67a', 0.8));
+  const rope = mesh(new THREE.CylinderGeometry(0.09, 0.09, 26, 12), ropeMaterial('#d8b67a', 140));
   rope.rotation.z = Math.PI / 2;
   rope.position.y = 0.9;
   scene.add(rope);
@@ -105,6 +108,52 @@ export function ropeView(env: THREE.Texture, state: RopeState, players: PlayerIn
   };
 }
 /** Crate Grab: a dockside yard with a base for each team; crates parachute into the middle. */
+/** A loading-zone decal: a team-colour hazard-striped border and chevrons pointing toward `dir`. */
+function dropZoneTexture(color: string, dir: number, aspect: number): THREE.Texture {
+  const H = 512, W = Math.max(64, Math.round(H * aspect));
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d')!;
+  g.fillStyle = color;
+  g.globalAlpha = 0.22;
+  g.fillRect(0, 0, W, H);
+  g.globalAlpha = 0.9;
+  // striped border
+  const b = 14;
+  g.save();
+  g.beginPath();
+  g.rect(0, 0, W, H);
+  g.rect(b, b, W - b * 2, H - b * 2);
+  g.clip('evenodd');
+  for (let k = -H; k < W + H; k += 28) {
+    g.fillStyle = color;
+    g.beginPath();
+    g.moveTo(k, 0);
+    g.lineTo(k + 14, 0);
+    g.lineTo(k + 14 - H, H);
+    g.lineTo(k - H, H);
+    g.fill();
+  }
+  g.restore();
+  // chevrons
+  g.strokeStyle = '#ffffff';
+  g.globalAlpha = 0.55;
+  g.lineWidth = 10;
+  g.lineJoin = 'round';
+  for (let k = 0; k < 3; k++) {
+    const y = H * (0.3 + k * 0.2), cx = W / 2;
+    g.beginPath();
+    g.moveTo(cx + dir * 14, y - 22);
+    g.lineTo(cx - dir * 14, y);
+    g.lineTo(cx + dir * 14, y + 22);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 export function crateView(env: THREE.Texture, state: CrateGrabState, players: PlayerInfo[]): View {
   const scene = makeScene(env, { sky: 'day', skyTop: '#7cc8ff', skyBottom: '#ffe9c4', fog: ['#f2dcb4', 40, 100], shadowSize: 20 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
@@ -112,7 +161,7 @@ export function crateView(env: THREE.Texture, state: CrateGrabState, players: Pl
   const fw = (CX1 - CX0) * PX;
   const fd = (CY1 - CY0) * PX;
   const cz = wz((CY0 + CY1) / 2);
-  const outer = mesh(new THREE.CircleGeometry(80, 48), toy('#d9b27a', 0.95), { cast: false, receive: true });
+  const outer = mesh(new THREE.CircleGeometry(80, 48), sandMaterial('#e2c08a', 30), { cast: false, receive: true });
   outer.rotation.x = -Math.PI / 2;
   outer.position.y = -0.02;
   scene.add(outer);
@@ -122,10 +171,15 @@ export function crateView(env: THREE.Texture, state: CrateGrabState, players: Pl
   scene.add(yard);
   for (const team of [0, 1]) {
     const bx = team === 0 ? wx(CX0 + BASE_W / 2) : wx(CX1 - BASE_W / 2);
-    const pad = mesh(new THREE.PlaneGeometry(BASE_W * PX, fd), new THREE.MeshBasicMaterial({ color: TEAM_COLORS[team], transparent: true, opacity: 0.35, depthWrite: false }), { cast: false });
+    // a painted loading zone: striped border, chevrons pointing in, a soft glow
+    const pad = mesh(new THREE.PlaneGeometry(BASE_W * PX, fd), new THREE.MeshStandardMaterial({ map: dropZoneTexture(TEAM_COLORS[team], team === 0 ? 1 : -1, (BASE_W * PX) / fd), transparent: true, roughness: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }), { cast: false, receive: true });
     pad.rotation.x = -Math.PI / 2;
     pad.position.set(bx, 0.02, cz);
     scene.add(pad);
+    const aura = glowDisc(TEAM_COLORS[team], Math.min(BASE_W * PX, fd) * 0.5, 0.25);
+    aura.scale.set(1, 1, fd / (BASE_W * PX));
+    aura.position.set(bx, 0.03, cz);
+    scene.add(aura);
     place(scene, 'pirate/structure', bx, 0, wz(CY0) - 1.5, { s: 1.4 });
     place(scene, 'pirate/structure-roof', bx, 0, wz(CY0) - 1.5, { s: 1.4 });
     place(scene, 'pirate/flag-pennant', bx + (team ? -1.6 : 1.6), 0, wz(CY0) - 0.6, { s: 1.6 });
@@ -136,8 +190,24 @@ export function crateView(env: THREE.Texture, state: CrateGrabState, players: Pl
   const team = crew(scene, players, state.grabbers, fx);
   const crates = pool(scene, () => fitProp('pirate/crate', 1));
   const carried = pool(scene, () => fitProp('pirate/crate', 0.8));
+  // delivered crates pile up in each base, so the score is something you can see
+  const piles = [0, 1].map((k) => {
+    const bx = k === 0 ? wx(CX0 + BASE_W / 2) : wx(CX1 - BASE_W / 2);
+    const g = new THREE.Group();
+    g.position.set(bx, 0, wz(CY0) + 1.3);
+    scene.add(g);
+    return g;
+  });
+  const pileAt = (n: number) => {
+    // a pyramid-ish stack: 3 along the bottom, then 2, then 1, then a new row beside
+    const layer = [3, 2, 1];
+    let i = n % 6, col = Math.floor(n / 6);
+    let y = 0;
+    while (i >= layer[y]) i -= layer[y++];
+    return new THREE.Vector3((i - (layer[y] - 1) / 2) * 0.82, y * 0.8, col * 0.9);
+  };
   const shadows = pool(scene, () => {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.25, depthWrite: false }));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry((0.5) * 2.4, (0.5) * 2.4), softShadowMat(0.40));
     m.rotation.x = -Math.PI / 2;
     return m;
   });
@@ -167,6 +237,12 @@ export function crateView(env: THREE.Texture, state: CrateGrabState, players: Pl
         o.rotation.y = g.face;
       }
       for (const k of [0, 1]) {
+        while (piles[k].children.length < Math.min(18, s.score[k])) {
+          const c = fitProp('pirate/crate', 0.8);
+          c.position.copy(pileAt(piles[k].children.length));
+          c.rotation.y = (piles[k].children.length * 0.37) % 0.3 - 0.15;
+          piles[k].add(c);
+        }
         if (s.score[k] > score[k]) {
           const bx = k === 0 ? wx(CX0 + BASE_W / 2) : wx(CX1 - BASE_W / 2);
           fx.sparkle(new THREE.Vector3(bx, 1.4, cz), TEAM_COLORS[k], 16);

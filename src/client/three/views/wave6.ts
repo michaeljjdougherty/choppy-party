@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import { glowDisc, glowSprite, groundFog, lampGlow, onTop, softShadowMat } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { yardSize, type ZombieState } from '../../../shared/games/zombieTag';
 import { BURST, type ChiliState, type Pepper } from '../../../shared/games/chiliChallenge';
+import { earthGlobe, moonMaterial } from '../look/moon';
+import { movingTruck, rectRugTexture } from '../look/truck';
 import { BALL_R, type MoonState } from '../../../shared/games/moonball';
 import { bpmAt, songT, type ShantyState } from '../../../shared/games/shantyShuffle';
 import { beltR, beltXY, DISHES, type Dish, type SushiState } from '../../../shared/games/sushiBelt';
@@ -62,7 +65,7 @@ export function zombieView(env: THREE.Texture, state: ZombieState, players: Play
       scene.add(f);
     }
   }
-  for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) place(scene, 'graveyard/lightpost-single', wx(x), 0, wz(y), { s: 2.2 });
+  for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) onTop(place(scene, 'graveyard/lightpost-single', wx(x), 0, wz(y), { s: 2.2 }), lampGlow('#ffb35c', 1.6), 0.88);
   const lights: THREE.PointLight[] = [];
   for (const [x, y] of [[x0, y0], [x1, y1]]) {
     const l = new THREE.PointLight('#ffb35c', 30, 20);
@@ -81,15 +84,11 @@ export function zombieView(env: THREE.Texture, state: ZombieState, players: Play
   // spooky trees and a crypt behind the yard
   place(scene, 'graveyard/crypt', 0, 0, wz(y0) - 4, { s: 3.2 });
   for (let i = 0; i < 8; i++) place(scene, i % 2 ? 'graveyard/pine-crooked' : 'graveyard/pine-fall', wx(x0) - 3 + (i % 4) * ((wx(x1) - wx(x0) + 6) / 3), 0, wz(y0) - 3 - (i >> 2) * 3, { s: 2.6 });
+  scene.add(groundFog([wx(x0) - 6, wz(y0) - 4, wx(x1) + 6, wz(y1) + 4], { count: 20, opacity: 0.45, color: '#c8ffd0' }));
   const fx = new Fx(scene);
   const team = crew(scene, players, state.walkers, fx);
   // a green glow under every zombie
-  const auraMat = new THREE.MeshBasicMaterial({ color: '#6aff5a', transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending });
-  const auras = pool(scene, () => {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(0.85, 24), auraMat);
-    m.rotation.x = -Math.PI / 2;
-    return m;
-  });
+  const auras = pool(scene, () => glowDisc('#6aff5a', 0.95, 0.7));
   let last = state;
   return {
     scene,
@@ -177,6 +176,7 @@ export function chiliView(env: THREE.Texture, state: ChiliState, players: Player
     meterMat: THREE.MeshStandardMaterial;
     chew: number;
     shown: number;
+    aura: THREE.Sprite;
   }
   const seats = new Map<string, Seat>();
   state.eaters.forEach((e, i) => {
@@ -206,7 +206,11 @@ export function chiliView(env: THREE.Texture, state: ChiliState, players: Player
     const meter = mesh(new THREE.CylinderGeometry(0.1, 0.1, 1, 12), meterMat);
     meter.position.set(x + gap * 0.36, 1.3, 0.9);
     scene.add(meter);
-    seats.set(e.id, { x, model, peppers, meter, meterMat, chew: 0, shown: e.bowl.length });
+    // their face goes red-hot: a glow round the head that swells with the heat
+    const aura = glowSprite('#ff3a10', 2.6, 0);
+    aura.position.set(x, 2.2, -0.4);
+    scene.add(aura);
+    seats.set(e.id, { x, model, peppers, meter, meterMat, chew: 0, shown: e.bowl.length, aura });
   });
   let last = state;
   return {
@@ -239,6 +243,9 @@ export function chiliView(env: THREE.Texture, state: ChiliState, players: Player
         st.meter.position.y = 1.35 + (k * 1.5) / 2;
         st.meterMat.color.setRGB(0.3 + k * 0.7, 0.8 - k * 0.65, 0.2 - k * 0.15);
         st.meterMat.emissive.setRGB(k * 0.5, k * 0.05, 0);
+        st.aura.material.opacity = e.burst ? 0 : k * k * (0.7 + Math.sin(t * (6 + k * 14)) * 0.2);
+        st.aura.scale.setScalar(1.8 + k * 1.4);
+        if (!e.burst && k > 0.8 && Math.random() < dt * 10) fx.emit(new THREE.Vector3(st.x + (Math.random() - 0.5) * 0.5, 2.5, -0.5), { tex: 'star', n: 1, color: ['#ffb040', '#ff5a1a'], speed: [0.2, 0.6], up: 2.5, life: [0.4, 0.8], size: [0.18, 0.02], additive: true });
         // steam off the hot heads
         if (!e.burst && k > 0.55 && Math.random() < dt * 14 * k) fx.emit(new THREE.Vector3(st.x + (Math.random() - 0.5) * 0.4, 2.7, -0.6), { n: 1, color: '#ffffff', speed: [0.5, 1.5], size: [0.35, 0.8], life: [0.6, 1], up: 2 });
         st.model.update(dt, { stunned: e.burst, happy: e.locked && !e.burst, jump: st.chew > 0 ? Math.sin((st.chew / 0.4) * Math.PI) * 0.15 : 0, t });
@@ -268,7 +275,7 @@ export function moonView(env: THREE.Texture, state: MoonState, players: PlayerIn
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 260);
   const x0 = 640 - state.w / 2, x1 = 640 + state.w / 2, y0 = 400 - state.h / 2, y1 = 400 + state.h / 2;
   frameRect(camera, x0 - 70, x1 + 70, y0 - 20, y1 + 10, 0.95);
-  floor(scene, 140, 100, wz(400), new THREE.MeshStandardMaterial({ map: texture('floor_ground_sand', 40, 30), color: '#9a9aa8', roughness: 1 }));
+  floor(scene, 140, 100, wz(400), moonMaterial('#8c8c9c', 5));
   // pitch markings
   const line = toy('#f4f4ff', 0.6);
   const markings: [number, number, number, number][] = [
@@ -293,25 +300,36 @@ export function moonView(env: THREE.Texture, state: MoonState, players: PlayerIn
     arch.position.set(gx, 0, wz(400));
     arch.rotation.y = Math.PI / 2;
     scene.add(arch);
-    const glow = mesh(new THREE.PlaneGeometry(2.4, state.mouth * 2 * PX), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }), { cast: false });
-    glow.rotation.x = -Math.PI / 2;
+    const glow = glowDisc(col, state.mouth * PX, 0.4);
     glow.position.set(gx + side * 1.2, 0.04, wz(400));
     scene.add(glow);
+    // an energy field across the goal mouth, and glowing emitters on the posts
+    const field = mesh(new THREE.CircleGeometry(state.mouth * PX, 40, 0, Math.PI), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }), { cast: false });
+    field.position.set(gx, 0, wz(400));
+    field.rotation.y = Math.PI / 2;
+    scene.add(field);
+    for (const dz of [-1, 1]) {
+      const e = glowSprite(col, 1.2, 0.9);
+      e.position.set(gx, 0.2, wz(400) + dz * state.mouth * PX);
+      scene.add(e);
+    }
   }
   for (const [nm, x, z, s] of [
-    ['space/crater', -9, wz(y0) - 3, 2], ['space/rock_crystalsLargeA', 12, wz(y0) - 4, 2.4], ['space/hangar_roundGlass', -14, wz(y0) - 6, 3.2],
+    ['space/crater', -9, wz(y0) - 3, 2], ['space/rock_crystalsLargeA', 12, wz(y0) - 4, 2.4],
     ['space/satelliteDish_large', 6, wz(y0) - 6, 3], ['space/rover', 15, wz(y1) + 3, 1.8], ['space/rocket_baseA', -17, wz(y0) - 3, 2.4],
   ] as [string, number, number, number][])
     place(scene, nm, x, 0, z, { s });
   // the Earth hanging in the sky
-  const earth = mesh(new THREE.SphereGeometry(5, 32, 24), new THREE.MeshStandardMaterial({ color: '#3f8cff', emissive: '#0b2a66', roughness: 0.6 }), { cast: false });
+  const earth = earthGlobe(5);
   earth.position.set(-18, 22, -45);
   scene.add(earth);
   // the ball: big, striped and bouncy
   const ballTex = checkerTexture('#ffffff', '#ff4fa3', 4, 128);
-  const ball = mesh(new THREE.SphereGeometry(BALL_R * PX, 32, 24), new THREE.MeshStandardMaterial({ map: ballTex, roughness: 0.35 }));
+  const ballMat = new THREE.MeshPhysicalMaterial({ map: ballTex, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 });
+  ballMat.userData.noDetail = true;
+  const ball = mesh(new THREE.SphereGeometry(BALL_R * PX, 48, 32), ballMat);
   scene.add(ball);
-  const shadow = mesh(new THREE.CircleGeometry(BALL_R * PX, 24), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.3, depthWrite: false }), { cast: false });
+  const shadow = mesh(new THREE.PlaneGeometry((BALL_R * PX) * 2.4, (BALL_R * PX) * 2.4), softShadowMat(0.48), { cast: false });
   shadow.rotation.x = -Math.PI / 2;
   scene.add(shadow);
   const fx = new Fx(scene);
@@ -337,7 +355,7 @@ export function moonView(env: THREE.Texture, state: MoonState, players: PlayerIn
       ball.rotation.z -= (b.vx * PX * dt) / (BALL_R * PX);
       ball.rotation.x += (b.vy * PX * dt) / (BALL_R * PX);
       shadow.position.set(wx(b.x), 0.03, wz(b.y));
-      (shadow.material as THREE.MeshBasicMaterial).opacity = 0.35 / (1 + b.z / 120);
+      (shadow.material as THREE.MeshBasicMaterial).opacity = 0.55 / (1 + b.z / 120);
       for (const k of s.kicks) {
         const a = s.astros.find((q) => q.id === k.id);
         if (a) fx.dust(new THREE.Vector3(wx(a.x), 0.3, wz(a.y)), 1);
@@ -510,7 +528,31 @@ export function sushiView(env: THREE.Texture, state: SushiState, players: Player
   counter.scale.y = 1.1;
   counter.position.set(0, 0.55, wz(400));
   scene.add(counter);
-  const beltTop = mesh(oval(1, (rx + 26) * PX, (ry + 26) * PX), toy('#3a3a44', 0.5), { receive: true });
+  // the belt: jointed steel slats that visibly run round with the plates
+  const slatTex = (() => {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#3a3a44';
+    g.fillRect(0, 0, S, S);
+    for (let i = 0; i < 96; i++) {
+      const a = (i / 96) * Math.PI * 2;
+      g.strokeStyle = i % 2 ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.45)';
+      g.lineWidth = i % 2 ? 1.5 : 3;
+      g.beginPath();
+      g.moveTo(S / 2, S / 2);
+      g.lineTo(S / 2 + Math.cos(a) * S, S / 2 + Math.sin(a) * S);
+      g.stroke();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.center.set(0.5, 0.5);
+    return t;
+  })();
+  const beltMat = new THREE.MeshStandardMaterial({ map: slatTex, metalness: 0.6, roughness: 0.35 });
+  beltMat.userData.noDetail = true;
+  const beltTop = mesh(oval(1, (rx + 26) * PX, (ry + 26) * PX), beltMat, { receive: true });
   beltTop.scale.y = 0.08;
   beltTop.position.set(0, 1.14, wz(400));
   scene.add(beltTop);
@@ -523,13 +565,27 @@ export function sushiView(env: THREE.Texture, state: SushiState, players: Player
   const [hx, hy] = beltXY(state, 0);
   hatch.position.set(wx(hx), 2.3, wz(hy) - 1.4);
   scene.add(hatch);
+  // paper lanterns on cords, glowing warm through the paper
   const lamps: THREE.Mesh[] = [];
   for (let i = 0; i < 6; i++) {
-    const l = mesh(new THREE.SphereGeometry(0.4, 16, 12), new THREE.MeshStandardMaterial({ color: '#ff4a3a', emissive: '#ff3a1a', emissiveIntensity: 0.8 }), { cast: false });
+    const l = mesh(new THREE.SphereGeometry(0.4, 20, 14), new THREE.MeshStandardMaterial({ color: '#ff4a3a', emissive: '#ff5a2a', emissiveIntensity: 1.2, roughness: 0.9 }), { cast: false });
+    l.scale.set(1, 1.25, 1);
     l.position.set(-(rx * PX) + (i * 2 * rx * PX) / 5, 6, wz(400 - ry) - 2);
     scene.add(l);
+    const cord = mesh(new THREE.CylinderGeometry(0.015, 0.015, 3, 4), toy('#222', 0.5), { cast: false });
+    cord.position.copy(l.position).add(new THREE.Vector3(0, 2, 0));
+    scene.add(cord);
+    const halo = glowSprite('#ff8a4a', 2.2, 0.7);
+    halo.position.copy(l.position);
+    scene.add(halo);
     lamps.push(l);
   }
+  const warm = new THREE.PointLight('#ff9a6a', 30, 26, 1.6);
+  warm.position.set(0, 5.5, wz(400 - ry) - 1);
+  scene.add(warm);
+  // a little garden in the middle of the counter
+  place(scene, 'furniture/pottedPlant', 0, 1.35, wz(400), { s: 1.6 });
+  let beltRot = 0;
   // plates: a little pool of plate + sushi pairs, re-dressed every frame
   const plates = state.plates.map(() => {
     const g = new THREE.Group();
@@ -578,6 +634,8 @@ export function sushiView(env: THREE.Texture, state: SushiState, players: Player
     camera,
     update(s: SushiState, _p, t, dt) {
       last = s;
+      beltRot += s.speed * dt * Math.PI * 2;
+      slatTex.rotation = beltRot;
       s.plates.forEach((p, i) => {
         const v = plates[i];
         v.g.visible = p.gone <= 0;
@@ -666,7 +724,7 @@ export function movingView(env: THREE.Texture, state: MovingState, players: Play
       m.position.copy(P(c, x + ww / 2, y + hh / 2)).setY(0.25);
       scene.add(m);
     }
-    const rug = mesh(new THREE.PlaneGeometry(RUG.w * PX, RUG.h * PX), toy(TEAM_COLORS[c.team], 0.95), { cast: false, receive: true });
+    const rug = mesh(new THREE.PlaneGeometry(RUG.w * PX, RUG.h * PX), new THREE.MeshStandardMaterial({ map: rectRugTexture(TEAM_COLORS[c.team], RUG.w, RUG.h), roughness: 0.95 }), { cast: false, receive: true });
     rug.rotation.x = -Math.PI / 2;
     rug.position.copy(P(c, RUG.x + RUG.w / 2, RUG.y + RUG.h / 2)).setY(0.03);
     scene.add(rug);
@@ -686,12 +744,9 @@ export function movingView(env: THREE.Texture, state: MovingState, players: Play
       scene.add(b);
     }
     // the moving truck the couch starts beside
-    const truck = mesh(new THREE.BoxGeometry(TRUCK.w * PX * 0.7, 2.2, TRUCK.h * PX * 0.8), toy('#ffffff', 0.5));
-    truck.position.copy(P(c, TRUCK.x + TRUCK.w * 0.6, TRUCK.y + TRUCK.h * 0.75)).setY(1.4);
+    const truck = movingTruck(TRUCK.w * PX * 0.85, TRUCK.h * PX * 0.8, TEAM_COLORS[c.team]);
+    truck.position.copy(P(c, TRUCK.x + TRUCK.w * 0.6, TRUCK.y + TRUCK.h * 0.75));
     scene.add(truck);
-    const stripe = mesh(new THREE.BoxGeometry(TRUCK.w * PX * 0.71, 0.3, TRUCK.h * PX * 0.81), toy(TEAM_COLORS[c.team], 0.5));
-    stripe.position.copy(truck.position).setY(1.1);
-    scene.add(stripe);
     // the route, as faint footprints
     for (let i = 0; i < ROUTE.length - 1; i++) {
       const [ax, ay] = ROUTE[i], [bx, by] = ROUTE[i + 1];

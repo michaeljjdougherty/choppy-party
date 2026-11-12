@@ -1,9 +1,15 @@
 import * as THREE from 'three';
+import { glowDisc, glowSprite, lampGlow, trail, trailMaterial } from '../look/fxKit';
+import { hexPlating } from '../look/moon';
+import { burgerLayer } from '../look/food';
+import { marbleMaterial } from '../look/marble';
+import { makeBeam } from '../look/lightBeam';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { PlayerInfo } from '../../../shared/types';
 import { DX0, DX1, DY0, DY1, type DigState } from '../../../shared/games/treasureDig';
 import { KX0, KX1, KY0, KY1, LANES, laneY, type CannonState } from '../../../shared/games/cannonKing';
 import { COURSE, type RaftState } from '../../../shared/games/raftRowing';
-import { ING_COLOR, type BurgerState, type Ingredient } from '../../../shared/games/burgerBuilder';
+import { type BurgerState, type Ingredient } from '../../../shared/games/burgerBuilder';
 import { COLS, FX0, FY0, PALETTE, ROWS, TILE, type CrazeState } from '../../../shared/games/colorCraze';
 import { MID, SX0, SX1, SY0, SY1, type RepairState } from '../../../shared/games/stationRepair';
 import { place, texture } from '../assets';
@@ -45,18 +51,60 @@ export function digView(env: THREE.Texture, state: DigState, players: PlayerInfo
   const fx = new Fx(scene);
   const team = crew(scene, players, state.diggers, fx);
   const moundMat = sandMaterial('#e8c37e', 2);
-  const moundGeo = new THREE.SphereGeometry(0.85, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+  // a heaped sand mound (lumpy, with a flattened top) with a red X brushed into it
+  const moundGeo = (() => {
+    const pts: THREE.Vector2[] = [];
+    for (let i = 0; i <= 16; i++) {
+      const k = i / 16;
+      const r = 1.0 * (1 - k * 0.62);
+      const y = 0.42 * Math.pow(Math.sin((k * Math.PI) / 2), 0.7);
+      pts.push(new THREE.Vector2(r, y));
+    }
+    pts.push(new THREE.Vector2(0.001, 0.43));
+    const g = new THREE.LatheGeometry(pts, 36);
+    const pos = g.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), z = pos.getZ(i), a = Math.atan2(z, x);
+      const k = 1 + Math.sin(a * 3 + 1) * 0.06 + Math.sin(a * 7) * 0.03;
+      pos.setX(i, x * k);
+      pos.setZ(i, z * k);
+    }
+    g.computeVertexNormals();
+    return g;
+  })();
+  const xTex = (() => {
+    const S = 128;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d')!;
+    g.strokeStyle = '#c22a1e';
+    g.lineCap = 'round';
+    for (const [a, b, cc, d] of [[22, 24, 104, 106], [104, 20, 26, 104]]) {
+      // a few overlapping strokes so it looks brushed, not printed
+      for (let k = 0; k < 4; k++) {
+        g.globalAlpha = 0.45 + k * 0.12;
+        g.lineWidth = 16 - k * 3;
+        g.beginPath();
+        g.moveTo(a + (Math.random() - 0.5) * 4, b + (Math.random() - 0.5) * 4);
+        g.quadraticCurveTo((a + cc) / 2 + (Math.random() - 0.5) * 8, (b + d) / 2 + (Math.random() - 0.5) * 8, cc, d);
+        g.stroke();
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const xMat = new THREE.MeshStandardMaterial({ map: xTex, transparent: true, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  xMat.userData.noDetail = true;
   const mounds = pool(scene, () => {
     const g = new THREE.Group();
     const m = mesh(moundGeo, moundMat, { receive: true });
-    m.scale.set(1, 0.45, 1);
+    m.scale.set(0.85, 1, 0.85);
     g.add(m);
-    const x = mesh(new THREE.BoxGeometry(0.7, 0.04, 0.14), toy('#c0392b', 0.6), { cast: false });
-    x.rotation.y = Math.PI / 4;
-    x.position.y = 0.4;
-    const x2 = x.clone();
-    x2.rotation.y = -Math.PI / 4;
-    g.add(x, x2);
+    const x = mesh(new THREE.PlaneGeometry(0.62, 0.62).rotateX(-Math.PI / 2), xMat, { cast: false });
+    x.position.y = 0.435;
+    x.rotation.y = Math.random() * 0.5;
+    g.add(x);
     return g;
   });
   const shovels = pool(scene, () => fitProp('pirate/tool-shovel', 0.9, 'max'));
@@ -170,7 +218,19 @@ export function cannonView(env: THREE.Texture, state: CannonState, players: Play
   const capModel = new ChoppyModel(name(players, state.captain)?.color ?? '#fff', 0.95);
   scene.add(capModel.group);
   const team = crew(scene, players, state.runners, fx);
-  const balls = pool(scene, () => fitProp('pirate/cannon-ball', 0.95, 'max'));
+  // cannonballs tear down the lane with a smoky streak behind them
+  const streakMat = trailMaterial('#fff0d0', '#806a5a');
+  const balls = pool(scene, () => {
+    const g = new THREE.Group();
+    const b = fitProp('pirate/cannon-ball', 0.95, 'max');
+    b.name = 'ball';
+    g.add(b);
+    const tr = trail(streakMat, 0.38, 3.2);
+    tr.rotation.z = Math.PI / 2; // +y of the trail points back up the lane (-x)
+    tr.position.y = 0.45;
+    g.add(tr);
+    return g;
+  });
   let aimY = laneY(state.aim);
   let last = state;
   return {
@@ -189,16 +249,23 @@ export function cannonView(env: THREE.Texture, state: CannonState, players: Play
         m.opacity = warn ? 0.25 + (Math.sin(t * 22) * 0.5 + 0.5) * 0.35 : 0;
       });
       balls.begin();
+      streakMat.userData.time.value = t;
       for (const b of s.balls) {
         if (b.warn > 0) continue;
         const o = balls.take();
-        o.position.set(wx(b.x), 0.48, wz(laneY(b.lane)));
-        o.rotation.z = -b.x * 0.05;
+        o.position.set(wx(b.x), 0.03, wz(laneY(b.lane)));
+        o.getObjectByName('ball')!.rotation.z = -b.x * 0.05;
+        o.getObjectByName('ball')!.position.y = 0.45;
+        if (Math.random() < dt * 20) fx.emit(o.position.clone().setY(0.6), { tex: 'puff', color: ['#d8d0c8', '#b8b0a8'], n: 1, speed: [0.1, 0.4], up: 0.6, life: [0.4, 0.8], size: [0.25, 0.7], drag: 2 });
       }
       for (const l of s.booms) {
         sfx.boom();
         shake(0.1);
-        fx.emit(new THREE.Vector3(wx(KX0 - 20), 0.9, wz(laneY(l))), { tex: 'puff', color: ['#ffffff', '#cfcfcf'], n: 18, speed: [2, 6], up: 1, life: [0.3, 0.8], size: [0.9, 0.3] });
+        const muzzle = new THREE.Vector3(wx(KX0 - 20), 0.9, wz(laneY(l)));
+        // a real muzzle blast: white-hot flash lighting the deck, a fireball, then rolling smoke
+        fx.flash(muzzle, '#ffc070', 60, 9);
+        fx.emit(muzzle, { tex: 'soft', color: ['#fff6d0', '#ffd27a'], to: '#ff5a10', n: 6, speed: [2, 5], spread: 0.4, life: [0.12, 0.25], size: [1.2, 2.2], additive: true, drag: 6 });
+        fx.emit(muzzle, { tex: 'puff', color: ['#ffffff', '#e0dcd6'], to: '#9a948e', n: 18, speed: [2, 6], up: 1, life: [0.5, 1.1], size: [0.9, 1.8], drag: 3.5, gravity: -0.8 });
       }
       for (const sp of s.splats) {
         sfx.bump();
@@ -339,23 +406,8 @@ export function raftView(env: THREE.Texture, state: RaftState, players: PlayerIn
 
 /* ------------------------------------------------------------------ Burger Builder */
 
-const ING_MODEL: Partial<Record<Ingredient, string>> = { patty: 'food/meat-patty', cheese: 'food/cheese-cut', tomato: 'food/tomato-slice', bacon: 'food/bacon', onion: 'food/onion-half', lettuce: 'food/cabbage' };
-
-function layer(ing: Ingredient, top: boolean): THREE.Object3D {
-  const g = new THREE.Group();
-  if (ing === 'bun') {
-    const bun = mesh(new THREE.SphereGeometry(0.75, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), toy('#e8a24a', 0.5));
-    bun.scale.set(1, top ? 0.55 : 0.25, 1);
-    if (!top) bun.rotation.x = Math.PI;
-    bun.position.y = top ? 0 : 0.18;
-    g.add(bun);
-    return g;
-  }
-  const disc = mesh(new THREE.CylinderGeometry(0.78, 0.78, 0.14, 20), toy(ING_COLOR[ing], 0.55));
-  disc.position.y = 0.07;
-  if (ing === 'lettuce') disc.scale.set(1.12, 0.7, 1.12);
-  g.add(disc);
-  return g;
+function layer(ing: Ingredient, top: boolean): { o: THREE.Object3D; h: number } {
+  return burgerLayer(ing, top, 0.75);
 }
 
 export function burgerView(env: THREE.Texture, state: BurgerState, players: PlayerInfo[]): View {
@@ -366,16 +418,67 @@ export function burgerView(env: THREE.Texture, state: BurgerState, players: Play
   const floor = mesh(new THREE.PlaneGeometry(60, 40), new THREE.MeshStandardMaterial({ map: texture('floor_tiles_tan_small', 12, 8), roughness: 0.8 }), { cast: false, receive: true });
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
-  const counterMat = toy('#f4f1ea', 0.4);
+  // counters: marble tops on painted cabinets with a team-colour kick strip and brass rail
+  const top = marbleMaterial();
   for (const side of [0, 1]) {
     const x = side === 0 ? -4.5 : 4.5;
-    const c = mesh(new THREE.BoxGeometry(5.5, 1.6, 2.6), counterMat, { receive: true });
-    c.position.set(x, 0.8, 0);
-    scene.add(c);
-    const trim = mesh(new THREE.BoxGeometry(5.6, 0.18, 2.7), toy(TEAM_COLORS[side], 0.4));
-    trim.position.set(x, 1.62, 0);
-    scene.add(trim);
-    place(scene, 'food/plate-dinner', x, 1.62, 0, { s: 2.2 });
+    const body = mesh(new RoundedBoxGeometry(5.3, 1.45, 2.4, 3, 0.08), new THREE.MeshStandardMaterial({ color: side === 0 ? '#f7e3e1' : '#e1e9f7', roughness: 0.55 }), { receive: true });
+    body.position.set(x, 0.78, 0);
+    scene.add(body);
+    // cabinet door panels on the front
+    for (let k = 0; k < 3; k++) {
+      const door = mesh(new RoundedBoxGeometry(1.5, 0.95, 0.06, 2, 0.03), new THREE.MeshStandardMaterial({ color: TEAM_COLORS[side], roughness: 0.45 }));
+      door.position.set(x + (k - 1) * 1.68, 0.82, 1.21);
+      scene.add(door);
+      const knob = mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshStandardMaterial({ color: '#e8c070', metalness: 1, roughness: 0.25 }));
+      knob.position.set(x + (k - 1) * 1.68 + 0.55, 1.05, 1.26);
+      scene.add(knob);
+    }
+    const slab = mesh(new RoundedBoxGeometry(5.7, 0.16, 2.8, 3, 0.06), top, { receive: true });
+    slab.position.set(x, 1.58, 0);
+    scene.add(slab);
+    place(scene, 'food/plate-dinner', x, 1.66, 0, { s: 2.2 });
+  }
+  // back wall: glossy subway tile backsplash with warm pendant lamps over each counter
+  const tiles = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#cfc6b8';
+    g.fillRect(0, 0, 256, 256);
+    for (let r = 0; r < 8; r++)
+      for (let k = -1; k < 5; k++) {
+        const x = k * 64 + (r % 2) * 32;
+        const gr = g.createLinearGradient(0, r * 32, 0, r * 32 + 30);
+        gr.addColorStop(0, '#fffaf2');
+        gr.addColorStop(1, '#ece2d2');
+        g.fillStyle = gr;
+        g.fillRect(x + 2, r * 32 + 2, 60, 28);
+      }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(10, 2.5);
+    return t;
+  })();
+  const wallMat = new THREE.MeshPhysicalMaterial({ map: tiles, roughness: 0.25, clearcoat: 0.6 });
+  wallMat.userData.noDetail = true;
+  const back = mesh(new THREE.PlaneGeometry(40, 10), wallMat, { cast: false, receive: true });
+  back.position.set(0, 5, -6.2);
+  scene.add(back);
+  for (const x of [-4.5, 4.5]) {
+    const cord = mesh(new THREE.CylinderGeometry(0.02, 0.02, 3, 6), toy('#222', 0.6), { cast: false });
+    cord.position.set(x, 7.6, 0);
+    scene.add(cord);
+    const shade = mesh(new THREE.LatheGeometry([0.05, 0.25, 0.6, 0.75].map((r, i) => new THREE.Vector2(r, 0.5 - i * 0.17)), 24), new THREE.MeshStandardMaterial({ color: '#2b2b30', metalness: 0.7, roughness: 0.3, side: THREE.DoubleSide }), { cast: false });
+    shade.position.set(x, 5.9, 0);
+    scene.add(shade);
+    const bulb = lampGlow('#ffd49a', 1.4);
+    bulb.position.set(x, 5.85, 0);
+    scene.add(bulb);
+    const l = new THREE.PointLight('#ffcf8a', 9, 9, 1.6);
+    l.position.set(x, 5.6, 0);
+    scene.add(l);
   }
   place(scene, 'furniture/kitchenStove', -9, 0, -4, { s: 2.6 });
   place(scene, 'furniture/kitchenFridgeLarge', 9, 0, -4, { s: 2.6 });
@@ -384,7 +487,7 @@ export function burgerView(env: THREE.Texture, state: BurgerState, players: Play
   const fx = new Fx(scene);
   const stacks = [new THREE.Group(), new THREE.Group()];
   stacks.forEach((g, i) => {
-    g.position.set(i === 0 ? -4.5 : 4.5, 1.75, 0);
+    g.position.set(i === 0 ? -4.5 : 4.5, 1.8, 0);
     scene.add(g);
   });
   const shown = ['', ''];
@@ -418,14 +521,14 @@ export function burgerView(env: THREE.Texture, state: BurgerState, players: Play
           stacks[i].clear();
           let y = 0;
           k.stack.forEach((ing, j) => {
-            const o = layer(ing, ing === 'bun' && j > 0);
+            const { o, h } = layer(ing, ing === 'bun' && j > 0);
             o.position.y = y;
             stacks[i].add(o);
-            y += ing === 'bun' ? (j > 0 ? 0.4 : 0.22) : 0.16;
+            y += h;
           });
         }
         stacks[i].rotation.z = k.wrong > 0 ? Math.sin(t * 40) * 0.08 : 0;
-        stacks[i].position.y = 1.75 + (k.done > 0 ? Math.sin((1.1 - k.done) * Math.PI) * 0.6 : 0);
+        stacks[i].position.y = 1.8 + (k.done > 0 ? Math.sin((1.1 - k.done) * Math.PI) * 0.6 : 0);
       });
       for (const e of s.events) {
         const x = e.team === 0 ? -4.5 : 4.5;
@@ -446,9 +549,9 @@ export function burgerView(env: THREE.Texture, state: BurgerState, players: Play
         if (ing && heldKey.get(c.id) !== ing) {
           heldKey.set(c.id, ing);
           st.held.clear();
-          const path = ING_MODEL[ing];
-          const o = path ? fitProp(path, 0.55, 'max') : layer(ing, true);
-          if (!path) o.scale.setScalar(0.5);
+          const { o } = layer(ing, true);
+          o.scale.setScalar(0.62);
+          o.rotation.x = 0.5;
           st.held.add(o);
         }
         st.held.rotation.y = t * 1.5;
@@ -471,7 +574,8 @@ export function burgerView(env: THREE.Texture, state: BurgerState, players: Play
 /* ------------------------------------------------------------------ Color Craze */
 
 export function crazeView(env: THREE.Texture, state: CrazeState, players: PlayerInfo[]): View {
-  const scene = makeScene(env, { sky: 'day', skyTop: '#8fd0ff', skyBottom: '#fdeaff', fog: ['#e6e6ff', 40, 110], shadowSize: 18 });
+  // a game-show dance floor at night: light-up glass tiles and sweeping stage lights
+  const scene = makeScene(env, { sky: 'night', skyTop: '#140a2e', skyBottom: '#3a1d5c', fog: ['#1c1036', 40, 110], sunColor: '#d8c8ff', sunIntensity: 1.1, shadowSize: 18 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
   camera.position.set(0, 16, 13.5);
   camera.lookAt(0, 0, 1.6);
@@ -479,17 +583,27 @@ export function crazeView(env: THREE.Texture, state: CrazeState, players: Player
   pit.rotation.x = -Math.PI / 2;
   pit.position.y = -6;
   scene.add(pit);
-  for (const [x, z] of [[-17, -9], [17, -9]]) {
-    const col = mesh(new THREE.CylinderGeometry(0.8, 0.8, 9, 16), toy('#ffffff', 0.4));
-    col.position.set(x, -1.5, z);
-    scene.add(col);
-    place(scene, 'proto/shape-hexagon', x, 3, z, { s: 1.6 });
-  }
+  // light rigs on tall trusses either side, each throwing a coloured beam that sweeps the floor
+  const truss = new THREE.MeshStandardMaterial({ color: '#3a3a48', metalness: 0.7, roughness: 0.35 });
+  const beams = [[-15, -8, '#ff5ad1'], [15, -8, '#45e3ff'], [-15, 6, '#ffd23f'], [15, 6, '#7cff6a']].map(([x, z, c], i) => {
+    const post = mesh(new THREE.CylinderGeometry(0.22, 0.28, 12, 10), truss);
+    post.position.set(x as number, 0, z as number);
+    scene.add(post);
+    const head = mesh(new THREE.CylinderGeometry(0.45, 0.6, 0.8, 16), truss);
+    head.position.set(x as number, 6.2, z as number);
+    scene.add(head);
+    const b = makeBeam(c as string, 15, 0.12, { strength: 0.32 });
+    scene.add(b.group);
+    return { b, at: new THREE.Vector3(x as number, 6.2, z as number), ph: i * 1.7 };
+  });
   const mats = PALETTE.map((c) => toy(c, 0.35));
-  const geo = new THREE.BoxGeometry(TILE * PX - 0.08, 0.4, TILE * PX - 0.08);
+  const geo = new RoundedBoxGeometry(TILE * PX - 0.1, 0.4, TILE * PX - 0.1, 2, 0.06);
   const tiles: THREE.Mesh[] = [];
+  // each tile is its own frosted glass panel lit from below in its colour
+  const tileMats = Array.from({ length: COLS * ROWS }, () => new THREE.MeshPhysicalMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.5, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.08 }));
+  void mats;
   for (let i = 0; i < COLS * ROWS; i++) {
-    const m = mesh(geo, mats[0], { cast: false, receive: true });
+    const m = mesh(geo, tileMats[i], { cast: false, receive: true });
     m.position.set(wx(FX0 + ((i % COLS) + 0.5) * TILE), -0.2, wz(FY0 + (Math.floor(i / COLS) + 0.5) * TILE));
     scene.add(m);
     tiles.push(m);
@@ -503,9 +617,21 @@ export function crazeView(env: THREE.Texture, state: CrazeState, players: Player
     camera,
     update(s: CrazeState, _p, t, dt) {
       last = s;
+      beams.forEach((L, k) => {
+        const tx = Math.sin(t * 0.7 + L.ph) * 7, tz = Math.cos(t * 0.53 + L.ph * 1.3) * 4;
+        L.b.aim(L.at, new THREE.Vector3(tx - L.at.x, -L.at.y, tz - L.at.z), 1);
+        L.b.update(t + k, dt);
+      });
       tiles.forEach((m, i) => {
-        m.material = mats[s.tiles[i]];
         const wrong = s.call >= 0 && s.tiles[i] !== s.call;
+        const mat = tileMats[i];
+        const col = PALETTE[s.tiles[i]];
+        mat.color.set(col);
+        mat.emissive.set(col);
+        // idle: a slow chase ripples across the floor; called: the right colour blazes, the rest go dim
+        const col_i = i % COLS, row_i = Math.floor(i / COLS);
+        const chase = 0.45 + 0.25 * Math.sin(t * 3 - (col_i + row_i) * 0.6);
+        mat.emissiveIntensity = s.call < 0 ? chase : wrong ? 0.08 + (s.phase === 'call' && s.callTime - s.phaseT < 0.7 ? 0.25 * Math.max(0, Math.sin(t * 30)) : 0) : 1.1 + 0.3 * Math.sin(t * 8);
         let y = -0.2;
         if (s.phase === 'drop' && wrong) y = -0.2 - Math.min(8, s.phaseT * s.phaseT * 30);
         else if (s.phase === 'call' && wrong && s.callTime - s.phaseT < 0.7) y = -0.2 + Math.sin(t * 50 + i) * 0.04;
@@ -543,21 +669,56 @@ export function repairView(env: THREE.Texture, state: RepairState, players: Play
   camera.lookAt(0, 0, 1.6);
   const fw = (SX1 - SX0) * PX;
   const fd = (SY1 - SY0) * PX;
-  const floor = mesh(new THREE.BoxGeometry(fw + 1, 0.4, fd + 1), new THREE.MeshStandardMaterial({ map: texture('floor_tiles_blue_small', fw / 2, fd / 2), color: '#c8d4ff', roughness: 0.6 }), { receive: true });
-  floor.position.set(wx((SX0 + SX1) / 2), -0.2, wz((SY0 + SY1) / 2));
-  scene.add(floor);
-  const wall = mesh(new THREE.BoxGeometry(0.3, 1.4, fd), toy('#9aa6d6', 0.4));
-  wall.position.set(wx(MID), 0.7, wz((SY0 + SY1) / 2));
-  scene.add(wall);
-  for (let x = SX0; x <= SX1; x += 140) place(scene, 'station/wall-window', wx(x), 0, wz(SY0) - 0.6, { s: 2.2 });
+  // the deck: brushed metal plating with glowing hex seams in each team's colour, raised trim round the edge
+  const base = mesh(new RoundedBoxGeometry(fw + 1.2, 0.5, fd + 1.2, 3, 0.15), new THREE.MeshStandardMaterial({ color: '#2a2e48', metalness: 0.7, roughness: 0.4 }), { receive: true });
+  base.position.set(wx((SX0 + SX1) / 2), -0.27, wz((SY0 + SY1) / 2));
+  scene.add(base);
   for (const side of [0, 1]) {
-    const tint = mesh(new THREE.PlaneGeometry(fw / 2 - 0.4, fd), new THREE.MeshBasicMaterial({ color: TEAM_COLORS[side], transparent: true, opacity: 0.12, depthWrite: false }), { cast: false });
-    tint.rotation.x = -Math.PI / 2;
-    tint.position.set(side === 0 ? wx((SX0 + MID) / 2) : wx((MID + SX1) / 2), 0.02, wz((SY0 + SY1) / 2));
-    scene.add(tint);
+    const hw = fw / 2 - 0.15;
+    const deck = new THREE.MeshStandardMaterial({ color: '#3c4266', metalness: 0.5, roughness: 0.5, emissive: TEAM_COLORS[side], emissiveMap: hexPlating(hw / 1.4), emissiveIntensity: 0.4 });
+    (deck.emissiveMap as THREE.Texture).repeat.set(hw / 1.4, fd / 1.4);
+    deck.userData.noDetail = true;
+    const plate = mesh(new THREE.PlaneGeometry(hw, fd), deck, { cast: false, receive: true });
+    plate.rotation.x = -Math.PI / 2;
+    plate.position.set(side === 0 ? wx((SX0 + MID) / 2) - 0.05 : wx((MID + SX1) / 2) + 0.05, 0.005, wz((SY0 + SY1) / 2));
+    scene.add(plate);
     place(scene, 'station/container-tall', side === 0 ? wx(SX0) - 1 : wx(SX1) + 1, 0, wz(SY1) - 1, { s: 2 });
     place(scene, 'station/pipe', side === 0 ? wx(SX0) - 1 : wx(SX1) + 1, 0, wz(SY0) + 2, { s: 2 });
   }
+  // the divider: an energy barrier humming between two emitters
+  const barrierMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: `uniform float uTime; varying vec2 vUv;
+      void main(){
+        float scan = 0.5 + 0.5 * sin(vUv.y * 40.0 - uTime * 6.0);
+        float edge = smoothstep(0.0, 0.25, vUv.y) * (1.0 - smoothstep(0.75, 1.0, vUv.y));
+        float fade = 1.0 - vUv.y;
+        float a = (0.25 + scan * 0.35) * fade * (0.6 + 0.4 * sin(vUv.x * 30.0 + uTime * 3.0)) + 0.2 * (1.0 - smoothstep(0.0, 0.08, vUv.y));
+        a *= 0.45;
+        gl_FragColor = vec4(vec3(0.45, 0.8, 1.0) * a, a);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const barrier = new THREE.Mesh(new THREE.PlaneGeometry(fd, 1.6), barrierMat);
+  barrier.rotation.y = Math.PI / 2;
+  barrier.position.set(wx(MID), 0.8, wz((SY0 + SY1) / 2));
+  scene.add(barrier);
+  const rail = mesh(new RoundedBoxGeometry(0.34, 0.16, fd, 2, 0.06), new THREE.MeshStandardMaterial({ color: '#7c88b8', emissive: '#4fb8ff', emissiveIntensity: 0.45 }), { cast: false });
+  rail.position.set(wx(MID), 0.08, wz((SY0 + SY1) / 2));
+  scene.add(rail);
+  for (const z of [wz(SY0), wz(SY1)]) {
+    const post = mesh(new THREE.CylinderGeometry(0.2, 0.28, 1.8, 16), new THREE.MeshStandardMaterial({ color: '#8a93c0', metalness: 0.8, roughness: 0.3 }));
+    post.position.set(wx(MID), 0.9, z);
+    scene.add(post);
+    const cap = glowSprite('#9fe2ff', 1.1, 0.9);
+    cap.position.set(wx(MID), 1.85, z);
+    scene.add(cap);
+  }
+  for (let x = SX0; x <= SX1; x += 140) place(scene, 'station/wall-window', wx(x), 0, wz(SY0) - 0.6, { s: 2.2 });
   place(scene, 'station/table-display-planet', 0, 0, wz(SY1) + 1.2, { s: 2.2 });
   const fx = new Fx(scene);
   const consoles = state.consoles.map((c) => {
@@ -567,9 +728,15 @@ export function repairView(env: THREE.Texture, state: RepairState, players: Play
     const light = mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshStandardMaterial({ color: '#33ff77', emissive: '#33ff77', emissiveIntensity: 1.2 }));
     light.position.y = 1.7;
     g.add(light);
+    const halo = glowSprite('#33ff77', 0.9, 0.8);
+    halo.position.y = 1.7;
+    g.add(halo);
+    const pool = glowDisc('#33ff77', 1.3, 0.35);
+    pool.position.y = 0.02;
+    g.add(pool);
     g.position.set(wx(c.x), 0, wz(c.y) - 0.5);
     scene.add(g);
-    return { g, light };
+    return { g, light, halo, pool };
   });
   const team = crew(scene, players, state.techs, fx);
   let last = state;
@@ -578,6 +745,7 @@ export function repairView(env: THREE.Texture, state: RepairState, players: Play
     camera,
     update(s: RepairState, _p, t, dt) {
       last = s;
+      barrierMat.uniforms.uTime.value = t;
       s.consoles.forEach((c, i) => {
         const broken = c.code.length > 0;
         const m = consoles[i].light.material as THREE.MeshStandardMaterial;
@@ -585,6 +753,14 @@ export function repairView(env: THREE.Texture, state: RepairState, players: Play
         m.emissive.set(broken ? '#ff3b30' : '#33ff77');
         m.emissiveIntensity = broken ? 1 + Math.sin(t * 14) * 0.8 : 1;
         consoles[i].g.rotation.z = broken ? Math.sin(t * 30 + i) * 0.02 : 0;
+        const col = broken ? '#ff3b30' : '#33ff77';
+        const blink = broken ? 0.55 + 0.45 * Math.sin(t * 14) : 0.7;
+        consoles[i].halo.material.color.set(col);
+        consoles[i].halo.material.opacity = blink;
+        consoles[i].halo.scale.setScalar(broken ? 1.3 : 0.9);
+        const pm = consoles[i].pool.material as THREE.MeshBasicMaterial;
+        pm.color.set(col);
+        pm.opacity = broken ? 0.25 + 0.25 * blink : 0.25;
         if (broken && Math.random() < dt * 4) fx.sparkle(new THREE.Vector3(wx(c.x), 1.2, wz(c.y) - 0.4), '#ffd23f', 4);
       });
       for (const i of s.sparks) {

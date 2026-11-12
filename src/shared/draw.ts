@@ -96,9 +96,17 @@ export function text(
   const plain = (str: string, px: number, align: CanvasTextAlign) => {
     ctx.textAlign = align;
     if (opts.outline !== false) {
-      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-      ctx.lineWidth = Math.max(3, size / 8);
+      // a solid ink outline (not see-through black, which reads grey and cheap), and on headlines a
+      // dropped ink layer underneath so the letters sit up off the screen like stickers
       ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(3, size / 8);
+      if (headline) {
+        ctx.strokeStyle = 'rgba(22,10,46,0.9)';
+        ctx.strokeText(str, px, y + Math.max(2, size * 0.07));
+        ctx.fillStyle = 'rgba(22,10,46,0.9)';
+        ctx.fillText(str, px, y + Math.max(2, size * 0.07));
+      }
+      ctx.strokeStyle = 'rgba(26,12,52,0.88)';
       ctx.strokeText(str, px, y);
     }
     ctx.fillStyle = opts.color ?? '#fff';
@@ -368,4 +376,19 @@ export function popText(
   ctx.scale(k, k);
   text(ctx, String(value), 0, 0, size, opts);
   ctx.restore();
+}
+
+// ---- player portraits ---------------------------------------------------------------------------
+/** The client plugs in its 3D head portraits here, so shared HUD code can show faces. */
+let portraitFn: ((ctx: CanvasRenderingContext2D, color: string, x: number, y: number, r: number) => void) | null = null;
+export function setPortraitDrawer(fn: typeof portraitFn): void {
+  portraitFn = fn;
+}
+/** A round face badge in the player's colour (a plain colour dot when portraits aren't available). */
+export function faceBadge(ctx: CanvasRenderingContext2D, color: string, x: number, y: number, r: number): void {
+  if (portraitFn) return portraitFn(ctx, color, x, y, r);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
 }

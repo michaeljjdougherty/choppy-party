@@ -4,6 +4,8 @@ import { ANVIL_HIT, AX0, AX1, AY0, AY1, FALL_TIME, type CloudburstState } from '
 import { ChoppyModel } from '../choppy';
 import { place, prop } from '../assets';
 import { Fx, shake } from '../fx';
+import { rockGeometry } from '../life/rocks';
+import { glowSprite, softShadowMat, telegraph, type Telegraph } from '../look/fxKit';
 import { PX, makeScene, mesh, stripeTexture, toy, wx, wz, yaw, frameRect } from '../kit';
 import type { Tag, View } from '../stage';
 
@@ -32,11 +34,19 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
   field.position.set(cx, 0, cz);
   scene.add(field);
   // hedges around the field
-  const hedge = toy('#2f7d35', 0.8);
+  // leafy hedges: rows of lumpy overlapping bushes in a few greens, not boxes
+  const hedgeMats = ['#2f7d35', '#3a8a3a', '#2a6e30'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
   const bush = (x: number, z: number, w: number, d: number) => {
-    const b = mesh(new THREE.BoxGeometry(w, 0.8, d), hedge, { receive: true });
-    b.position.set(x, 0.4, z);
-    scene.add(b);
+    const len = Math.max(w, d), along = w >= d;
+    const n = Math.max(2, Math.round(len / 0.75));
+    for (let i = 0; i < n; i++) {
+      const u = (i + 0.5) / n - 0.5;
+      const r = 0.55 + ((i * 7) % 5) * 0.05;
+      const b = mesh(rockGeometry(r, i % 6, 0.22), hedgeMats[i % 3], { receive: true });
+      b.position.set(x + (along ? u * len : (((i * 13) % 5) - 2) * 0.04), r * 0.55, z + (along ? (((i * 13) % 5) - 2) * 0.04 : u * len));
+      b.rotation.y = i * 1.3;
+      scene.add(b);
+    }
   };
   bush(cx, cz - fd / 2 - 0.5, fw + 2, 1);
   bush(cx - fw / 2 - 0.5, cz, 1, fd);
@@ -65,11 +75,8 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
     clouds.push(c);
   }
 
-  const shadowGeo = new THREE.CircleGeometry(1, 32);
-  const shadowMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.25, depthWrite: false });
-  const dangerMat = new THREE.MeshBasicMaterial({ color: '#ff2a2a', transparent: true, opacity: 0.35, depthWrite: false });
-  const blastMat = new THREE.MeshBasicMaterial({ color: '#ffb020', transparent: true, opacity: 0.8, depthWrite: false });
-  const blastGeo = new THREE.SphereGeometry(1, 20, 14);
+  const shadowGeo = new THREE.PlaneGeometry(2, 2);
+  const shadowMat = softShadowMat(0.45);
 
   // Kenney platformer pickups: gold coins, jewels and round bombs
   const makeCoin = () => prop('platformer/coin-gold', 1.25);
@@ -78,7 +85,7 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
     const g = new THREE.Group();
     const bomb = prop('platformer/bomb', 1.8);
     bomb.name = 'bomb';
-    const blast = new THREE.Mesh(blastGeo, blastMat.clone());
+    const blast = glowSprite('#ffa030', 1, 0.9);
     blast.name = 'blast';
     g.add(bomb, blast);
     return g;
@@ -89,6 +96,7 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
     gem: [] as THREE.Object3D[],
     anvil: [] as THREE.Object3D[],
     shadow: [] as THREE.Mesh[],
+    tele: [] as Telegraph[],
   };
   const take = <T extends THREE.Object3D>(arr: T[], i: number, make: () => T): T => {
     while (arr.length <= i) {
@@ -119,8 +127,8 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
     update(s: CloudburstState, _p, t, dt) {
       last = s;
       clouds.forEach((c, i) => (c.position.x = ((-16 + i * 8 + t * 0.6 + 20) % 40) - 20));
-      for (const arr of [pools.coin, pools.gem, pools.anvil, pools.shadow]) for (const o of arr) o.visible = false;
-      const used = { coin: 0, gem: 0, anvil: 0, shadow: 0 };
+      for (const arr of [pools.coin, pools.gem, pools.anvil, pools.shadow, pools.tele]) for (const o of arr) o.visible = false;
+      const used = { coin: 0, gem: 0, anvil: 0, shadow: 0, tele: 0 };
       for (const d of s.drops) {
         const x = wx(d.x);
         const z = wz(d.y);
@@ -140,30 +148,38 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
           // falling bomb wobbles; on landing it bursts into a big puffy blast
           const landed = d.fall <= 0;
           const bomb = obj.getObjectByName('bomb')!;
-          const blast = obj.getObjectByName('blast') as THREE.Mesh;
+          const blast = obj.getObjectByName('blast') as THREE.Sprite;
           bomb.visible = !landed;
           blast.visible = landed;
           obj.rotation.set(Math.sin(t * 9 + d.x) * 0.25, d.x, 0);
           if (landed) {
             const p = 1 - d.life / 0.6;
             const r = ANVIL_HIT * PX * (0.5 + Math.sqrt(p) * 0.7);
-            blast.scale.set(r, r * 0.7, r);
-            (blast.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - p);
+            blast.position.y = 0.8;
+            blast.scale.setScalar(r * 3);
+            blast.material.opacity = 0.95 * (1 - p) ** 1.5;
           }
         }
         // blink before vanishing
         if (k !== 'anvil' && d.fall <= 0 && d.life < 1) obj.visible = Math.floor(d.life * 10) % 2 === 0;
         if (d.fall > 0) {
+          const p = 1 - air;
+          if (k === 'anvil') {
+            const tg = take(pools.tele, used.tele++, () => telegraph('#ff3020'));
+            tg.position.set(x, 0.03, z);
+            tg.scale.set(ANVIL_HIT * PX, 1, ANVIL_HIT * PX);
+            tg.userData.prog.value = p;
+            tg.userData.time.value = t;
+          }
+          // a soft contact shadow that tightens and darkens as the drop comes down
           const sh = take(pools.shadow, used.shadow++, () => {
             const m = new THREE.Mesh(shadowGeo, shadowMat);
             m.rotation.x = -Math.PI / 2;
             return m;
           });
-          const p = 1 - air;
-          const rad = (k === 'anvil' ? ANVIL_HIT : 16) * PX * (0.4 + p * 0.6);
-          sh.material = k === 'anvil' ? dangerMat : shadowMat;
+          const rad = (k === 'anvil' ? 0.9 : 0.55) * (1.6 - p * 0.6);
           sh.scale.set(rad, rad, 1);
-          sh.position.set(x, 0.02, z);
+          sh.position.set(x, 0.025, z);
         }
       }
       // explosions, once per bomb

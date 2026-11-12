@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { iceMaterial } from '../look/ice';
 import type { PlayerInfo } from '../../../shared/types';
 import type { RinkState } from '../../../shared/games/shrinkingRink';
 import { ChoppyModel } from '../choppy';
@@ -64,7 +65,9 @@ export function rinkView(env: THREE.Texture, state: RinkState, players: PlayerIn
   const rim = mesh(new THREE.CylinderGeometry(1, 1, 0.7, 72), toy('#ff5466', 0.35), { receive: true });
   rim.position.set(0, -0.36, cz);
   scene.add(rim);
-  const ice = mesh(new THREE.CylinderGeometry(1, 1, 0.7, 72), toy('#cdeeff', 0.1), { receive: true });
+  const ice = mesh(new THREE.CylinderGeometry(1, 1, 0.7, 72), iceMaterial(env), { receive: true });
+  ice.userData.noDetail = true;
+  (ice.material as THREE.Material).userData.noDetail = true;
   ice.position.set(0, -0.33, cz);
   scene.add(ice);
   const ring = mesh(new THREE.RingGeometry(0.33, 0.36, 64), toy('#7fc4ef', 0.3), { cast: false, receive: true });

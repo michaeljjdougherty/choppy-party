@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { glowSprite } from '../look/fxKit';
+import { marbleMaterial, rugTexture } from '../look/marble';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { sfx } from '../../sfx';
 import type { PlayerInfo } from '../../../shared/types';
 import { HX0, HX1, HY0, HY1, type PotatoState } from '../../../shared/games/hotPotato';
@@ -60,10 +63,15 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
 
   const fx = new Fx(scene);
   const team = crew(scene, players, state.sailors, fx);
-  const bomb = fitProp('platformer/bomb', 1.2, 'y');
+  const bomb = fitProp('platformer/bomb', 1.55, 'y');
   scene.add(bomb);
   const glow = new THREE.PointLight('#ff7a2a', 0, 6, 2);
   scene.add(glow);
+  // the lit fuse: a hot spitting glow at its tip, and a red heat that creeps over the bomb
+  const fuseGlow = glowSprite('#ffb040', 1, 1);
+  scene.add(fuseGlow);
+  const heat = glowSprite('#ff2a10', 2.6, 0);
+  scene.add(heat);
   let last = state;
   let sparkT = 0;
   let tickT = 0;
@@ -85,6 +93,11 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
         bomb.rotation.z = Math.sin(t * 12) * 0.2 * urgency;
         glow.position.copy(bomb.position);
         glow.intensity = 4 + urgency * 14;
+        fuseGlow.visible = heat.visible = true;
+        fuseGlow.position.copy(bomb.position).add(new THREE.Vector3(0, 0.75, 0));
+        fuseGlow.scale.setScalar(0.8 + Math.random() * 0.5 + urgency * 0.4);
+        heat.position.copy(bomb.position);
+        heat.material.opacity = urgency * urgency * (0.55 + Math.sin(t * (6 + urgency * 30)) * 0.3);
         // tick... tick... ticktickticktick: the gap shrinks from a second to a blur as the fuse runs out
         tickT -= dt;
         if (tickT <= 0) {
@@ -96,7 +109,10 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
           sparkT = 0.12 - urgency * 0.08;
           fx.emit(bomb.position.clone().add(new THREE.Vector3(0, 0.7, 0)), { tex: 'star', color: ['#ffd23f', '#ff7a2a', '#ffffff'], n: 3, speed: [1, 3], up: 2, life: [0.2, 0.4], size: [0.35, 0.05], additive: true });
         }
-      } else glow.intensity = 0;
+      } else {
+        glow.intensity = 0;
+        fuseGlow.visible = heat.visible = false;
+      }
       for (const p of s.passes) {
         const to = s.sailors.find((a) => a.id === p.to);
         if (to) fx.sparkle(new THREE.Vector3(wx(to.x), 2.4, wz(to.y)), '#ffd23f', 12);
@@ -146,10 +162,10 @@ export function kitchenView(env: THREE.Texture, state: KitchenState, players: Pl
   // the island
   const iw = ISLAND.w * PX;
   const ih = ISLAND.h * PX;
-  const island = mesh(new THREE.BoxGeometry(iw, 1.1, ih), toy('#8a5a3a', 0.6), { receive: true });
+  const island = mesh(new RoundedBoxGeometry(iw, 1.1, ih, 2, 0.06), new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', iw / 2, 1), color: '#9a6a44', roughness: 0.7 }), { receive: true });
   island.position.set(wx(ISLAND.x), 0.55, wz(ISLAND.y));
   scene.add(island);
-  const top = mesh(new THREE.BoxGeometry(iw + 0.3, 0.14, ih + 0.3), toy('#f2f2f2', 0.3), { receive: true });
+  const top = mesh(new RoundedBoxGeometry(iw + 0.3, 0.14, ih + 0.3, 2, 0.05), marbleMaterial(), { receive: true });
   top.position.set(wx(ISLAND.x), 1.17, wz(ISLAND.y));
   scene.add(top);
   const plateMat = toy('#ffffff', 0.3);
@@ -159,7 +175,7 @@ export function kitchenView(env: THREE.Texture, state: KitchenState, players: Pl
   for (const c of state.cooks) {
     if (c.chef) continue;
     const col = players.find((p) => p.id === c.id)?.color ?? '#fff';
-    const rug = mesh(new THREE.CircleGeometry(1.25, 32), toy(col, 0.8), { cast: false, receive: true });
+    const rug = mesh(new THREE.CircleGeometry(1.25, 48), new THREE.MeshStandardMaterial({ map: rugTexture(col), roughness: 0.95 }), { cast: false, receive: true });
     rug.rotation.x = -Math.PI / 2;
     rug.position.set(wx(c.plateX), 0.02, wz(c.plateY));
     scene.add(rug);

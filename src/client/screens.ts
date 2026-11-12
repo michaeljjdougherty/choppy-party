@@ -1,3 +1,4 @@
+import { card3d, feel, lookX, lookY, sheen } from './uiDepth';
 import { GAMES, getGame } from '../shared/games';
 import { GRID_COLS, MAX_PLAYERS, MIX_MODES, OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, mixPool, optionsOfKind, standings, AWARD_REVEAL, AWARD_SPIN, CHAMP_HOLD, type PartyOption, type PartyState } from '../shared/party';
 import { getBoard, recommendedBoard } from '../shared/board/boards';
@@ -373,26 +374,30 @@ function freeGrid(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void
     const g = getGame(o.id);
     const on = tile.opt === s.selection;
     const col = MODE_COLOR[g.mode] ?? '#9a5bff';
+    const f = feel(`grid:${tile.opt}`, on, on ? lookX() * 0.8 : lookX() * 0.3, on ? lookY() * 0.8 : lookY() * 0.3);
+    const tcx = tile.x + tile.w / 2, tcy = tile.y + tile.h / 2;
+    card3d(ctx, { cx: tcx, cy: tcy, w: tile.w, h: tile.h, lift: f.lift.v, tiltX: f.tx.v, tiltY: f.ty.v, scale: 1 + f.lift.v * 0.07 + (on ? Math.sin(t * 4) * 0.01 : 0), radius: 12, depth: 5 }, shadeHex(col, -0.4), () => {
+      const gr = ctx.createLinearGradient(0, -tile.h / 2, 0, tile.h / 2);
+      gr.addColorStop(0, shadeHex(col, 0.22));
+      gr.addColorStop(1, col);
+      ctx.fillStyle = gr;
+      roundRect(ctx, -tile.w / 2, -tile.h / 2, tile.w, tile.h, 12);
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      sheen(ctx, tile.w, tile.h, f.tx.v, f.ty.v, on ? 0.4 : 0.15);
+      ctx.restore();
+      ctx.lineWidth = on ? 5 : 2;
+      ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.7)';
+      roundRect(ctx, -tile.w / 2, -tile.h / 2, tile.w, tile.h, 12);
+      ctx.stroke();
+    });
+    // labels ride up with the tile
+    const ly0 = -f.lift.v * 4;
     ctx.save();
-    if (on) {
-      const b = 1.06 + Math.sin(t * 7) * 0.02;
-      ctx.translate(tile.x + tile.w / 2, tile.y + tile.h / 2);
-      ctx.scale(b, b);
-      ctx.translate(-(tile.x + tile.w / 2), -(tile.y + tile.h / 2));
-    }
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    roundRect(ctx, tile.x + 2, tile.y + 5, tile.w, tile.h, 12);
-    ctx.fill();
-    const gr = ctx.createLinearGradient(0, tile.y, 0, tile.y + tile.h);
-    gr.addColorStop(0, shadeHex(col, 0.22));
-    gr.addColorStop(1, col);
-    ctx.fillStyle = gr;
-    roundRect(ctx, tile.x, tile.y, tile.w, tile.h, 12);
-    ctx.fill();
-    ctx.lineWidth = on ? 5 : 2;
-    ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.7)';
-    ctx.stroke();
-    ctx.restore();
+    ctx.translate(tcx, tcy + ly0);
+    ctx.scale(1 + f.lift.v * 0.07, 1 + f.lift.v * 0.07);
+    ctx.translate(-tcx, -tcy);
     // the type, in a tab on the tile's top edge
     const tag = MODE_TAG[g.mode] ?? '';
     ctx.save();
@@ -406,6 +411,7 @@ function freeGrid(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void
     // names wrap onto two lines so nothing is cut off
     const lines = twoLines(ctx, g.name, tile.w - 10, 13);
     lines.forEach((l, i) => text(ctx, l, tile.x + tile.w / 2, tile.y + tile.h / 2 + 4 + (i - (lines.length - 1) / 2) * 15, 13, { color: '#fff', weight: 800 }));
+    ctx.restore();
   }
   // legend: what each colour means
   const ly = GRID.y + 2 * GRID.tileH + GRID.gap + 22;

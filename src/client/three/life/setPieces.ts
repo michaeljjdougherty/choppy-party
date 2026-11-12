@@ -3,10 +3,11 @@ import type { BoardDef, BoardState, RecapBeat } from '../../../shared/board/type
 import type { Fx } from '../fx';
 import { shake } from '../fx';
 import { prop } from '../assets';
-import { mesh, toy } from '../kit';
+import { mesh } from '../kit';
 import { postPulse } from '../look/post';
 import { sfx } from '../../sfx';
 import { rumbleEveryone } from '../../rumble';
+import { moltenMaterial, rockGeometry, stoneMaterial } from './rocks';
 
 /**
  * Round-end hazards as real set pieces you can see coming, instead of a puff of dust:
@@ -26,7 +27,7 @@ export const IMPACT = { pine: 1.3, meteor: 0.95, boulder: 0 } as const;
 
 interface Meteor {
   rock: THREE.Object3D;
-  glow: THREE.Mesh;
+  glow: THREE.Sprite;
   from: THREE.Vector3;
   to: THREE.Vector3;
   delay: number;
@@ -81,7 +82,7 @@ export function buildSetPieces(scene: THREE.Scene, def: BoardDef, fx: Fx, gy: Gy
     pine.rotation.y = Math.atan2(pineDir.x, pineDir.z);
     pineTilt.rotation.set(0, 0, 0);
     if (pineModel) pineTilt.remove(pineModel);
-    pineModel = prop('platformer/tree-pine');
+    pineModel = prop('graveyard/pine-crooked');
     const box = new THREE.Box3().setFromObject(pineModel);
     const h = Math.max(0.01, box.max.y - box.min.y);
     pineModel.scale.setScalar(pineLen / h);
@@ -96,21 +97,13 @@ export function buildSetPieces(scene: THREE.Scene, def: BoardDef, fx: Fx, gy: Gy
   // ---------------------------------------------------------------- Cosmo Junction: meteors
   const meteors: Meteor[] = [];
   const craters: Crater[] = [];
-  const glowMat = () => new THREE.MeshBasicMaterial({ color: '#ff9a3c', transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
-  function launchMeteors(nodes: string[]) {
+    function launchMeteors(nodes: string[]) {
     nodes.forEach((id, i) => {
       const to = at(id);
-      const rock = prop('space/meteor', 1.4);
-      rock.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh) {
-          m.material = (m.material as THREE.MeshStandardMaterial).clone();
-          const mm = m.material as THREE.MeshStandardMaterial;
-          mm.emissive = new THREE.Color('#ff5a1a');
-          mm.emissiveIntensity = 0.9;
-        }
-      });
-      const glow = mesh(new THREE.SphereGeometry(1.1, 12, 8), glowMat(), { cast: false });
+      const mat = moltenMaterial();
+      const rock = mesh(rockGeometry(0.95, 5 + i, 0.4), mat, { cast: true });
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: '#ff8a3c', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.scale.setScalar(4.2);
       rock.add(glow);
       const from = to.clone().add(V(-16 + i * 3, 30, -22));
       rock.position.copy(from);
@@ -120,8 +113,7 @@ export function buildSetPieces(scene: THREE.Scene, def: BoardDef, fx: Fx, gy: Gy
   }
 
   // ---------------------------------------------------------------- Gold Rush Gulch: the boulder
-  const boulder = mesh(new THREE.IcosahedronGeometry(1.15, 0), toy('#9a7458', 0.95), { cast: true });
-  (boulder.material as THREE.MeshStandardMaterial).flatShading = true;
+  const boulder = mesh(rockGeometry(1.15, 3, 0.3), stoneMaterial('#a98262'), { cast: true });
   boulder.visible = false;
   root.add(boulder);
   let roll: { path: THREE.Vector3[]; ids: string[]; len: number[]; total: number; start: number } | null = null;
@@ -252,7 +244,7 @@ export function buildSetPieces(scene: THREE.Scene, def: BoardDef, fx: Fx, gy: Gy
           m.rock.position.lerpVectors(m.from, m.to, ease(k));
           m.rock.rotation.x += dt * 6;
           m.rock.rotation.z += dt * 4;
-          (m.glow.material as THREE.MeshBasicMaterial).opacity = 0.6 + Math.sin(t * 30) * 0.15;
+          m.glow.material.opacity = 0.75 + Math.sin(t * 30) * 0.15;
           if (k > 0 && k < 1) {
             fx.emit(m.rock.position, { tex: 'soft', color: ['#ffd23f', '#ff8a1f', '#ff4d1a'], n: 2, speed: [0.2, 0.8], life: [0.25, 0.5], size: [1.1, 0.2], additive: true, jitter: 0.6 });
             if (Math.random() < 0.4) fx.emit(m.rock.position, { tex: 'puff', color: ['#5c5664', '#7a7482'], n: 1, speed: [0.1, 0.4], life: [0.6, 1.0], size: [0.6, 1.4], gravity: -0.5 });
@@ -269,12 +261,22 @@ export function buildSetPieces(scene: THREE.Scene, def: BoardDef, fx: Fx, gy: Gy
               rumbleT = t;
               rumbleEveryone(0.7, 0.5, 200);
             }
-            const c = prop('space/crater', 1.3);
-            c.position.set(m.to.x, m.to.y + 0.02, m.to.z);
-            const glow = mesh(new THREE.CircleGeometry(1.2, 20), glowMat(), { cast: false });
+            const c = new THREE.Group();
+            const scorch = mesh(new THREE.CircleGeometry(1.9, 32), new THREE.MeshBasicMaterial({ map: scorchTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }), { cast: false });
+            scorch.rotation.x = -Math.PI / 2;
+            const glow = mesh(new THREE.CircleGeometry(1.5, 32), new THREE.MeshBasicMaterial({ map: emberTex(), color: '#ff7a2a', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), { cast: false });
             glow.rotation.x = -Math.PI / 2;
-            glow.position.y = 0.08;
-            c.add(glow);
+            glow.position.y = 0.03;
+            // a few chunks of the rock, still smouldering
+            for (let j = 0; j < 4; j++) {
+              const a = j * 1.7 + m.delay * 10;
+              const chunk = mesh(rockGeometry(0.22 + (j % 2) * 0.1, 20 + j, 0.4), moltenMaterial(), { cast: true });
+              chunk.position.set(Math.cos(a) * (0.9 + j * 0.15), 0.1, Math.sin(a) * (0.9 + j * 0.15));
+              chunk.rotation.set(a, a * 2, 0);
+              c.add(chunk);
+            }
+            c.add(scorch, glow);
+            c.position.set(m.to.x, m.to.y + 0.05, m.to.z);
             root.add(c);
             craters.push({ o: c, glow, age: 0 });
           }
@@ -319,4 +321,74 @@ export function buildSetPieces(scene: THREE.Scene, def: BoardDef, fx: Fx, gy: Gy
       }
     },
   };
+}
+
+// ---- painted textures (made once) -----------------------------------------------------------------
+const texs = new Map<string, THREE.Texture>();
+function canvasTex(key: string, draw: (g: CanvasRenderingContext2D, S: number) => void): THREE.Texture {
+  const hit = texs.get(key);
+  if (hit) return hit;
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  draw(c.getContext('2d')!, S);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  texs.set(key, t);
+  return t;
+}
+/** Soft round glow for halos. */
+function haloTex(): THREE.Texture {
+  return canvasTex('halo', (g, S) => {
+    const r = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    r.addColorStop(0, 'rgba(255,240,200,1)');
+    r.addColorStop(0.25, 'rgba(255,170,80,0.7)');
+    r.addColorStop(1, 'rgba(255,90,20,0)');
+    g.fillStyle = r;
+    g.fillRect(0, 0, S, S);
+  });
+}
+/** Burnt ground: a dark blast mark with ragged streaks thrown outward. */
+function scorchTex(): THREE.Texture {
+  return canvasTex('scorch', (g, S) => {
+    const c = S / 2;
+    const r = g.createRadialGradient(c, c, 0, c, c, c);
+    r.addColorStop(0, 'rgba(20,12,10,0.95)');
+    r.addColorStop(0.45, 'rgba(40,26,20,0.8)');
+    r.addColorStop(1, 'rgba(40,26,20,0)');
+    g.fillStyle = r;
+    g.fillRect(0, 0, S, S);
+    g.strokeStyle = 'rgba(25,16,12,0.55)';
+    g.lineCap = 'round';
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * Math.PI * 2 + Math.sin(i * 7.1) * 0.2;
+      const l0 = c * (0.3 + ((i * 37) % 10) / 40), l1 = c * (0.7 + ((i * 53) % 10) / 34);
+      g.lineWidth = 3 + (i % 4) * 2;
+      g.beginPath();
+      g.moveTo(c + Math.cos(a) * l0, c + Math.sin(a) * l0);
+      g.lineTo(c + Math.cos(a) * l1, c + Math.sin(a) * l1);
+      g.stroke();
+    }
+  });
+}
+/** Glowing embers: hot speckles and cracks, brightest in the middle. */
+function emberTex(): THREE.Texture {
+  return canvasTex('ember', (g, S) => {
+    const c = S / 2;
+    const r = g.createRadialGradient(c, c, 0, c, c, c);
+    r.addColorStop(0, 'rgba(255,200,120,0.9)');
+    r.addColorStop(0.35, 'rgba(255,110,30,0.45)');
+    r.addColorStop(1, 'rgba(255,60,0,0)');
+    g.fillStyle = r;
+    g.fillRect(0, 0, S, S);
+    for (let i = 0; i < 160; i++) {
+      const a = Math.sin(i * 12.9898) * 43758.5453;
+      const f = a - Math.floor(a);
+      const ang = f * Math.PI * 2, d = Math.sqrt((i * 0.618) % 1) * c * 0.85;
+      g.fillStyle = `rgba(255,${150 + ((i * 7) % 100)},60,${0.4 + (i % 5) * 0.12})`;
+      g.beginPath();
+      g.arc(c + Math.cos(ang) * d, c + Math.sin(ang) * d, 1 + (i % 3), 0, Math.PI * 2);
+      g.fill();
+    }
+  });
 }

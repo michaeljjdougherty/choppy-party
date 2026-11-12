@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sfx } from '../../sfx';
 import type { PlayerInfo } from '../../../shared/types';
 import { HX0, HX1, HY0, HY1, type PotatoState } from '../../../shared/games/hotPotato';
 import { ISLAND, KX0, KX1, KY0, KY1, SNACKS, type KitchenState } from '../../../shared/games/kitchenRaid';
@@ -65,10 +66,12 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
   scene.add(glow);
   let last = state;
   let sparkT = 0;
+  let tickT = 0;
   return {
     scene,
     camera,
     update(s: PotatoState, _p, t, dt) {
+      if (!s.holder) tickT = 0;
       last = s;
       water.update(t);
       const h = s.sailors.find((a) => a.id === s.holder);
@@ -82,6 +85,12 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
         bomb.rotation.z = Math.sin(t * 12) * 0.2 * urgency;
         glow.position.copy(bomb.position);
         glow.intensity = 4 + urgency * 14;
+        // tick... tick... ticktickticktick: the gap shrinks from a second to a blur as the fuse runs out
+        tickT -= dt;
+        if (tickT <= 0) {
+          tickT = Math.max(0.07, 0.9 * Math.pow(1 - urgency, 1.6));
+          sfx.tick(urgency);
+        }
         sparkT -= dt;
         if (sparkT <= 0) {
           sparkT = 0.12 - urgency * 0.08;
@@ -100,7 +109,7 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
       team.update(s.sailors, dt, (r) => {
         const a = r as PotatoState['sailors'][number];
         const out = a.outAt >= 0;
-        return { stunned: out, hidden: out && s.t - a.outAt > 1.3, happy: a.id !== s.holder && !!s.holder };
+        return { stunned: out || (a.daze ?? 0) > 0, hidden: out && s.t - a.outAt > 1.3, happy: a.id !== s.holder && !!s.holder };
       });
     },
     tags() {

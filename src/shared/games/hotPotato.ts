@@ -16,7 +16,8 @@ const SPEED = 300;
 const HOLDER_BOOST = 1.1;
 const DASH = 700;
 const DASH_CD = 1.1;
-const PASS_CD = 0.6;
+const PASS_CD = 1.1;
+const DAZE = 0.9;
 const MAX_T = 95;
 
 export interface Sailor extends Body {
@@ -26,6 +27,8 @@ export interface Sailor extends Body {
   face: number;
   dashCd: number;
   outAt: number;
+  /** Seconds left dazed after being handed the bomb (can't move, so no instant pass back). */
+  daze?: number;
 }
 export interface PotatoState {
   t: number;
@@ -107,7 +110,8 @@ export const hotPotato: Minigame<PotatoState> = {
         stepVertical(a, dt);
         continue;
       }
-      const inp = inputs[a.id] ?? NO_INPUT;
+      a.daze = Math.max(0, (a.daze ?? 0) - dt);
+      const inp = a.daze > 0 ? NO_INPUT : inputs[a.id] ?? NO_INPUT;
       a.dashCd = Math.max(0, a.dashCd - dt);
       const top = SPEED * (a.id === s.holder ? HOLDER_BOOST : 1);
       // a dash briefly overrides the speed cap
@@ -146,6 +150,8 @@ export const hotPotato: Minigame<PotatoState> = {
           s.passes.push({ from: s.holder, to });
           s.holder = to;
           s.passCd = PASS_CD;
+          const got = s.sailors.find((q) => q.id === to);
+          if (got) got.daze = DAZE;
         }
       }
     if (s.holder) {

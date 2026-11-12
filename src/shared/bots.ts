@@ -192,10 +192,14 @@ function paddleBot(g: PaddleState, id: string, sk: Skill, mem: BotMem, r: Rng): 
   const coming = i === 0 ? b.vx < 0 : b.vx > 0;
   // a new aiming error each time the ball is hit or served
   if (remember(mem, `pad:${g.hits}:${g.scores[g.ids[0]]}:${g.scores[g.ids[1]]}`, 0)) {
-    mem.m = (rand(r) * 2 - 1) * sk.aim * 2.2;
+    // the faster the ball, the worse the read: even hard bots start missing in long rallies
+    const sp = Math.hypot(b.vx, b.vy);
+    mem.m = (rand(r) * 2 - 1) * (sk.aim * 2.2 + Math.max(0, sp - 520) * (0.16 - sk.smart * 0.08));
     mem.n = (rand(r) * 2 - 1) * PADDLE_H * 0.3; // hit off-centre to angle the return
   }
   let target = (PY0 + PY1) / 2;
+  // a beat to react after each hit before moving
+  if (coming && mem.t < sk.react[0] * 0.8) return NO_INPUT;
   if (coming && Math.abs(b.vx) > 1) {
     if (sk.paddle < 0.6) target = b.y; // easy: just follows the ball
     else target = predictY(b.y, b.vy, (myX - b.x) / b.vx);
@@ -239,7 +243,9 @@ function cloudBot(g: CloudburstState, id: string, sk: Skill, mem: BotMem, r: Rng
 function meteorBot(g: MeteorState, id: string, sk: Skill, mem: BotMem, r: Rng): TickInput {
   const me = g.astros.find((q) => q.id === id);
   if (!me || me.outAt >= 0) return NO_INPUT;
-  const meteors = g.meteors.filter((m) => notices(m.x, m.y, sk.sense));
+  // the storm wears CPUs down: later on they miss more of the incoming meteors
+  const tired = Math.min(1, Math.max(0, g.t - 15) / 60);
+  const meteors = g.meteors.filter((m) => notices(m.x, m.y, sk.sense * (1 - tired * 0.45)));
   look(me, sk, mem, r, (x, y) => {
     const fromC = Math.hypot(x - MCX, y - MCY);
     if (fromC > MR - 30) return 1e6;
@@ -741,7 +747,12 @@ function snowBot(g: SnowState, id: string, sk: Skill, mem: BotMem, r: Rng): Tick
   const tgt = nearest(me, foes);
   // hop over an incoming snowball
   const incoming = g.balls.some((b) => b.by !== id && Math.hypot(b.x - me.x, b.y - me.y) < 90 && (me.x - b.x) * b.vx + (me.y - b.y) * b.vy > 0 && notices(b.x, b.y, sk.sense));
-  const jumpNow = incoming && me.z <= 0.01 && rand(r) < 0.5;
+  // one call per incoming throw: dodge it or not (nobody dodges every single one)
+  if (incoming && g.t > mem.prev) {
+    mem.prev = g.t + 0.45;
+    mem.m = rand(r) < 0.45 + sk.smart * 0.3 ? 1 : 0;
+  }
+  const jumpNow = incoming && mem.m === 1 && me.z <= 0.01 && rand(r) < 0.5;
   if (!tgt) return NO_INPUT;
   const d = Math.hypot(tgt.x - me.x, tgt.y - me.y);
   if (me.cd === 0 && d < 520 && clearShot(me.x, me.y, tgt.x, tgt.y) && rand(r) < 0.08 + sk.sense * 0.5) {
@@ -771,6 +782,8 @@ function laserBot(g: LaserState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
     // each beam gets its own timing error, and sometimes goes unnoticed
     mem.m = (rand(r) * 2 - 1) * (sk.react[1] - sk.react[0]) * 1.2;
     mem.n = notices(next.id * 7.1, next.p, 0.45 + sk.sense * 0.55) ? 1 : 0;
+    // nerves: as it speeds up, everyone starts fumbling now and then (so CPUs drop out one by one, not all together)
+    if (rand(r) < g.level * (0.012 + (1 - sk.smart) * 0.01)) mem.n = 0;
   }
   if (!mem.n || me.duck || me.z > 0.01) return NO_INPUT;
   const k = Math.sqrt(Math.pow(1.13, g.level));

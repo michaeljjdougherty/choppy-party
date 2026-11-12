@@ -49,6 +49,18 @@ export const DEFAULT_GRADE: Grade = {
   ao: 1,
 };
 
+const SanitizeShader = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      // NaN fails every comparison, so this keeps only real, sane values
+      bool ok = c.r >= 0.0 && c.g >= 0.0 && c.b >= 0.0 && c.r < 65000.0 && c.g < 65000.0 && c.b < 65000.0;
+      gl_FragColor = ok ? vec4(min(c.rgb, vec3(4.0)), clamp(c.a, 0.0, 1.0)) : vec4(0.0, 0.0, 0.0, 1.0);
+    }`,
+};
+
 /* ---------- pulses */
 type PulseKind = 'impact' | 'flash' | 'vignette' | 'dramatic';
 const pulse = { flash: 0, flashColor: new THREE.Color('#ffffff'), squeeze: 0, drama: 0, shake: 0 };
@@ -179,6 +191,9 @@ export class Post {
     this.composer.addPass(this.render);
     // the AO pass needs the real scene and camera; it's added on the first frame (see frame())
     if (g.bloom) {
+      // scrub bad pixels first: a single NaN or huge value smears through the bloom blur into black
+      // blocks or a white-out over half the screen (seen on Macs with MSAA on)
+      this.composer.addPass(new ShaderPass(SanitizeShader));
       this.bloom = new UnrealBloomPass(new THREE.Vector2(this.size.x, this.size.y), 0.3, 0.45, 1.45);
       this.composer.addPass(this.bloom);
     } else this.bloom = null;

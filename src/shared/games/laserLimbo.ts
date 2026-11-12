@@ -137,6 +137,13 @@ export const laserLimbo: Minigame<LaserState> = {
         }
       }
     }
+    // never a wipe-out: if the last ones climbing all get zapped together, they shake it off and keep going
+    if (s.folk.length > 1 && s.folk.every((f) => f.outAt >= 0 || f.topAt >= 0) && s.folk.some((f) => f.outAt === s.t) && !s.folk.some((f) => f.topAt >= 0)) {
+      for (const f of s.folk) if (f.outAt === s.t) {
+        f.outAt = -1;
+        f.hits = MAX_HITS - 1;
+      }
+    }
     s.beams = s.beams.filter((b) => b.p > -0.08);
   },
 

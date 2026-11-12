@@ -88,12 +88,12 @@ export const paddleClash: Minigame<PaddleState> = {
       b.y = PY1 - BALL_R;
       b.vy = -Math.abs(b.vy);
     }
-    // paddles: where the ball hits the paddle sets the angle, and every hit is a little faster
+    // paddles: where the ball hits the paddle sets the angle, and every hit is faster (long rallies get wild)
     const hit = (i: number, px: number, dir: number) => {
       const py = s.paddles[i];
       if (Math.abs(b.y - py) > PADDLE_H / 2 + BALL_R) return;
       const off = (b.y - py) / (PADDLE_H / 2);
-      const speed = Math.min(1000, Math.hypot(b.vx, b.vy) * 1.06);
+      const speed = Math.min(1650, Math.hypot(b.vx, b.vy) * 1.1 + 15);
       const a = off * 0.9;
       b.vx = Math.cos(a) * speed * dir;
       b.vy = Math.sin(a) * speed;

@@ -167,6 +167,13 @@ export const meteorShower: Minigame<MeteorState> = {
         }
       }
     }
+    // never a wipe-out: if the last ones standing all go down together, they get back up (sudden death goes on)
+    if (s.astros.length > 1 && s.astros.every((a) => a.outAt >= 0)) {
+      for (const a of s.astros) if (a.outAt === s.t) {
+        a.outAt = -1;
+        a.hearts = 1;
+      }
+    }
     s.meteors = s.meteors.filter((m) => m.fall > 0);
     for (const c of s.craters) c.life -= dt;
     s.craters = s.craters.filter((c) => c.life > 0);

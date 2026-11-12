@@ -41,9 +41,15 @@ import { sledSlalom } from './sledSlalom';
 import { bumperSaucers } from './bumperSaucers';
 import { mimicChest } from './mimicChest';
 import { barrelBands } from './barrelBands';
+import { roadHopper } from './roadHopper';
+import { crateStacker } from './crateStacker';
+import { cannonFort } from './cannonFort';
+import { stewRelay } from './stewRelay';
+import { crateCascade } from './crateCascade';
+import { sparkTrails } from './sparkTrails';
 
 /** Every playable minigame. Add new games here. */
-export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab, hotPotato, kitchenRaid, lanternHunt, hauntedMemory, snowballScramble, laserLimbo, treasureDig, cannonKing, raftRowing, burgerBuilder, colorCraze, stationRepair, paintPlaza, alienCount, lightsOut, pumpkinBowling, captureCrown, lastSeat, zombieTag, chiliChallenge, moonball, shantyShuffle, sushiBelt, movingDay, mineCart, risingTide, sledSlalom, bumperSaucers, mimicChest, barrelBands];
+export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, coinCloudburst, meteorShower, presentPileUp, graveyardShift, trainHop, fuseDraw, paddleClash, ropePull, crateGrab, hotPotato, kitchenRaid, lanternHunt, hauntedMemory, snowballScramble, laserLimbo, treasureDig, cannonKing, raftRowing, burgerBuilder, colorCraze, stationRepair, paintPlaza, alienCount, lightsOut, pumpkinBowling, captureCrown, lastSeat, zombieTag, chiliChallenge, moonball, shantyShuffle, sushiBelt, movingDay, mineCart, risingTide, sledSlalom, bumperSaucers, mimicChest, barrelBands, roadHopper, crateStacker, cannonFort, stewRelay, crateCascade, sparkTrails];
 
 export function getGame(id: string): Minigame {
   const g = GAMES.find((x) => x.id === id);

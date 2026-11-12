@@ -79,6 +79,8 @@ function load(): void {
     }
     // the old switch still works
     if (q.has('lowfx')) overrides = { ...overrides, post: false };
+    // testing: ?fxoff=bloom,tiltShift turns single switches off
+    for (const k of (q.get('fxoff') ?? '').split(',').filter(Boolean)) overrides = { ...overrides, [k]: k === 'msaa' || k === 'surface' ? 0 : false };
   } catch {
     /* no location (tests) */
   }

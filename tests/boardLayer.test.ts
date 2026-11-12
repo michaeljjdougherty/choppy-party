@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOARDS, getBoard } from '../src/shared/board/boards';
-import { ROLL_SHOW, createBoard, finishEvent, forwardDist, hurt, placeChest, stepBoard } from '../src/shared/board/engine';
+import { DUEL_GAMES, ROLL_SHOW, createBoard, finishEvent, forwardDist, hurt, placeChest, stepBoard } from '../src/shared/board/engine';
 import { DT, NO_INPUT, type Inputs } from '../src/shared/types';
 import { addPlayer, createParty, OPTIONS, stepParty } from '../src/shared/party';
 import { ITEM_COLS, ITEM_GRID } from '../src/shared/board/items';
@@ -169,7 +169,7 @@ describe('board layer', () => {
     let guard = 0;
     while (p.phase === 'board' && guard++ < 30 * 20) stepParty(p, {}, DT);
     expect(p.phase).toBe('intro');
-    expect(p.gameId && ['fuse-draw', 'paddle-clash'].includes(p.gameId)).toBe(true);
+    expect(p.gameId && DUEL_GAMES.includes(p.gameId)).toBe(true);
     expect(p.gamePlayers!.length).toBe(2);
     guard = 0;
     const holdAll = () => Object.fromEntries(p.players.map((q) => [q.id, { ...A, aPressed: false, aTaps: 0 }]));

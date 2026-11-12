@@ -114,6 +114,12 @@ export const GAME_LOOKS: Record<string, Look> = {
   'bumper-saucers': { theme: 'space', noScenery: true },
   'mimic-chest': { theme: 'spooky', noScenery: true },
   'barrel-bands': { theme: 'beach', keepOut: [{ rect: [-22, -12, 22, 16] }] },
+  'road-hopper': { theme: 'meadow', noScenery: true },
+  'crate-stacker': { theme: 'sea', noScenery: true },
+  'cannon-fort': { theme: 'sea', noScenery: true },
+  'stew-relay': { theme: 'plaza', keepOut: [{ rect: [-16, -7, 16, 9] }] },
+  'crate-cascade': { theme: 'sea', noScenery: true },
+  'spark-trails': { theme: 'space', noScenery: true },
 };
 
 const BOARD_LOOKS: Record<BoardDef['theme'], Look> = {

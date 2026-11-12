@@ -228,6 +228,8 @@ export const sfx = {
   },
   /** A rhythm-game hit or miss. */
   hit: (perfect: boolean) => play('pluck', 0.45, perfect ? 1.25 : 1, 0.02) || tone(perfect ? 988 : 784, perfect ? 1175 : 880, 0.07, 'triangle', 0.12),
+  /** A bomb fuse tick (higher when it's nearly out). */
+  tick: (urgency: number): void => tone(1100 + urgency * 700, 1000 + urgency * 700, 0.035, 'square', 0.06 + urgency * 0.05),
   miss: () => play('wood', 0.4, 0.7, 0.05) || tone(220, 160, 0.1, 'sawtooth', 0.08),
   fanfare: () => {
     [523, 659, 784, 1047].forEach((f, i) => tone(f, f, i === 3 ? 0.45 : 0.13, 'square', 0.13, i * 0.12));

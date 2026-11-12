@@ -11,6 +11,7 @@ import { DANCES, DANCE_BEATS, LEBRON_BEAT0, LEBRON_BPM, applyPose, dancePose, da
 import { buildDanceParty, descendPose, TADA } from './lebronParty';
 import { music } from '../soundtrack';
 import { buildArena, buildInferno, buildJumbotron } from './stewCourtLook';
+import { mapCam } from '../mapCam';
 
 /**
  * STEW COURT: a hardwood basketball court floating in deep space. Built in the board's
@@ -998,6 +999,8 @@ export function courtDecor(scene: THREE.Scene, def: BoardDef): (s: BoardState, t
     }
     if (!choppy) arena.tick(t, dt, info);
     jumbo.tick(t, dt, info);
+    // in the map view it would sit right in front of a camera looking down on the court
+    jumbo.group.visible = !mapCam.on;
     stands.forEach((st, i) => {
       st.position.y = (st.userData.base as number) + Math.sin(t * 0.8 + i * 1.9) * 0.12;
       (st.userData.fans as THREE.Mesh[]).forEach((f, k) => (f.position.y = (f.userData.base as number) + Math.max(0, Math.sin(t * 5 + k * 1.3)) * 0.12));

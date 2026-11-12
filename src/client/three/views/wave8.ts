@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { flame, glowTex } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { CELL as HCELL, COLS, FX0, FY0, ROWS as HROWS, laneKind, type HopState } from '../../../shared/games/roadHopper';
@@ -752,7 +753,7 @@ export function crateCascadeView(env: THREE.Texture, state: CascadeState, player
   scene.add(wall);
   // each well: a frame of posts with a back board
   const frameMat = toy('#6b4a2e', 0.8);
-  const backMat = new THREE.MeshStandardMaterial({ color: '#2a2230', roughness: 1, transparent: true, opacity: 0.85 });
+  const backMat = new THREE.MeshStandardMaterial({ color: '#3a3448', emissive: '#1c1830', roughness: 0.9, transparent: true, opacity: 0.9 });
   const backs = origin.map((o) => {
     const g = new THREE.Group();
     g.position.copy(o);
@@ -776,8 +777,41 @@ export function crateCascadeView(env: THREE.Texture, state: CascadeState, player
   });
   // all the crates in one instanced mesh
   const per = WELL_W * WELL_H + 8;
-  const crateTex = texture('floor_wood_planks', 1, 1);
-  const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(C * 0.94, C * 0.94, C * 0.94), new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.8 }), n * per);
+  // painted crates: a pale wood face with a darker frame and cross-brace, so the paint colour stays bright and readable
+  const crateTex = (() => {
+    const S = 128;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#f2ece2';
+    g.fillRect(0, 0, S, S);
+    for (let i = 0; i < 5; i++) {
+      g.fillStyle = i % 2 ? 'rgba(120,90,60,0.08)' : 'rgba(255,255,255,0.1)';
+      g.fillRect(0, (i * S) / 5, S, S / 5);
+      g.fillStyle = 'rgba(80,60,40,0.18)';
+      g.fillRect(0, (i * S) / 5, S, 1.5);
+    }
+    g.strokeStyle = 'rgba(70,50,30,0.55)';
+    g.lineWidth = 14;
+    g.strokeRect(7, 7, S - 14, S - 14);
+    g.lineWidth = 10;
+    g.beginPath();
+    g.moveTo(14, S - 14);
+    g.lineTo(S - 14, 14);
+    g.stroke();
+    g.fillStyle = 'rgba(40,30,20,0.7)';
+    for (const [x, y] of [[12, 12], [S - 12, 12], [12, S - 12], [S - 12, S - 12]]) {
+      g.beginPath();
+      g.arc(x, y, 3, 0, Math.PI * 2);
+      g.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const crateMat = new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.6 });
+  crateMat.userData.noDetail = true;
+  const crates = new THREE.InstancedMesh(new RoundedBoxGeometry(C * 0.95, C * 0.95, C * 0.95, 2, C * 0.08), crateMat, n * per);
   crates.castShadow = true;
   crates.receiveShadow = true;
   scene.add(crates);

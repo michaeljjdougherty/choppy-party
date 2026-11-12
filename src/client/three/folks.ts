@@ -226,8 +226,8 @@ export const FOLKS: FolkSpec[] = [
   },
   {
     id: 'regs',
-    name: 'Ass Kisser Regs',
-    tagline: 'Great idea, boss. Love that for you, boss.',
+    name: 'Patriot Regs',
+    tagline: 'God, country and the moustache.',
     skin: '#e6b28e',
     hair: '#1f1814',
     hairStyle: 'swept-up',

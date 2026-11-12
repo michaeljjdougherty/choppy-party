@@ -118,7 +118,7 @@ describe('turn order', () => {
 
   it('idle players roll by themselves', () => {
     const s = createBoard(BOARDS[1].id, ['a', 'b'], 5, 4);
-    for (let i = 0; i < 30 * 9 && s.sub === 'orderRoll'; i++) stepBoard(s, {}, DT);
+    for (let i = 0; i < 30 * 16 && s.sub === 'orderRoll'; i++) stepBoard(s, {}, DT);
     expect(s.sub).toBe('orderShow');
   });
 
@@ -163,7 +163,7 @@ describe('board party', () => {
 
 describe('two dice', () => {
   const press: Inputs = { a: { ...NO_INPUT, aPressed: true } };
-  const run = (s: ReturnType<typeof createBoard>, sub: string, max = 600) => {
+  const run = (s: ReturnType<typeof createBoard>, sub: string, max = 1200) => {
     for (let i = 0; i < max && s.sub !== sub; i++) stepBoard(s, {}, DT);
   };
 

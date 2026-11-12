@@ -3,7 +3,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import type { PartyState } from '../../../shared/party';
 import { COSMO_SPREAD, getBoard, unspread } from '../../../shared/board/boards';
 import { markHazards } from '../hazardMarks';
-import { BOSS_INTRO, SPIN_STOP, currentPlayer, exits, slowFace } from '../../../shared/board/engine';
+import { BOSS_INTRO, RECAP_HOP, RECAP_TITLE, SPIN_STOP, currentPlayer, exits, slowFace } from '../../../shared/board/engine';
 import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
 import { roundedRect } from '../../../shared/board/layout';
 import { groundAt } from '../../../shared/board/terrain';
@@ -1430,6 +1430,18 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   /** Standing height (no hop arc): on the space, or partway along a hop between two heights. */
   function baseY(b: BoardState, id: string): number {
     const cur = currentPlayer(b);
+    // round end: a player the wind (or flood, storm, train) pushed slides along the path, space by space
+    const slide = b.sub === 'roundEnd' ? b.recap?.cur?.slides.find((x) => x.id === id) : undefined;
+    if (slide && slide.path.length > 1) {
+      const u = (b.t - b.recap!.cur!.at - RECAP_TITLE) / RECAP_HOP;
+      const k = Math.max(0, Math.min(slide.path.length - 1, u));
+      const i = Math.min(slide.path.length - 2, Math.floor(k));
+      const f = k - i;
+      const from = def.nodes[slide.path[i]], to = def.nodes[slide.path[i + 1]];
+      if (from && to) {
+        return from.y + (to.y - from.y) * f + 0.33;
+      }
+    }
     if (b.hop && id === cur) {
       const from = def.nodes[b.hop.from];
       const to = def.nodes[b.hop.to];
@@ -1443,6 +1455,19 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     const me = b.players[id];
     const n = def.nodes[me.node];
     const cur = currentPlayer(b);
+    // round end: a player the wind (or flood, storm, train) pushed slides along the path, space by space
+    const slide = b.sub === 'roundEnd' ? b.recap?.cur?.slides.find((x) => x.id === id) : undefined;
+    if (slide && slide.path.length > 1) {
+      const u = (b.t - b.recap!.cur!.at - RECAP_TITLE) / RECAP_HOP;
+      const k = Math.max(0, Math.min(slide.path.length - 1, u));
+      const i = Math.min(slide.path.length - 2, Math.floor(k));
+      const f = k - i;
+      const from = def.nodes[slide.path[i]], to = def.nodes[slide.path[i + 1]];
+      if (from && to) {
+        const arc = u > 0 && u < slide.path.length - 1 ? Math.sin(f * Math.PI) * 1.2 : 0;
+        return new THREE.Vector3(from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f + 0.33 + arc, from.z + (to.z - from.z) * f);
+      }
+    }
     if (b.hop && id === cur) {
       const from = def.nodes[b.hop.from];
       const to = def.nodes[b.hop.to];
@@ -1658,6 +1683,19 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           case 'cannon':
             fx.blast(at.clone().setY(0.6), 1.4);
             shake(0.35);
+            break;
+          case 'bomb':
+            // a big close-range blast: two rings of fire and a hard shake
+            fx.blast(at.clone().setY(n.y + 0.6), 2.4);
+            fx.blast(at.clone().setY(n.y + 1.2), 1.4);
+            shake(0.6);
+            sfx.boom();
+            break;
+          case 'slash':
+            fx.bonk(at.clone().setY(n.y + 1.8));
+            fx.sparkle(at.clone().setY(n.y + 1.6), '#ffffff', 16);
+            shake(0.3);
+            sfx.bump();
             break;
           case 'pine':
           case 'boulder':
@@ -2062,6 +2100,25 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           goalPos = new THREE.Vector3(cx, Math.max(n.y + 12, gy(cx, cz) + 7, gy(n.x, n.z + 5) + 8), cz);
           follow = 2.6;
         }
+      }
+      // round end: the camera goes to each hazard or weather zone as it goes off
+      const beat = b.sub === 'roundEnd' ? b.recap?.cur : null;
+      if (beat && beat.focus.length) {
+        // anyone being pushed is what to watch; otherwise the whole zone
+        const pts = (beat.slides.length ? beat.slides.flatMap((x) => x.path) : beat.focus).map((id) => def.nodes[id]).filter(Boolean);
+        const lo = new THREE.Vector3(Infinity, 0, Infinity), hi = new THREE.Vector3(-Infinity, 0, -Infinity);
+        let y = 0;
+        for (const q of pts) {
+          lo.set(Math.min(lo.x, q.x), 0, Math.min(lo.z, q.z));
+          hi.set(Math.max(hi.x, q.x), 0, Math.max(hi.z, q.z));
+          y = Math.max(y, q.y);
+        }
+        const c = lo.clone().add(hi).multiplyScalar(0.5);
+        const ext = Math.max(hi.x - lo.x, hi.z - lo.z);
+        const d = Math.max(beat.slides.length ? 9 : 12, ext * 0.85);
+        goalLook = new THREE.Vector3(c.x, y + 0.4, c.z);
+        goalPos = new THREE.Vector3(c.x, Math.max(y + d * 1.05, gy(c.x, c.z + d * 0.55) + 8), c.z + d * 0.55);
+        follow = 2.6;
       }
       if (b.sub === 'boss' && b.boss) {
         // the villain: the whole court while he arrives and spins, then in close on the slam

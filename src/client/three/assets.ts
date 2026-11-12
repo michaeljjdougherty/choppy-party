@@ -151,7 +151,7 @@ export function finishSurfaces(root: THREE.Object3D): void {
       done.add(mat);
       sm.normalMap = sm.map.userData.normal as THREE.Texture;
       sm.normalScale.set(0.4, 0.4);
-      sm.color.lerp(new THREE.Color('#ffffff'), 0.35);
+      sm.color.lerp(new THREE.Color('#ffffff'), 0.18);
       sm.needsUpdate = true;
     }
   });

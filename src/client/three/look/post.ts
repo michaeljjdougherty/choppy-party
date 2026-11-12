@@ -6,7 +6,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
-import { gfx, type Gfx } from './quality';
+import { gfx, toneDown, type Gfx } from './quality';
 
 /**
  * The post-processing chain: render, ambient occlusion (Ultra), bloom, tone mapping, then our
@@ -246,7 +246,7 @@ export class Post {
     this.render.camera = cam;
     const L = this.look;
     if (this.bloom) {
-      this.bloom.strength = L.bloom;
+      this.bloom.strength = L.bloom * toneDown().bloom;
       this.bloom.threshold = L.bloomThreshold;
       this.bloom.radius = L.bloomRadius;
     }
@@ -259,7 +259,7 @@ export class Post {
     const u = this.grade.material.uniforms;
     u.uContrast.value = L.contrast;
     u.uSat.value = L.saturation;
-    u.uExposure.value = L.exposure;
+    u.uExposure.value = L.exposure * toneDown().exposure;
     (u.uLift.value as THREE.Vector3).set(...L.lift);
     (u.uGain.value as THREE.Vector3).set(...L.gain);
     u.uVig.value = L.vignette + pulse.squeeze * 0.5;

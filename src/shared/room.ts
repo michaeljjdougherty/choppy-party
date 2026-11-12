@@ -21,12 +21,16 @@ interface Client {
   id: string;
   link: Link | null;
   raws: Record<string, RawInput>;
+  /** Tick each device's input last arrived: a stale one (a tab gone to the background) counts as hands off. */
+  rawAt?: Record<string, number>;
   /** Tick of the last message, to notice a silent drop (WebRTC can take ages to report one). */
   seen: number;
 }
 
 /** Ticks of silence before a guest counts as gone (browsers ping at least once a second). */
 const SILENT_TICKS = 30 * 6;
+/** Input older than this is dropped, so a stick held when a guest's tab lost focus doesn't keep scrolling menus. */
+const STALE_TICKS = 15;
 
 const DEVICE_KEY = /^[a-z0-9]{1,8}$/;
 const CLIENT_ID = /^[a-z0-9]{8}$/;
@@ -134,7 +138,10 @@ export class Room {
     } else if (msg.t === 'input' && msg.raws && typeof msg.raws === 'object') {
       for (const [k, v] of Object.entries(msg.raws).slice(0, MAX_DEVICES_PER_CLIENT)) {
         const raw = cleanRaw(v);
-        if (raw && DEVICE_KEY.test(k)) client.raws[k] = raw;
+        if (raw && DEVICE_KEY.test(k)) {
+          client.raws[k] = raw;
+          (client.rawAt ??= {})[k] = this.ticks;
+        }
       }
     }
   }
@@ -155,7 +162,9 @@ export class Room {
       const dot = p.id.indexOf('.');
       if (dot < 0) continue;
       const client = this.clients.get(p.id.slice(0, dot));
-      const raw = client?.link ? client.raws[p.id.slice(dot + 1)] : undefined;
+      const key = p.id.slice(dot + 1);
+      const fresh = !client?.rawAt || this.ticks - (client.rawAt[key] ?? this.ticks) <= STALE_TICKS;
+      const raw = client?.link && fresh ? client.raws[key] : undefined;
       if (!raw) continue;
       inputs[p.id] = toTickInput(raw, this.prev.get(p.id));
       this.prev.set(p.id, { ...raw });

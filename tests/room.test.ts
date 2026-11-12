@@ -10,6 +10,21 @@ const sink = () => {
 };
 
 describe('online room', () => {
+  it('a stick held when a guest tab went quiet stops counting after half a second', () => {
+    const room = new Room('ABCD', 7);
+    const host = sink();
+    const hostId = room.connect(host.link);
+    room.message(hostId, { t: 'add', deviceKey: 'kb1' });
+    room.message(hostId, { t: 'input', raws: { kb1: { x: 1, y: 0, a: false, b: false, aCount: 0, bCount: 0 } } });
+    const sel0 = room.party.selection;
+    for (let i = 0; i < 30 * 5; i++) room.tick();
+    // a held stick steps the lobby a few times, then nothing more once the input goes stale
+    const moved = room.party.selection;
+    for (let i = 0; i < 30 * 5; i++) room.tick();
+    expect(room.party.selection).toBe(moved);
+    void sel0;
+  });
+
   it('a dropped player is played by a CPU and gets their seat back with the same id', () => {
     const room = new Room('ABCD', 7);
     const host = sink();
@@ -30,7 +45,11 @@ describe('online room', () => {
     room.disconnect(guestId, guest.link);
     const gp = room.party.players.find((p) => p.id.startsWith(guestId))!;
     expect(gp.away).toBe(true);
-    for (let i = 0; i < 30 * 4; i++) room.tick();
+    for (let i = 0; i < 30 * 4; i++) {
+      // a live browser keeps sending its input
+      room.message(hostId, { t: 'input', raws: { kb1: { x: 0, y: 0, a: true, b: false, aCount: 2, bCount: 0 } } });
+      room.tick();
+    }
     expect(room.party.phase).toBe('play'); // the host held A, the stand-in CPU readied the guest
 
     // a stale close from the old connection after a reconnect changes nothing

@@ -561,6 +561,12 @@ function pickItem(b: BoardState, id: string, sk: Skill, r: Rng): number {
         const best = Math.min(...others.map((o) => Math.min(99, ...b.crowns.map((c) => forwardDist(def, b, o.node, 30).get(c) ?? 99))));
         return best + 4 < chest;
       }
+      case 'cutlass': {
+        const r3 = nearDist(def, me.node, 3);
+        return others.some((o) => !o.ko && r3.has(o.node));
+      }
+      case 'fuse-bomb':
+        return others.some((o) => !o.ko && near.has(o.node));
       case 'hunting-bow':
       case 'sticky-cube':
       case 'spike-trap':

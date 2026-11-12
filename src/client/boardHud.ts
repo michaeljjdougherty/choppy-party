@@ -4,10 +4,10 @@ import { slam, sunburst, vignette } from './showtime';
 import { sfx } from './sfx';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
-import { PROMPT_LOCK, SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, CHUNK_EVENTS, CHUNK_INTRO, BOSS_INTRO, bossIn, currentPlayer } from '../shared/board/engine';
+import { PROMPT_LOCK, SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, CHUNK_EVENTS, CHUNK_INTRO, BOSS_INTRO, bossIn, currentPlayer, TURN_TIME } from '../shared/board/engine';
 import { TRAIN_PRICE, WISP_PRICE, type ChunkKind } from '../shared/board/types';
 import { ITEMS, ITEM_COLS, ITEM_GRID, SHOP_PRICE } from '../shared/board/items';
-import { WEATHER_COLOR, forecast } from '../shared/board/weather';
+import { WEATHER, WEATHER_COLOR, forecast } from '../shared/board/weather';
 import { playerById, popText, richWidth, roundRect, text } from '../shared/draw';
 import { itemIcon } from './three/itemIcons';
 import { lebronNow } from './three/lebronDance';
@@ -36,6 +36,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
 
   const setup = b.sub === 'tour' || b.sub === 'orderRoll' || b.sub === 'orderShow';
   if (b.sub !== 'orderRoll' && b.sub !== 'orderShow') drawStandings(ctx, s, cur, setup);
+  turnClock(ctx, s, t);
 
   // top right: board, turn, turn order and what the board is up to
   const late = b.maxTurns - b.turn < pr.doubleTurns;
@@ -155,6 +156,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     turnCard(ctx, name, me?.color ?? '#ffd23f', b.t, b.cur === 0 ? 3.6 : 2.8);
     if (b.cur === 0) text(ctx, `Turn ${b.turn}`, 640, 168, 30, { color: '#ffffff' });
     if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Turn order follows the last minigame\'s finish!', 640, 204, 22, { color: '#ffd23f' });
+    if (b.cur === 0) roundWarnings(ctx, s, b.t);
   } else if (b.sub === 'roll') {
     const first = b.rolls.length === 0;
     const n = first ? (mine.rollCap ? 1 : mine.dice) : b.diceN;
@@ -309,7 +311,19 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   } else if (b.sub === 'gamble' && b.gamble) {
     drawGambleReel(ctx, b.gamble, b.t, t);
   } else if (b.sub === 'roundEnd') {
-    text(ctx, 'End of round', 640, 220, 40, { color: '#ff9f1c' });
+    const beat = b.recap?.cur;
+    if (beat) {
+      // a big title for each hazard or weather beat, then what it did
+      const age = b.t - beat.at;
+      ribbonTitle(ctx, 'END OF ROUND', 640, 108);
+      slam(ctx, beat.title, 640, 180, 64, age, beat.color, 0);
+      if (age > 0.45) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, (age - 0.45) / 0.3);
+        text(ctx, beat.line, 640, 240, 30, { color: '#ffffff', weight: 800 });
+        ctx.restore();
+      }
+    } else text(ctx, 'End of round', 640, 220, 40, { color: '#ff9f1c' });
   } else if (b.sub === 'event' && b.event) {
     text(ctx, b.event.kind === 'duel' ? 'DUEL!' : 'STEW BATTLE!', 640, 260, 80, { color: '#ff9f1c' });
   }
@@ -861,4 +875,87 @@ function drawShop(ctx: CanvasRenderingContext2D, pm: { stock: (keyof typeof ITEM
   }
   text(ctx, 'Leave the shop', 640, ly, 20, { color: '#2a1b5e', outline: false });
   text(ctx, `${STICK()} choose   ${A()} buy   ${B()} leave`, 640, y0 + h - 22, 16, { color: '#ff4d5a', outline: false, weight: 700 });
+}
+
+let lastClockSec = -1;
+/** The turn clock: hidden until the last 10 seconds, then a big ticking countdown under the turn card. */
+function turnClock(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
+  const b = s.board!;
+  const who = playerById(s.players, currentPlayer(b));
+  const left = b.clock ?? TURN_TIME;
+  const live = (b.sub === 'roll' || b.sub === 'branch' || b.sub === 'prompt') && who && !who.bot && left <= 10;
+  if (!live) {
+    lastClockSec = -1;
+    return;
+  }
+  const sec = Math.ceil(left);
+  if (sec !== lastClockSec) {
+    if (lastClockSec >= 0) sfx.tick(1 - left / 10);
+    lastClockSec = sec;
+  }
+  const x = 1190, y = 200, r = 46;
+  const frac = left / 10;
+  const urgent = left <= 3;
+  const pulse = 1 + (urgent ? Math.max(0, 1 - (sec - left) * 4) * 0.18 : 0);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(pulse, pulse);
+  ctx.fillStyle = 'rgba(20,10,50,0.85)';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = urgent ? '#ff3b4e' : '#ffd23f';
+  ctx.beginPath();
+  ctx.arc(0, 0, r - 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+  ctx.stroke();
+  text(ctx, String(sec), 0, 2, 42, { color: urgent && Math.sin(t * 20) > 0 ? '#ff3b4e' : '#ffffff' });
+  ctx.restore();
+  text(ctx, 'TIME', x, y + r + 16, 16, { color: urgent ? '#ff3b4e' : '#ffd23f', weight: 800 });
+}
+
+function ribbonTitle(ctx: CanvasRenderingContext2D, label: string, x: number, y: number): void {
+  ctx.save();
+  ctx.fillStyle = 'rgba(20,10,50,0.75)';
+  roundRect(ctx, x - 130, y - 20, 260, 40, 20);
+  ctx.fill();
+  text(ctx, label, x, y + 1, 20, { color: '#ff9f1c', weight: 800 });
+  ctx.restore();
+}
+
+/** What this round ends with, so nobody is surprised: shown under the turn card at the top of each round. */
+export function roundWarningLines(s: PartyState): { text: string; color: string }[] {
+  const b = s.board!;
+  const def = getBoard(b.boardId);
+  const out: { text: string; color: string }[] = [];
+  if (def.theme === 'hollow' && b.night && b.hazards.pine.length) out.push({ text: 'A pine falls on the marked spaces', color: '#7bd36b' });
+  if (def.theme === 'cosmo' && b.hazards.meteors.length) out.push({ text: 'Meteors hit the red rings', color: '#ff7a3d' });
+  if (def.theme === 'gulch') out.push({ text: `A boulder rolls down the ${b.hazards.boulderLane ? 'east' : 'west'} canyon`, color: '#e0b46a' });
+  for (const z of def.weather ?? []) {
+    const f = forecast(b, z);
+    if (z.kind === 'wind') out.push({ text: `${z.name} blows ${b.weather.wind > 0 ? 'AHEAD' : 'BACK'} ${WEATHER.windPush} spaces at round end`, color: WEATHER_COLOR.wind });
+    else if (f.warn) out.push({ text: `${z.name}: ${f.now.replace(/^Round end: /, '')}`, color: WEATHER_COLOR[z.kind] });
+  }
+  const n = bossIn(b, def);
+  if (n === 0) out.push({ text: `${def.boss?.name ?? 'The villain'} strikes!`, color: '#ff3b4e' });
+  return out;
+}
+
+function roundWarnings(ctx: CanvasRenderingContext2D, s: PartyState, age: number): void {
+  const lines = roundWarningLines(s);
+  if (!lines.length || age < 0.5) return;
+  const a = Math.min(1, (age - 0.5) / 0.3) * Math.max(0, Math.min(1, (3.6 - age) / 0.4));
+  const h = 40 + lines.length * 32;
+  const y0 = 470;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(20,10,50,0.82)';
+  roundRect(ctx, 400, y0, 480, h, 18);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ff9f1c';
+  ctx.stroke();
+  text(ctx, 'THIS ROUND ENDS WITH', 640, y0 + 22, 18, { color: '#ff9f1c', weight: 800 });
+  lines.forEach((l, i) => text(ctx, l.text, 640, y0 + 54 + i * 32, 22, { color: l.color, weight: 800 }));
+  ctx.restore();
 }

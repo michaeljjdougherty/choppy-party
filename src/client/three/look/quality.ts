@@ -141,3 +141,14 @@ export const GFX_LABELS: Record<keyof Gfx, string> = {
   clutter: 'Grass and clutter',
   particles: 'Particles',
 };
+
+/**
+ * The richer presets (HDRI light, bump-mapped surfaces, MSAA bloom) came out far too bright on real GPUs
+ * (Michael, 2026-11-12), so they tone the whole picture down: exposure, bloom and the HDRI fill.
+ */
+export function toneDown(): { exposure: number; bloom: number; env: number } {
+  const g = current;
+  if (!g.post) return { exposure: 1, bloom: 1, env: g.hdri ? 0.85 : 1 };
+  if (g.surface >= 2) return { exposure: 0.82, bloom: 0.45, env: 0.62 };
+  return { exposure: 0.93, bloom: 0.75, env: 0.8 };
+}

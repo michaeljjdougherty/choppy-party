@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getBoard } from '../src/shared/board/boards';
-import { BOSS_INTRO, bossIn, createBoard, endBossDance, finishEvent, nextTurn, stepBoard } from '../src/shared/board/engine';
+import { bossIn, createBoard, finishEvent, nextTurn, stepBoard } from '../src/shared/board/engine';
 import type { BoardState } from '../src/shared/board/types';
 import { DT } from '../src/shared/types';
 
@@ -13,8 +13,6 @@ function play(s: BoardState, turns: number, watch: (s: BoardState) => void): voi
       finishEvent(s, s.event.players.map((id, i) => ({ id, value: i })));
       continue;
     }
-    // Evil LeBron dances until the host skips: skip him once he's in
-    if (s.sub === 'boss' && s.boss?.dance && s.t > BOSS_INTRO + 1) endBossDance(s);
     if (s.sub === 'done') {
       if (s.turn >= turns) return;
       nextTurn(s);
@@ -61,25 +59,39 @@ describe('Stew Court', () => {
     expect(strikes).toBeGreaterThan(0);
   });
 
-  it('Evil LeBron keeps dancing until the host skips, then spins his reel', () => {
+  it('Evil LeBron comes every 3 rounds in the Choppy Verse and goes straight to his reel (no dance)', () => {
+    const s = createBoard('stew-court', ['a', 'b', 'c'], 12, 3);
+    s.choppy = true;
+    let ticks = 0;
+    const visits: number[] = [];
+    let was = '';
+    while (s.turn <= 10 && ticks++ < 30 * 6000) {
+      if (s.sub === 'boss' && was !== 'boss') visits.push(s.turn);
+      was = s.sub;
+      s.choppy = true;
+      if (s.sub === 'event' && s.event) finishEvent(s, s.event.players.map((id, i) => ({ id, value: i })));
+      else if (s.sub === 'done') nextTurn(s);
+      else stepBoard(s, {}, DT);
+    }
+    expect(visits.length).toBeGreaterThanOrEqual(2);
+    // (a Verse Flip back into the Choppy Verse restarts his count, so it can be longer, never shorter)
+    for (let i = 1; i < visits.length; i++) expect(visits[i] - visits[i - 1]).toBeGreaterThanOrEqual(3);
+    expect(visits[0]).toBe(3);
+  });
+
+  it('his visit ends by itself in a few seconds', () => {
     const s = createBoard('stew-court', ['a', 'b', 'c'], 8, 3);
     s.choppy = true;
     let ticks = 0;
-    while (s.sub !== 'boss' && ticks++ < 30 * 2000) {
+    while (s.sub !== 'boss' && ticks++ < 30 * 4000) {
+      s.choppy = true;
       if (s.sub === 'event' && s.event) finishEvent(s, s.event.players.map((id, i) => ({ id, value: i })));
       else if (s.sub === 'done') nextTurn(s);
       else stepBoard(s, {}, DT);
     }
     expect(s.sub).toBe('boss');
-    expect(s.boss?.dance).toBe(true);
-    // five minutes of dancing: nobody gets slammed and the round doesn't end
-    for (let i = 0; i < 30 * 300; i++) stepBoard(s, {}, DT);
-    expect(s.sub).toBe('boss');
-    expect(s.boss?.hit).toBeFalsy();
-    endBossDance(s);
     expect(s.boss?.dance).toBe(false);
-    expect(s.t).toBe(BOSS_INTRO);
-    for (let i = 0; i < 30 * 10 && s.sub === 'boss'; i++) stepBoard(s, {}, DT);
+    for (let i = 0; i < 30 * 12 && s.sub === 'boss'; i++) stepBoard(s, {}, DT);
     expect(s.sub).not.toBe('boss');
   });
 

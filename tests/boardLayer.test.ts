@@ -167,7 +167,7 @@ describe('board layer', () => {
     b.sub = 'rolled';
     b.roll = b.stepsLeft = 1;
     let guard = 0;
-    while (p.phase === 'board' && guard++ < 30 * 20) stepParty(p, {}, DT);
+    while (p.phase === 'board' && guard++ < 30 * 45) stepParty(p, {}, DT);
     expect(p.phase).toBe('intro');
     expect(p.gameId && DUEL_GAMES.includes(p.gameId)).toBe(true);
     expect(p.gamePlayers!.length).toBe(2);

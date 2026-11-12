@@ -1,4 +1,5 @@
 import { drawCoinFly } from './coinFly';
+import { drawChestMarkers } from './chestMarker';
 import { BOARDS } from '../shared/board/boards';
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
@@ -786,6 +787,7 @@ function renderScreens(wallT: number, dt: number) {
     case 'board':
       bakeItemIcons(stage.renderer);
       drawBoardHud(ctx, s, wallT, mapCam.on);
+      drawChestMarkers(ctx, s, wallT, (v) => stage.project(v), mapCam.on);
       drawCoinFly(ctx, s, dt, (v) => stage.project(v));
       hostCorner(ctx, hostLine, wallT, 'br', 340, 70);
       // mouse / touch: clickable board menus, path markers and tour buttons

@@ -2,6 +2,7 @@ import { GAMES, getGame } from '../shared/games';
 import { GRID_COLS, MAX_PLAYERS, MIX_MODES, OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, mixPool, optionsOfKind, standings, AWARD_REVEAL, AWARD_SPIN, CHAMP_HOLD, type PartyOption, type PartyState } from '../shared/party';
 import { getBoard, recommendedBoard } from '../shared/board/boards';
 import { crownIcon } from './boardHud';
+import { ITEMS, PRIZE_COINS } from '../shared/board/items';
 import { playerById, roundRect, text } from '../shared/draw';
 import { clamp01, controlChips, easeOut, ribbon, slam, springIn, sunburst, vignette } from './showtime';
 import { burst } from './juice';
@@ -560,7 +561,27 @@ export function drawResults(ctx: CanvasRenderingContext2D, s: PartyState, age: n
     ctx.arc(x0 + r * 2 + 30, cy, 10, 0, Math.PI * 2);
     ctx.fill();
     text(ctx, p.name, x0 + r * 2 + 48, cy, Math.min(26, rowH * 0.42), { align: 'left', color: '#2a1b5e', outline: false, weight: 800 });
-    text(ctx, pl.label, x0 + w - 150, cy, 17, { align: 'right', weight: 600, color: '#6b5d99', outline: false });
+    const prize = onBoard && !s.boardEvent ? s.board!.prizes?.[pl.id] : undefined;
+    if (prize && age > delay + 0.6) {
+      // top 3 win an item from their tier: a pill that pops in after the coins
+      const it = prize === 'coins' ? null : ITEMS[prize];
+      const label = it ? `+ ${it.name.toUpperCase()}` : `BAG FULL: +${PRIZE_COINS}`;
+      const pk2 = springIn(clamp01((age - delay - 0.6) / 0.35));
+      ctx.save();
+      ctx.translate(x0 + w - 225, cy);
+      ctx.scale(pk2, pk2);
+      ctx.font = '800 16px system-ui';
+      const pw = Math.max(110, ctx.measureText(label).width + 26);
+      ctx.fillStyle = it?.color ?? '#ffd23f';
+      roundRect(ctx, -pw / 2, -15, pw, 30, 15);
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#2a1b5e';
+      ctx.stroke();
+      text(ctx, label, 0, 1, 16, { color: '#2a1b5e', outline: false, weight: 900 });
+      if (it?.attack) text(ctx, it.attack === 'close' ? 'CLOSE RANGE' : 'LONG RANGE', 0, -24, 12, { color: '#ff5a5f', weight: 900 });
+      ctx.restore();
+    } else text(ctx, pl.label, x0 + w - 150, cy, 17, { align: 'right', weight: 600, color: '#6b5d99', outline: false });
     // points pop in after the row lands
     const pk = springIn(clamp01((age - delay - 0.35) / 0.35));
     if (pl.points && pk > 0) {

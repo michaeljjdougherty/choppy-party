@@ -4,8 +4,8 @@ import { rand, randInt, shuffle } from '../rng';
 import { getBoard } from './boards';
 import { buildTour } from './tour';
 import { WEATHER, flareThisRound, inZone, newWeather, stormThisRound } from './weather';
-import { ITEMS, ITEM_COLS, ITEM_GRID, ITEM_IDS, SHOP_PRICE, SHOP_STOCK } from './items';
-import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt, ChunkKind } from './types';
+import { PRIZE_COINS, PRIZE_TIERS, ITEMS, ITEM_COLS, ITEM_GRID, ITEM_IDS, SHOP_PRICE, SHOP_STOCK } from './items';
+import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt, ChunkKind, RecapBeat } from './types';
 import { COUNTER_START, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
 
 /** Keys for minigame placings on a board night (the spec says minigames pay 3 to 10 keys). */
@@ -14,8 +14,14 @@ export const MINIGAME_KEYS = [10, 7, 5, 3];
 export const DUEL_GAMES = ['fuse-draw', 'paddle-clash', 'road-hopper', 'crate-stacker'];
 export const STEW_GAMES = ['rope-pull', 'crate-grab', 'cannon-fort', 'stew-relay'];
 
-const AUTO_ROLL = 8; // seconds before the game rolls for an idle player
-const AUTO_CHOICE = 7;
+const AUTO_ROLL = 15; // seconds before the game rolls the turn-order die for an idle player
+/** Seconds each player gets for their turn's decisions (rolling, forks, prompts). The clock shows at 10. */
+export const TURN_TIME = 30;
+/** A choice that comes up after most of the turn's clock is gone still gets at least this long. */
+export const CHOICE_MIN = 10;
+/** Clock-driven subs: the current player's clock only runs while it's their move to make. */
+const CLOCKED = new Set<BoardState['sub']>(['roll', 'branch', 'prompt']);
+const outOfTime = (s: BoardState) => (s.clock ?? TURN_TIME) <= 0;
 const BANNER = 2;
 /** The pause on a space before it pays out (tests turn it off to check landings in one step). */
 export const timing = { settle: 0.9 };
@@ -277,6 +283,7 @@ function fx(s: BoardState, kind: string, node: string, id?: string, amount?: num
 function set(s: BoardState, sub: BoardState['sub']): void {
   s.sub = sub;
   s.t = 0;
+  if (sub === 'branch' || sub === 'prompt') s.clock = Math.max(s.clock ?? TURN_TIME, CHOICE_MIN);
 }
 
 /** Rank for the end of the game: crowns first, then keys. */
@@ -296,6 +303,22 @@ export function awardMinigame(s: BoardState, placements: { id: string; place: nu
     if (p) {
       p.keys += c;
       if (pl.place === 1) p.stats.wins++;
+    }
+  }
+  // the top 3 also win an item from their tier (a full bag gets Pit Coin instead)
+  s.prizes = {};
+  for (const pl of placements) {
+    const tier = PRIZE_TIERS[pl.place - 1];
+    const p = s.players[pl.id];
+    if (!tier || !p) continue;
+    if (p.items.length >= s.preset.maxItems) {
+      p.keys += PRIZE_COINS;
+      out[pl.id] += PRIZE_COINS;
+      s.prizes[pl.id] = 'coins';
+    } else {
+      const it = tier[Math.floor(rand(s.rng) * tier.length)];
+      p.items.push(it);
+      s.prizes[pl.id] = it;
     }
   }
   return out;
@@ -421,7 +444,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
   s.fx = s.fx.filter((f) => f.t < 2);
   if (s.sub === 'done' || s.sub === 'event') return;
   if (s.sub === 'roundEnd') {
-    if (s.t > 3.2) set(s, 'done');
+    stepRoundEnd(s, def);
     return;
   }
   if (s.sub === 'boss') {
@@ -439,6 +462,13 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
   const id = currentPlayer(s);
   const me = s.players[id];
   const inp: TickInput = inputs[id] ?? NO_INPUT;
+  // a fresh clock for each player's turn
+  const whose = `${s.turn}:${s.cur}`;
+  if (s.clockFor !== whose) {
+    s.clockFor = whose;
+    s.clock = TURN_TIME;
+  }
+  if (CLOCKED.has(s.sub)) s.clock = Math.max(0, (s.clock ?? TURN_TIME) - dt);
 
   switch (s.sub) {
     case 'turnIntro':
@@ -466,7 +496,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         ask(s, { kind: 'items', sel: Math.max(0, owned) });
         break;
       }
-      if ((inp.aPressed && s.t > 0.3) || s.t > AUTO_ROLL) {
+      if ((inp.aPressed && s.t > 0.3) || outOfTime(s)) {
         // dice come out one at a time: A for the first die, A again for the next
         if (s.rolls.length === 0) {
           s.diceN = me.rollCap ? 1 : Math.max(1, me.dice);
@@ -562,8 +592,8 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         });
         br.sel = best;
       }
-      if ((inp.aPressed && s.t > PROMPT_LOCK) || s.t > AUTO_CHOICE) {
-        if (s.t > AUTO_CHOICE) br.sel = Math.floor(rand(s.rng) * br.options.length);
+      if ((inp.aPressed && s.t > PROMPT_LOCK) || outOfTime(s)) {
+        if (outOfTime(s)) br.sel = Math.floor(rand(s.rng) * br.options.length);
         s.hop = { from: me.node, to: br.options[br.sel], t: 0 };
         s.branch = null;
         set(s, 'move');
@@ -670,7 +700,7 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
   const yes = inp.aPressed && age > PROMPT_LOCK;
   const no = inp.bPressed && s.t > 0.3;
   // s.t restarts on every cursor move, so promptAge is the hard cap (stick drift can't hold a turn forever)
-  const auto = s.t > AUTO_CHOICE || age > AUTO_CHOICE * 3;
+  const auto = outOfTime(s);
   const stick = s.t > 0.2 && Math.abs(inp.x) > 0.6 ? Math.sign(inp.x) : 0;
   const stickY = s.t > 0.2 && Math.abs(inp.y) > 0.6 ? Math.sign(inp.y) : 0;
 
@@ -679,7 +709,7 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
     const n = ITEM_GRID.length;
     if (stick || stickY) {
       p.sel = (p.sel + (stick || stickY * ITEM_COLS) + n) % n;
-      s.t = 0.05; // tiny repeat delay
+      s.t = -0.1; // a held stick steps about 3 times a second, slow enough to stop where you mean
     }
     if (no || auto) {
       s.prompt = null;
@@ -703,7 +733,7 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
     const n = p.stock.length + 1; // the last row is "Leave"
     if ((stick || stickY) && s.t > 0.2) {
       p.sel = (p.sel + (stickY || stick) + n) % n;
-      s.t = 0.05;
+      s.t = -0.1;
     }
     if (yes && p.sel < p.stock.length) {
       const it = p.stock[p.sel];
@@ -726,7 +756,7 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
   if (p.kind === 'target') {
     if (stick || stickY) {
       p.sel = (p.sel + (stick || stickY) + p.options.length) % p.options.length;
-      s.t = 0.05;
+      s.t = -0.1;
     }
     if (no && p.purpose === 'item') {
       s.prompt = null;
@@ -802,7 +832,15 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
   if (!item) return;
   const info = ITEMS[item];
   if (info.target) {
-    const options = itemTargets(s, def, id);
+    let options = itemTargets(s, def, id);
+    if (info.range) {
+      const near = nearDist(def, me.node, info.range);
+      options = options.filter((o) => near.has(s.players[o].node) && !s.players[o].ko);
+      if (!options.length) {
+        say(s, `Nobody within ${info.range} spaces. Get closer!`, '#ff5a5f');
+        return;
+      }
+    }
     if (!options.length) {
       if (targetsFor(s, id).length) say(s, 'Everyone is hidden in the fog!', '#c9d6e8');
       return;
@@ -862,6 +900,14 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
       } else say(s, 'The cannonball missed everyone', info.color);
       break;
     }
+    case 'fuse-bomb': {
+      const near = nearDist(def, at, 2);
+      const hit = s.order.filter((o) => o !== id && !s.players[o].ko && near.has(s.players[o].node) && !fogged(s, def, o));
+      fx(s, 'bomb', at, id);
+      for (const o of hit) hurt(s, def, o, 10, id);
+      say(s, hit.length ? `KABOOM! ${hit.length} caught in the blast for 10!` : 'KABOOM! Nobody was close enough', info.color);
+      break;
+    }
     case 'treasure-shovel': {
       const near = nearDist(def, at, 2);
       let got = 0;
@@ -915,7 +961,12 @@ function resolveTarget(s: BoardState, def: BoardDef, id: string, p: Extract<Prom
   const slot = me.items.indexOf(item);
   if (slot >= 0) consume(s, me, slot);
   const color = ITEMS[item].color;
-  if (item === 'hunting-bow') {
+  if (item === 'cutlass') {
+    fx(s, 'slash', tp.node, target);
+    hurt(s, def, target, 15, id);
+    if (!tp.ko) say(s, 'SLASH! 15 damage', color);
+    set(s, 'roll');
+  } else if (item === 'hunting-bow') {
     fx(s, 'arrow', tp.node, target);
     hurt(s, def, target, 10, id);
     if (!tp.ko) say(s, 'Bullseye! 10 damage', color);
@@ -1497,7 +1548,8 @@ function startBoss(s: BoardState, def: BoardDef): boolean {
   const reel: string[] = [];
   for (let i = 0; i < SPIN_LEN + 4; i++) reel.push(s.order[Math.floor(rand(s.rng) * s.order.length)]);
   reel[SPIN_LEN] = pick;
-  s.boss = { reel, at: SPIN_LEN, pick, dance: true };
+  // (his long dance party is gone: it held games up and crashed some, so he goes straight to his reel)
+  s.boss = { reel, at: SPIN_LEN, pick, dance: false };
   say(s, `${def.boss.name.toUpperCase()} IS HERE!`, '#ff3b4e');
   set(s, 'boss');
   return true;
@@ -1536,54 +1588,161 @@ function stepBoss(s: BoardState, def: BoardDef): void {
 export function roundEnd(s: BoardState, def: BoardDef): void {
   if (startBoss(s, def)) return;
   set(s, 'roundEnd');
-  const lines: string[] = [];
-  const dmg = s.preset.hazardDamage;
-  const on = (nodes: string[]) => s.order.filter((o) => nodes.includes(s.players[o].node));
-  if (def.theme === 'hollow' && s.night && s.hazards.pine.length) {
-    const hit = on(s.hazards.pine);
-    for (const o of hit) hurt(s, def, o, dmg);
-    fx(s, 'pine', s.hazards.pine[0]);
-    lines.push(hit.length ? `TIMBER! A pine fell on ${hit.length}` : 'TIMBER! A pine crashed down');
-    s.hazards.pine = [];
-    pickPine(s, def);
+  // everything that happens at round end, one at a time: the camera goes to each, a big title says what
+  // it is, and anyone it pushes is shown sliding along the path
+  const steps: string[] = [];
+  if (def.theme === 'hollow' && s.night && s.hazards.pine.length) steps.push('pine');
+  if (def.theme === 'cosmo' && s.hazards.meteors.length) steps.push('meteor');
+  if (def.theme === 'gulch') steps.push('boulder');
+  if (def.theme === 'gulch' && def.stations && s.order.some((o) => def.stations!.includes(s.players[o].node))) steps.push('train');
+  for (const z of def.weather ?? []) {
+    if (z.kind === 'wind' && s.order.some((o) => !s.players[o].ko && z.nodes.includes(s.players[o].node))) steps.push('wind');
+    if (z.kind === 'flare' && flareThisRound(s)) steps.push('flare');
+    if (z.kind === 'sandstorm' && stormThisRound(s)) steps.push('sandstorm');
+    if (z.kind === 'flood' && s.weather.rain) steps.push('flood');
   }
-  if (def.theme === 'cosmo' && s.hazards.meteors.length) {
-    const hit = on(s.hazards.meteors);
-    for (const o of hit) hurt(s, def, o, dmg);
-    for (const m of s.hazards.meteors) fx(s, 'meteor', m);
-    lines.push(hit.length ? `Meteors hit ${hit.length} player${hit.length > 1 ? 's' : ''}!` : 'Meteors crash down!');
-  }
-  if (def.theme === 'gulch') {
-    const lane = Object.values(def.nodes).filter((n) => n.canyon === s.hazards.boulderLane).map((n) => n.id);
-    const hit = on(lane);
-    for (const o of hit) hurt(s, def, o, dmg);
-    if (lane.length) fx(s, 'boulder', lane[0]);
-    lines.push(hit.length ? `Rolling boulder hit ${hit.length}!` : 'A boulder rolls down the canyon');
-    // the train sweeps anyone standing at a station along to the next one
-    if (def.stations) {
-      for (const o of s.order) {
-        const i = def.stations.indexOf(s.players[o].node);
-        if (i >= 0) s.players[o].node = def.stations[(i + 1) % def.stations.length];
-      }
-    }
-  }
-  weatherRoundEnd(s, def, lines);
-  planHazards(s, def);
-  if (lines.length) say(s, lines.join('  ·  '), '#ff9f1c');
-  else s.t = 2.2; // nothing happened: move on quickly
+  s.recap = { steps, i: -1, next: 0, cur: null };
 }
 
+/** How long one round-end beat shows: the title, then a slide of 0.42s a space for anyone pushed. */
+export const RECAP_TITLE = 1.3;
+export const RECAP_HOP = 0.42;
+export const recapLen = (c: RecapBeat) => RECAP_TITLE + Math.max(0, ...c.slides.map((x) => x.path.length - 1)) * RECAP_HOP + 1.3;
+
+function stepRoundEnd(s: BoardState, def: BoardDef): void {
+  const r = s.recap;
+  if (!r) {
+    if (s.t > 3.2) set(s, 'done');
+    return;
+  }
+  if (s.t < r.next) return;
+  r.i++;
+  if (r.i >= r.steps.length) {
+    // all shown: tomorrow's weather becomes today's, and new hazards are planned
+    r.cur = null;
+    if (r.i === r.steps.length) {
+      rollWeather(s);
+      planHazards(s, def);
+      r.next = s.t + (r.steps.length ? 0.6 : 1.0);
+      return;
+    }
+    s.recap = null;
+    set(s, 'done');
+    return;
+  }
+  const beat = playRecap(s, def, r.steps[r.i]);
+  beat.at = s.t;
+  r.cur = beat;
+  r.next = s.t + recapLen(beat);
+}
+
+/** One round-end hazard or weather beat: does it, and says what happened for the show. */
+function playRecap(s: BoardState, def: BoardDef, kind: string): RecapBeat {
+  const dmg = s.preset.hazardDamage;
+  const w = s.weather;
+  const on = (nodes: string[]) => s.order.filter((o) => !s.players[o].ko && nodes.includes(s.players[o].node));
+  const zone = (k: string) => (def.weather ?? []).find((z) => z.kind === k);
+  const beat = (title: string, line: string, color: string, focus: string[], slides: RecapBeat['slides'] = []): RecapBeat => ({ kind, title, line, color, focus, slides, at: 0 });
+  const nOf = (n: number) => `${n} player${n === 1 ? '' : 's'}`;
+  switch (kind) {
+    case 'pine': {
+      const at = s.hazards.pine;
+      const hit = on(at);
+      for (const o of hit) hurt(s, def, o, dmg);
+      fx(s, 'pine', at[0]);
+      s.hazards.pine = [];
+      pickPine(s, def);
+      return beat('TIMBER!', hit.length ? `A pine fell on ${nOf(hit.length)}: ${dmg} damage` : 'A pine crashed down. Nobody under it', '#7bd36b', at);
+    }
+    case 'meteor': {
+      const at = s.hazards.meteors;
+      const hit = on(at);
+      for (const o of hit) hurt(s, def, o, dmg);
+      for (const m of at) fx(s, 'meteor', m);
+      return beat('METEOR SHOWER!', hit.length ? `${nOf(hit.length)} hit for ${dmg} damage` : 'Meteors crash down. Everyone dodged', '#ff7a3d', at);
+    }
+    case 'boulder': {
+      const lane = Object.values(def.nodes).filter((n) => n.canyon === s.hazards.boulderLane).map((n) => n.id);
+      const hit = on(lane);
+      for (const o of hit) hurt(s, def, o, dmg);
+      if (lane.length) fx(s, 'boulder', lane[0]);
+      return beat('ROLLING BOULDER!', hit.length ? `It flattened ${nOf(hit.length)} in the ${s.hazards.boulderLane ? 'east' : 'west'} canyon: ${dmg} damage` : `It rolled down the ${s.hazards.boulderLane ? 'east' : 'west'} canyon. Nobody there`, '#e0b46a', lane);
+    }
+    case 'train': {
+      const slides: RecapBeat['slides'] = [];
+      for (const o of s.order) {
+        const i = def.stations!.indexOf(s.players[o].node);
+        if (i < 0) continue;
+        const to = def.stations![(i + 1) % def.stations!.length];
+        slides.push({ id: o, path: [s.players[o].node, to] });
+        s.players[o].node = to;
+      }
+      return beat('ALL ABOARD!', `The train carried ${nOf(slides.length)} to the next station`, '#ffd23f', slides.flatMap((x) => x.path));
+    }
+    case 'wind': {
+      const z = zone('wind')!;
+      const here = on(z.nodes);
+      const slides: RecapBeat['slides'] = [];
+      for (const o of here) {
+        fx(s, 'gust', s.players[o].node, o, w.wind);
+        slides.push({ id: o, path: push(s, def, o, WEATHER.windPush, w.wind) });
+      }
+      return beat("WILL-O'-WIND!", `It blew ${nOf(here.length)} ${w.wind > 0 ? 'AHEAD' : 'BACK'} ${WEATHER.windPush} spaces`, '#a8f0ff', z.nodes, slides);
+    }
+    case 'flare': {
+      const z = zone('flare')!;
+      const here = on(z.nodes);
+      fx(s, 'flare', z.nodes[0]);
+      for (const o of here) hurt(s, def, o, WEATHER.flareDamage);
+      return beat('SOLAR FLARE!', here.length ? `It scorched ${nOf(here.length)} on the ring: ${WEATHER.flareDamage} damage` : 'It lit up the ring. Everyone was under a dome', '#ffb02e', z.nodes);
+    }
+    case 'sandstorm': {
+      const z = zone('sandstorm')!;
+      const here = on(z.nodes);
+      const slides: RecapBeat['slides'] = [];
+      fx(s, 'sandstorm', z.nodes[Math.floor(z.nodes.length / 2)]);
+      for (const o of here) {
+        if (hurt(s, def, o, WEATHER.stormDamage)) continue;
+        slides.push({ id: o, path: push(s, def, o, WEATHER.stormPush, 1) });
+        if (!w.blind.includes(o)) w.blind.push(o);
+      }
+      return beat('SANDSTORM!', here.length ? `${nOf(here.length)} took ${WEATHER.stormDamage} damage and got blown ${WEATHER.stormPush} spaces` : 'It swept the empty dunes', '#e0b46a', z.nodes, slides);
+    }
+    case 'flood': {
+      const z = zone('flood')!;
+      const here = on(z.nodes);
+      const slides: RecapBeat['slides'] = [];
+      fx(s, 'flood', z.nodes[Math.floor(z.nodes.length / 2)]);
+      for (const o of here) {
+        const p = s.players[o];
+        const drop = Math.min(WEATHER.floodDrop, p.keys);
+        if (drop) {
+          p.keys -= drop;
+          w.loose[p.node] = (w.loose[p.node] ?? 0) + drop;
+          fx(s, 'keys', p.node, o, -drop);
+        }
+        slides.push({ id: o, path: push(s, def, o, WEATHER.floodPush, 1) });
+        fx(s, 'gust', p.node, o, 1);
+      }
+      return beat('FLASH FLOOD!', here.length ? `It washed ${nOf(here.length)} ${WEATHER.floodPush} spaces downstream` : 'The riverbed flooded. Nobody in it', '#3fa9f5', z.nodes, slides);
+    }
+  }
+  return beat('', '', '#ffffff', []);
+}
 
 // ---- weather ------------------------------------------------------------------------------------
 
 /** Slide a player n spaces along the path (dir 1) or back down it (dir -1). */
-function push(s: BoardState, def: BoardDef, id: string, n: number, dir: number): void {
+function push(s: BoardState, def: BoardDef, id: string, n: number, dir: number): string[] {
   const p = s.players[id];
+  const path = [p.node];
   for (let i = 0; i < n; i++) {
     const to = dir > 0 ? exits(def, s, p.node)[0] : prevs(def)[p.node]?.[0];
     if (!to) break;
     p.node = to;
+    path.push(to);
   }
+  return path;
 }
 
 /** Sandstorm blindness lasts until you're out of the dunes. */
@@ -1591,52 +1750,8 @@ function clearBlind(s: BoardState, def: BoardDef): void {
   s.weather.blind = s.weather.blind.filter((o) => s.players[o] && inZone(def, s.players[o].node, 'sandstorm'));
 }
 
-function weatherRoundEnd(s: BoardState, def: BoardDef, lines: string[]): void {
+function rollWeather(s: BoardState): void {
   const w = s.weather;
-  for (const z of def.weather ?? []) {
-    const here = s.order.filter((o) => !s.players[o].ko && z.nodes.includes(s.players[o].node));
-    switch (z.kind) {
-      case 'wind':
-        for (const o of here) {
-          fx(s, 'gust', s.players[o].node, o, w.wind);
-          push(s, def, o, WEATHER.windPush, w.wind);
-        }
-        if (here.length) lines.push(`Will-o'-Wind blew ${here.length} ${w.wind > 0 ? 'ahead' : 'back'}`);
-        break;
-      case 'flare':
-        if (!flareThisRound(s)) break;
-        fx(s, 'flare', z.nodes[0]);
-        for (const o of here) hurt(s, def, o, WEATHER.flareDamage);
-        lines.push(here.length ? `SOLAR FLARE scorched ${here.length}!` : 'A solar flare lit up the ring');
-        break;
-      case 'sandstorm':
-        if (!stormThisRound(s)) break;
-        fx(s, 'sandstorm', z.nodes[Math.floor(z.nodes.length / 2)]);
-        for (const o of here) {
-          if (hurt(s, def, o, WEATHER.stormDamage)) continue;
-          push(s, def, o, WEATHER.stormPush, 1);
-          if (!w.blind.includes(o)) w.blind.push(o);
-        }
-        lines.push(here.length ? `SANDSTORM caught ${here.length}!` : 'A sandstorm swept the dunes');
-        break;
-      case 'flood':
-        if (!w.rain) break;
-        fx(s, 'flood', z.nodes[Math.floor(z.nodes.length / 2)]);
-        for (const o of here) {
-          const p = s.players[o];
-          const drop = Math.min(WEATHER.floodDrop, p.keys);
-          if (drop) {
-            p.keys -= drop;
-            w.loose[p.node] = (w.loose[p.node] ?? 0) + drop;
-            fx(s, 'keys', p.node, o, -drop);
-          }
-          push(s, def, o, WEATHER.floodPush, 1);
-          fx(s, 'gust', p.node, o, 1);
-        }
-        lines.push(here.length ? `FLASH FLOOD washed ${here.length} downstream!` : 'The riverbed flooded');
-        break;
-    }
-  }
   // tomorrow's weather becomes today's, and a new forecast rolls in
   w.wind = w.windNext;
   w.windNext = rand(s.rng) < 0.5 ? 1 : -1;

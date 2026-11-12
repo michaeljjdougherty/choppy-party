@@ -11,6 +11,9 @@ const endRound = (s: BoardState) => {
   s.t = 10;
   stepBoard(s, {}, DT);
   expect(s.sub).toBe('roundEnd');
+  // the round end plays out one beat at a time
+  for (let i = 0; i < 30 * 40 && (s.sub as string) === 'roundEnd'; i++) stepBoard(s, {}, DT);
+  expect(s.sub).toBe('done');
 };
 const zone = (boardId: string, kind: string) => getBoard(boardId).weather!.find((z) => z.kind === kind)!;
 const fresh = (boardId: string) => {
@@ -21,6 +24,24 @@ const fresh = (boardId: string) => {
 };
 
 describe('weather zones', () => {
+  it('round end shows each beat with its own title, and the slide path of anyone it pushed', () => {
+    const s = fresh('lantern-hollow');
+    const z = zone(s.boardId, 'wind');
+    s.players.a.node = z.nodes[5];
+    s.weather.wind = -1;
+    s.sub = 'land';
+    s.cur = s.order.length - 1;
+    s.t = 10;
+    stepBoard(s, {}, DT);
+    stepBoard(s, {}, DT);
+    const beat = s.recap?.cur;
+    expect(beat?.title).toBe("WILL-O'-WIND!");
+    expect(beat?.line).toContain('BACK');
+    const slide = beat!.slides.find((x) => x.id === 'a')!;
+    expect(slide.path.length).toBe(WEATHER.windPush + 1);
+    expect(slide.path[slide.path.length - 1]).toBe(s.players.a.node);
+  });
+
   it('every board has its zones, on real spaces', () => {
     const kinds = BOARDS.map((b) => (b.weather ?? []).map((z) => z.kind).join(','));
     expect(kinds).toEqual(['fog,wind', 'flare,lowgrav', 'sandstorm,flood,heat', 'lowgrav,wind']);

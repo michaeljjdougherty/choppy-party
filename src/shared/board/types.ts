@@ -162,7 +162,9 @@ export type ItemId =
   | 'swap-pipe'
   | 'sticky-cube'
   | 'slow-roller'
-  | 'high-roller';
+  | 'high-roller'
+  | 'cutlass'
+  | 'fuse-bomb';
 
 export interface BoardPlayer {
   id: string;
@@ -317,6 +319,13 @@ export interface BoardState {
   choppy?: boolean;
   /** Round ends spent in the Choppy Verse since the villain last struck (or since the flip). */
   chopRounds?: number;
+  /** Seconds left on the current player's turn clock (rolling, forks and prompts). */
+  clock?: number;
+  /** The item (or Pit Coin, when the bag was full) the top 3 of the last minigame won. */
+  prizes?: Record<string, ItemId | 'coins'>;
+  /** Round end, played out one beat at a time. */
+  recap?: { steps: string[]; i: number; next: number; cur: RecapBeat | null } | null;
+  clockFor?: string;
   bossLast?: string;
   /** Short-lived effects for the 3D view: hits, heals, knockouts, item use. */
   fx: { n: number; kind: string; node: string; id?: string; amount?: number; t: number }[];
@@ -331,3 +340,17 @@ export const WISP_PRICE = 10;
 export const TRAIN_PRICE = 5;
 export const COUNTER_START = 8;
 export const HOP_TIME = 0.5;
+
+/** One round-end beat: a hazard or weather zone going off. */
+export interface RecapBeat {
+  kind: string;
+  title: string;
+  line: string;
+  color: string;
+  /** Spaces the camera looks at. */
+  focus: string[];
+  /** Players it moved, with every space they passed through. */
+  slides: { id: string; path: string[] }[];
+  /** Board clock when it started. */
+  at: number;
+}

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { flame, glowTex, wavingFlag } from '../look/fxKit';
-import { barkTexture } from '../look/wood';
+import { barkTexture, endGrainTexture } from '../look/wood';
 import { ropeMaterial } from '../look/marble';
 import { rockGeometry, stoneMaterial } from '../life/rocks';
 import type { PlayerInfo } from '../../../shared/types';
@@ -91,18 +91,33 @@ export function roadHopperView(env: THREE.Texture, state: HopState, players: Pla
   scene.add(river);
   // the far bank: a flag to reach
   place(scene, 'pirate/flag-high', ax(W / 2), 0, az(HROWS - 1) - C * 0.3, { s: 2.2 });
+  const riverStone = stoneMaterial('#8f969c');
+  const bankStone = stoneMaterial('#a59a8a');
   // trees and rocks down both sides, hiding where carts and logs wrap round
   for (let row = -1; row <= HROWS; row++) {
     for (const side of [-1, 1]) {
       const x = side < 0 ? ax(-HCELL * 1.4) : ax(W + HCELL * 1.4);
       const z = row < 0 ? az(0) + C : row >= HROWS ? az(HROWS - 1) - C : az(row);
-      if (laneKind(Math.max(0, Math.min(HROWS - 1, row))) === 'river') place(scene, 'pirate/rocks-c', x, -0.3, z, { s: 1.3, ry: row });
-      else place(scene, row % 2 ? 'forest/tree' : 'forest/tree-high', x, 0, z, { s: 2.6, ry: row });
-      place(scene, 'pirate/rocks-a', x + side * 2.6, -0.2, z, { s: 1.4, ry: row * 2 });
+      if (laneKind(Math.max(0, Math.min(HROWS - 1, row))) === 'river') {
+        const r = mesh(rockGeometry(1.3, row * 2 + (side > 0 ? 1 : 0), 0.3), riverStone, { receive: true });
+        r.position.set(x, -0.1, z);
+        r.rotation.y = row;
+        scene.add(r);
+      } else place(scene, row % 2 ? 'forest/tree' : 'forest/tree-high', x, 0, z, { s: 2.6, ry: row });
+      const b = mesh(rockGeometry(0.9 + ((row * 7) % 5) * 0.12, 20 + row * 3 + side, 0.32), bankStone, { receive: true });
+      b.position.set(x + side * 2.6, 0.1, z);
+      b.rotation.y = row * 2;
+      scene.add(b);
     }
   }
   // carts and logs
-  const logMat = new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', 1, 3), color: '#a0703f', roughness: 0.9 });
+  const barkMap = barkTexture().clone();
+  barkMap.repeat.set(2, 4);
+  barkMap.needsUpdate = true;
+  const logMat = new THREE.MeshStandardMaterial({ map: barkMap, bumpMap: barkMap, bumpScale: 2, roughness: 0.95 });
+  logMat.userData.noDetail = true;
+  const grainMat = new THREE.MeshStandardMaterial({ map: endGrainTexture(), roughness: 0.85 });
+  grainMat.userData.noDetail = true;
   const things = state.lanes.map((l) => {
     return l.things.map((th) => {
       const g = new THREE.Group();
@@ -111,7 +126,7 @@ export function roadHopperView(env: THREE.Texture, state: HopState, players: Pla
         const cart = boxed('train/train-carriage-coal', len * 0.92, C * 0.75, C * 0.72);
         g.add(cart);
       } else {
-        const log = mesh(new THREE.CylinderGeometry(C * 0.36, C * 0.36, len * 0.96, 12), logMat, { cast: true, receive: true });
+        const log = mesh(new THREE.CylinderGeometry(C * 0.36, C * 0.36, len * 0.96, 24, 1), [logMat, grainMat, grainMat], { cast: true, receive: true });
         log.rotation.z = Math.PI / 2;
         log.position.y = -0.05;
         g.add(log);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { glowSprite } from '../look/fxKit';
 import { snowMaterial } from '../look/snow';
 import type { PlayerInfo } from '../../../shared/types';
@@ -49,7 +50,7 @@ export function plazaView(env: THREE.Texture, state: PlazaState, players: Player
   rim.position.set(wx(state.x0 + W / 2), -0.1, wz(cy));
   scene.add(rim);
   const ts = state.tile * PX;
-  const tiles = new THREE.InstancedMesh(new THREE.BoxGeometry(ts * 0.94, 0.12, ts * 0.94), new THREE.MeshStandardMaterial({ roughness: 0.55 }), state.tiles.length);
+  const tiles = new THREE.InstancedMesh(new RoundedBoxGeometry(ts * 0.94, 0.12, ts * 0.94, 2, 0.03), new THREE.MeshStandardMaterial({ map: texture('floor_stone_pattern_small', 1, 1), roughness: 0.85 }), state.tiles.length);
   tiles.receiveShadow = true;
   const m = new THREE.Matrix4();
   state.tiles.forEach((_, i) => {
@@ -58,7 +59,52 @@ export function plazaView(env: THREE.Texture, state: PlazaState, players: Player
     tiles.setMatrixAt(i, m);
   });
   scene.add(tiles);
-  const stone = new THREE.Color('#bdb6a8');
+  // wet paint: a glossy splat with drips and spatter on top of each claimed tile (not a flat colour swap)
+  const splatTex = (() => {
+    const S = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    for (let i = 0; i <= 40; i++) {
+      const a = (i / 40) * Math.PI * 2;
+      const r = S * (0.36 + 0.06 * Math.sin(a * 5) + 0.04 * Math.sin(a * 11 + 1) + (i % 7 === 0 ? 0.07 : 0));
+      g.lineTo(S / 2 + Math.cos(a) * r, S / 2 + Math.sin(a) * r);
+    }
+    g.fill();
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2, d = S * (0.4 + Math.random() * 0.08), r = 3 + Math.random() * 9;
+      g.beginPath();
+      g.arc(S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, r, 0, Math.PI * 2);
+      g.fill();
+    }
+    // darker toward the rim so it reads as a thick blob
+    g.globalCompositeOperation = 'source-atop';
+    const sh = g.createRadialGradient(S / 2, S / 2, S * 0.2, S / 2, S / 2, S * 0.45);
+    sh.addColorStop(0, 'rgba(0,0,0,0)');
+    sh.addColorStop(1, 'rgba(0,0,0,0.18)');
+    g.fillStyle = sh;
+    g.fillRect(0, 0, S, S);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const paint = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(ts * 1.12, ts * 1.12).rotateX(-Math.PI / 2),
+    new THREE.MeshPhysicalMaterial({ map: splatTex, transparent: true, alphaTest: 0.35, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
+    state.tiles.length,
+  );
+  paint.receiveShadow = true;
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  for (let i = 0; i < state.tiles.length; i++) paint.setMatrixAt(i, zero);
+  scene.add(paint);
+  const spin = state.tiles.map((_, i) => (i * 2.39996) % (Math.PI * 2));
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const sc = new THREE.Vector3();
+  const pos = new THREE.Vector3();
+  const stone = new THREE.Color('#d8d2c4');
   const cols = state.painters.map((p) => new THREE.Color(who(players, p.id)?.color ?? '#fff'));
   const shown: number[] = state.tiles.map(() => -2);
   const pop: number[] = state.tiles.map(() => 0);
@@ -91,7 +137,9 @@ export function plazaView(env: THREE.Texture, state: PlazaState, players: Player
         if (s.tiles[i] !== shown[i]) {
           shown[i] = s.tiles[i];
           pop[i] = 0.25;
-          tiles.setColorAt(i, s.tiles[i] < 0 ? stone : cols[s.tiles[i]]);
+          tiles.setColorAt(i, stone);
+          if (s.tiles[i] >= 0) paint.setColorAt(i, cols[s.tiles[i]]);
+          spin[i] += 1.3;
           dirty = true;
         }
         if (pop[i] > 0) {
@@ -100,9 +148,15 @@ export function plazaView(env: THREE.Texture, state: PlazaState, players: Player
           m.makeTranslation(wx(x), 0.06 + pop[i] * 0.8, wz(y));
           tiles.setMatrixAt(i, m);
           tiles.instanceMatrix.needsUpdate = true;
+          // the splat slaps down: overshoots, then settles
+          const k = 1 - pop[i] / 0.25;
+          const size = s.tiles[i] < 0 ? 0 : 0.4 + 0.6 * k + Math.sin(k * Math.PI) * 0.25;
+          paint.setMatrixAt(i, m.compose(pos.set(wx(x), 0.13 + pop[i] * 0.8, wz(y)), q.setFromAxisAngle(up, spin[i]), sc.set(size, 1, size)));
+          paint.instanceMatrix.needsUpdate = true;
         }
       }
       if (dirty && tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
+      if (dirty && paint.instanceColor) paint.instanceColor.needsUpdate = true;
       for (const sp of s.splashes) {
         fx.emit(new THREE.Vector3(wx(sp.x), 0.4, wz(sp.y)), { tex: 'puff', color: [`#${cols[sp.who].getHexString()}`, '#ffffff'], n: 22, speed: [3, 6], spread: 1, up: 3, life: [0.3, 0.6], size: [0.7, 0.2], gravity: 10 });
         shake(0.12);

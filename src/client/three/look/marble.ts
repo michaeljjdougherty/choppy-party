@@ -58,3 +58,60 @@ export function rugTexture(color: string): THREE.Texture {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+
+/** Wet, glossy mud with lumpy darker patches and a few bubbles. */
+export function mudMaterial(): THREE.MeshPhysicalMaterial {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#5b3a22';
+  g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 120; i++) {
+    const x = Math.random() * S, y = Math.random() * S, r = 6 + Math.random() * 26;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, Math.random() < 0.5 ? 'rgba(40,24,12,0.5)' : 'rgba(120,84,52,0.35)');
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr;
+    g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  for (let i = 0; i < 18; i++) {
+    const x = Math.random() * S, y = Math.random() * S, r = 2 + Math.random() * 5;
+    g.strokeStyle = 'rgba(160,120,80,0.6)';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.MeshPhysicalMaterial({ map: t, roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.2 });
+  m.userData.noDetail = true;
+  return m;
+}
+
+/** A twisted rope: a braided strand texture for a cylinder/tube along its length. */
+export function ropeMaterial(color = '#d8b67a', twists = 60): THREE.MeshStandardMaterial {
+  const c = document.createElement('canvas');
+  c.width = 32;
+  c.height = 64;
+  const g = c.getContext('2d')!;
+  const base = new THREE.Color(color);
+  g.fillStyle = `#${base.getHexString()}`;
+  g.fillRect(0, 0, 32, 64);
+  g.strokeStyle = `#${base.clone().multiplyScalar(0.6).getHexString()}`;
+  g.lineWidth = 4;
+  for (let k = -2; k < 4; k++) {
+    g.beginPath();
+    g.moveTo(0, k * 21);
+    g.lineTo(32, k * 21 + 32);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1, twists);
+  const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.9 });
+  m.userData.noDetail = true;
+  return m;
+}

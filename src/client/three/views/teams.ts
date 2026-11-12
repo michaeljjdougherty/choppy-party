@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { softShadowMat } from '../look/fxKit';
+import { mudMaterial, ropeMaterial } from '../look/marble';
 import type { PlayerInfo } from '../../../shared/types';
 import { LINE, type RopeState } from '../../../shared/games/ropePull';
 import { BASE_W, CX0, CX1, CY0, CY1, type CrateGrabState } from '../../../shared/games/crateGrab';
@@ -21,7 +22,7 @@ export function ropeView(env: THREE.Texture, state: RopeState, players: PlayerIn
   const grass = mesh(new THREE.CircleGeometry(80, 48), new THREE.MeshStandardMaterial({ map: texture('floor_ground_grass', 40, 40), color: '#cfe8b8', roughness: 0.95 }), { cast: false, receive: true });
   grass.rotation.x = -Math.PI / 2;
   scene.add(grass);
-  const mud = mesh(new THREE.CircleGeometry(2.4, 32), toy('#5b3a22', 0.95), { cast: false, receive: true });
+  const mud = mesh(new THREE.CircleGeometry(2.4, 48), mudMaterial(), { cast: false, receive: true });
   mud.rotation.x = -Math.PI / 2;
   mud.scale.set(1, 1.6, 1);
   mud.position.y = 0.02;
@@ -35,7 +36,7 @@ export function ropeView(env: THREE.Texture, state: RopeState, players: PlayerIn
   for (let i = 0; i < 10; i++) place(scene, i % 2 ? 'forest/tree' : 'forest/tree-high', -16 + i * 3.6, 0, -8 - (i % 3) * 2, { s: 2.6, ry: i });
   place(scene, 'forest/tent', -11, 0, -3.5, { s: 2.2, ry: 0.6 });
   place(scene, 'forest/flag', 11, 0, -3.5, { s: 2.2 });
-  const rope = mesh(new THREE.CylinderGeometry(0.07, 0.07, 26, 8), toy('#d8b67a', 0.8));
+  const rope = mesh(new THREE.CylinderGeometry(0.09, 0.09, 26, 12), ropeMaterial('#d8b67a', 140));
   rope.rotation.z = Math.PI / 2;
   rope.position.y = 0.9;
   scene.add(rope);

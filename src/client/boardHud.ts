@@ -893,7 +893,7 @@ function turnClock(ctx: CanvasRenderingContext2D, s: PartyState, t: number): voi
     if (lastClockSec >= 0) sfx.tick(1 - left / 10);
     lastClockSec = sec;
   }
-  const x = 1190, y = 200, r = 46;
+  const x = 640, y = 222, r = 40;
   const frac = left / 10;
   const urgent = left <= 3;
   const pulse = 1 + (urgent ? Math.max(0, 1 - (sec - left) * 4) * 0.18 : 0);

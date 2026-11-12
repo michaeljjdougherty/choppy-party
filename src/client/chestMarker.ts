@@ -45,7 +45,7 @@ export function drawChestMarkers(ctx: CanvasRenderingContext2D, s: PartyState, t
       const dx = x - cx, dy = y - cy;
       const k = Math.min((640 - M) / Math.max(1e-3, Math.abs(dx)), (360 - M) / Math.max(1e-3, Math.abs(dy)));
       // keep clear of the roll prompt at the top and the standings in the corner
-      const ex = Math.max(M + (cy + dy * k < 280 ? 230 : 0), Math.min(1280 - M, cx + dx * k)), ey = Math.max(190, cy + dy * k);
+      const ex = Math.max(M + (cy + dy * k < 280 ? 230 : 0), Math.min(1280 - M, cx + dx * k)), ey = Math.max(250, cy + dy * k);
       ctx.translate(ex, ey);
       ctx.fillStyle = 'rgba(20,10,50,0.8)';
       ctx.beginPath();
@@ -60,7 +60,7 @@ export function drawChestMarkers(ctx: CanvasRenderingContext2D, s: PartyState, t
       arrow(ctx, 0, 0.6);
       ctx.restore();
       text(ctx, steps === undefined ? '?' : String(steps), 0, 2, 24, { color: '#ffd23f' });
-      const ly = ey < 120 ? 44 : -44;
+      const ly = ey < 300 ? 44 : -44;
       text(ctx, 'CHOBGLOB', 0, ly, 16, { color: '#ffd23f' });
     }
     ctx.restore();

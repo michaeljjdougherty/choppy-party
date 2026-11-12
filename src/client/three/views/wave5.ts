@@ -191,7 +191,7 @@ export function alienView(env: THREE.Texture, state: CountState, players: Player
   const camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 220);
   camera.position.set(0, 11.5, 15.5);
   camera.lookAt(0, 0, -1.2);
-  ground(scene, '#8a7fb0', 90, -0.02, moonMaterial('#a597cc', 16));
+  ground(scene, '#8a7fb0', 90, -0.02, moonMaterial('#9488b8', 7));
   // the parade road: five lanes of dusty moon track
   const road = mesh(new THREE.PlaneGeometry(40, 11), new THREE.MeshStandardMaterial({ map: texture('floor_ground_dirt', 10, 3), color: '#c7b6e8', roughness: 1 }), { cast: false, receive: true });
   road.rotation.x = -Math.PI / 2;

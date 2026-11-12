@@ -108,3 +108,51 @@ export function treeStump(r: number, h: number): THREE.Group {
   g.add(top);
   return g;
 }
+
+/** A polished plank floor: long boards in slightly varied tones with soft grain and staggered joints. */
+let floorTex: THREE.Texture | null = null;
+export function woodFloorMaterial(rx: number, ry: number, color = '#ffffff'): THREE.MeshPhysicalMaterial {
+  if (!floorTex) {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d')!;
+    const rows = 8, bh = S / rows;
+    let seed = 17;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const tones = ['#b07a4a', '#a26c3e', '#bb8654', '#9a6638', '#b47e4c'];
+    for (let r = 0; r < rows; r++) {
+      let x = -rnd() * S * 0.5;
+      while (x < S) {
+        const L = S * (0.45 + rnd() * 0.4);
+        g.fillStyle = tones[Math.floor(rnd() * tones.length)];
+        g.fillRect(x, r * bh, L, bh);
+        // grain streaks along the board
+        for (let k = 0; k < 10; k++) {
+          g.strokeStyle = `rgba(${rnd() < 0.5 ? '60,35,15' : '220,170,120'},${0.08 + rnd() * 0.12})`;
+          g.lineWidth = 0.6 + rnd() * 1.2;
+          const y = r * bh + rnd() * bh;
+          g.beginPath();
+          g.moveTo(x, y);
+          g.bezierCurveTo(x + L * 0.3, y + (rnd() - 0.5) * 6, x + L * 0.6, y + (rnd() - 0.5) * 6, x + L, y + (rnd() - 0.5) * 4);
+          g.stroke();
+        }
+        g.fillStyle = 'rgba(40,22,10,0.55)';
+        g.fillRect(x, r * bh, 2, bh);
+        x += L;
+      }
+      g.fillStyle = 'rgba(40,22,10,0.5)';
+      g.fillRect(0, r * bh, S, 2);
+    }
+    floorTex = new THREE.CanvasTexture(c);
+    floorTex.colorSpace = THREE.SRGBColorSpace;
+    floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+    floorTex.anisotropy = 8;
+  }
+  const map = floorTex.clone();
+  map.repeat.set(rx, ry);
+  map.needsUpdate = true;
+  const m = new THREE.MeshPhysicalMaterial({ map, color, roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.25 });
+  m.userData.noDetail = true;
+  return m;
+}

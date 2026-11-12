@@ -5,7 +5,7 @@ import { snowMaterial } from '../look/snow';
 import { moonMaterial } from '../look/moon';
 import { rugTexture } from '../look/marble';
 import { rockGeometry, stoneMaterial } from '../life/rocks';
-import { treeStump } from '../look/wood';
+import { treeStump, woodFloorMaterial } from '../look/wood';
 import type { PlayerInfo } from '../../../shared/types';
 import { tileCentre, type PlazaState } from '../../../shared/games/paintPlaza';
 import type { CountState } from '../../../shared/games/alienCount';
@@ -672,11 +672,11 @@ export function seatView(env: THREE.Texture, state: SeatState, players: PlayerIn
   fitCamera(camera, (R + 230) * 2, (R * 0.62 + 160) * 2, 400, 0.8);
   // a parlour: wooden floor, a big round rug, lamps and plants round the walls
   const fw = ((R + 260) * 2) * PX, fd = ((R * 0.62 + 190) * 2) * PX;
-  const floor = mesh(new THREE.PlaneGeometry(fw + 20, fd + 20), new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks_wide', (fw + 20) / 2, (fd + 20) / 2), color: '#e0b88a', roughness: 0.8 }), { cast: false, receive: true });
+  const floor = mesh(new THREE.PlaneGeometry(fw + 20, fd + 20), woodFloorMaterial((fw + 20) / 5, (fd + 20) / 5, '#e8d0b8'), { cast: false, receive: true });
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(0, 0, wz(400));
   scene.add(floor);
-  const rug = mesh(new THREE.CircleGeometry(1, 48), toy('#a83a5a', 0.95), { cast: false, receive: true });
+  const rug = mesh(new THREE.CircleGeometry(1, 64), new THREE.MeshStandardMaterial({ map: rugTexture('#a83a5a'), roughness: 0.95 }), { cast: false, receive: true });
   rug.rotation.x = -Math.PI / 2;
   rug.scale.set(R * PX * 1.25, R * PX * 0.62 * 1.25, 1);
   rug.position.set(0, 0.02, wz(400));

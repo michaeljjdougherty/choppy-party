@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { flame, glowTex } from '../look/fxKit';
+import { flame, glowTex, wavingFlag } from '../look/fxKit';
+import { rockGeometry, stoneMaterial } from '../life/rocks';
 import type { PlayerInfo } from '../../../shared/types';
 import { CELL as HCELL, COLS, FX0, FY0, ROWS as HROWS, laneKind, type HopState } from '../../../shared/games/roadHopper';
 import { CH, CW, craneX, sway, type StackState } from '../../../shared/games/crateStacker';
@@ -381,17 +382,27 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
   const stone = new THREE.MeshStandardMaterial({ map: texture('wall_brick_stone_center', 1, 1), color: '#cfc6b4', roughness: 1 });
   const fw = FORT_W * PX, fh = FORT_H * PX;
   const bw = fw / FCOLS, bh = fh / FROWS;
+  // dressed stone blocks with bevelled edges, in a few tones so the wall doesn't read as one flat sheet
+  const blockGeo = new RoundedBoxGeometry(bw * 0.96, bh * 0.94, 3, 2, Math.min(bw, bh) * 0.1);
+  const stones = ['#d6ccb8', '#c4b8a2', '#ddd4c2', '#bfb39c'].map((c) => {
+    const m = stone.clone();
+    m.color.set(c);
+    return m;
+  });
   const fx = new Fx(scene);
   const forts = [0, 1].map((team) => {
     const g = new THREE.Group();
     g.position.set(sx(FORT_X[team] + FORT_W / 2), 0, 0);
     scene.add(g);
     // a rocky island under it
-    place(g, 'pirate/rocks-sand-a', 0, -0.6, 0, { s: 4.2 });
+    const isle = mesh(rockGeometry(fw * 0.62, 7 + team, 0.22), stoneMaterial('#b49a78'), { cast: false, receive: true });
+    isle.scale.set(1.15, 0.45, 0.75);
+    isle.position.set(0, -0.35, -0.4);
+    g.add(isle);
     const blocks: THREE.Mesh[] = [];
     for (let r = 0; r < FROWS; r++)
       for (let c = 0; c < FCOLS; c++) {
-        const b = mesh(new THREE.BoxGeometry(bw * 0.98, bh * 0.98, 3), stone, { cast: true, receive: true });
+        const b = mesh(blockGeo, stones[(r * 3 + c * 5) % stones.length], { cast: true, receive: true });
         b.position.set(-fw / 2 + (c + 0.5) * bw, (r + 0.5) * bh, -0.4);
         g.add(b);
         blocks.push(b);
@@ -402,12 +413,20 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
     for (const fxp of [-fw / 2 + 0.3, fw / 2 - 0.3]) {
       const pole = mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4), toy('#6b4a2e', 0.8));
       pole.position.set(fxp, fh + 1.2, -0.4);
-      const flag = mesh(new THREE.PlaneGeometry(1.1, 0.7), new THREE.MeshStandardMaterial({ color: TEAM_HEX[team], side: THREE.DoubleSide }), { cast: false });
-      flag.position.set(fxp + 0.55, fh + 2.0, -0.4);
+      const flag = wavingFlag(1.1, 0.7, TEAM_HEX[team]);
+      flag.position.set(fxp, fh + 2.0, -0.4);
       g.add(pole, flag);
     }
     return { g, blocks, order, gone: 0, flying: [] as { o: THREE.Mesh; v: THREE.Vector3; w: THREE.Vector3 }[] };
   });
+  // a cast-iron barrel: breech knob, reinforcing bands and a flared muzzle
+  const cannonGeo = new THREE.LatheGeometry(
+    ([[0, -0.68], [0.1, -0.7], [0.12, -0.62], [0.27, -0.6], [0.29, -0.5], [0.27, -0.42], [0.25, -0.1], [0.26, -0.06], [0.24, 0.0], [0.21, 0.45], [0.23, 0.5], [0.27, 0.58], [0.27, 0.65], [0.13, 0.65], [0.13, 0.4]] as [number, number][]).map(([r, y]) => new THREE.Vector2(r, y)),
+    28,
+  );
+  cannonGeo.computeVertexNormals();
+  const ironMat = new THREE.MeshPhysicalMaterial({ color: '#2c2d33', metalness: 0.85, roughness: 0.38, clearcoat: 0.3 });
+  ironMat.userData.noDetail = true;
   const guns = state.gunners.map((gn) => {
     const g = new THREE.Group();
     g.position.set(sx(gn.x), hy(gn.h - 14), 1.3);
@@ -415,7 +434,7 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
     ledge.position.y = -0.09;
     g.add(ledge);
     const barrel = new THREE.Group();
-    const tube = mesh(new THREE.CylinderGeometry(0.2, 0.26, 1.3, 12), toy('#3b3b44', 0.35));
+    const tube = mesh(cannonGeo, ironMat);
     tube.rotation.z = -Math.PI / 2;
     tube.position.x = 0.45;
     const rim = mesh(new THREE.TorusGeometry(0.22, 0.06, 6, 12), toy(colorOf(players, gn.id), 0.4), { cast: false });
@@ -444,8 +463,8 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
     scene.add(g);
     return { g, barrel, m, gaugeBg, fill, kick: 0 };
   });
-  const shellGeo = new THREE.SphereGeometry(0.2, 10, 8);
-  const shellMat = toy('#1e1e24', 0.3);
+  const shellGeo = new THREE.SphereGeometry(0.2, 20, 14);
+  const shellMat = ironMat;
   const shells: THREE.Mesh[] = [];
   let last = state;
   return {
@@ -494,7 +513,10 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
         const gn = s.gunners[i];
         if (!gn) continue;
         guns[i].kick = 1;
-        fx.emit(new THREE.Vector3(sx(gn.x) + (gn.team === 0 ? 1.2 : -1.2), hy(gn.h), 1.4), { tex: 'puff', color: ['#ffffff', '#d8d8d8'], n: 8, speed: [1, 3], life: [0.3, 0.6], size: [0.5, 1.2], drag: 3 });
+        const muzzle = new THREE.Vector3(sx(gn.x) + (gn.team === 0 ? 1.2 : -1.2), hy(gn.h), 1.4);
+        fx.flash(muzzle, '#ffc070', 40, 8);
+        fx.emit(muzzle, { tex: 'soft', color: ['#fff6d0', '#ffd27a'], to: '#ff5a10', n: 5, speed: [1.5, 4], spread: 0.4, life: [0.1, 0.22], size: [0.8, 1.6], additive: true, drag: 6 });
+        fx.emit(muzzle, { tex: 'puff', color: ['#ffffff', '#e0dcd6'], to: '#9a948e', n: 12, speed: [1, 4], up: 0.8, life: [0.5, 1.0], size: [0.6, 1.4], drag: 3.5, gravity: -0.8 });
         sfx.boom();
       }
       while (shells.length < s.shells.length) {
@@ -505,7 +527,11 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
       shells.forEach((m, i) => {
         const sh = s.shells[i];
         m.visible = !!sh;
-        if (sh) m.position.set(sx(sh.x), hy(sh.h), 1.3);
+        if (sh) {
+          m.position.set(sx(sh.x), hy(sh.h), 1.3);
+          // a wisp of smoke streaming off each ball in flight
+          if (Math.random() < dt * 30) fx.emit(m.position.clone(), { tex: 'puff', color: ['#e8e2da', '#c8c0b8'], n: 1, speed: [0.05, 0.3], life: [0.35, 0.7], size: [0.2, 0.55], drag: 2 });
+        }
       });
       for (const b of s.booms) {
         const at = new THREE.Vector3(sx(b.x), hy(b.h), 1.3);

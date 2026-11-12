@@ -284,3 +284,29 @@ export function groundFog(area: [number, number, number, number], opts: { count?
   };
   return g;
 }
+
+/** A cloth flag that ripples in the wind; its left edge is the hoist (sits at x=0). */
+export function wavingFlag(w: number, h: number, color: THREE.ColorRepresentation): THREE.Mesh {
+  const geo = new THREE.PlaneGeometry(w, h, 16, 6);
+  geo.translate(w / 2, 0, 0);
+  const base = Float32Array.from(geo.getAttribute('position').array as Float32Array);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide, roughness: 0.8 }));
+  m.castShadow = true;
+  const seed = Math.random() * 10;
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+  let lastT = -1;
+  m.onBeforeRender = () => {
+    const t = clock();
+    if (t === lastT) return;
+    lastT = t;
+    for (let i = 0; i < pos.count; i++) {
+      const x = base[i * 3], y = base[i * 3 + 1];
+      const k = x / w;
+      pos.setZ(i, Math.sin(x * 5 - t * 6 + seed) * 0.12 * k + Math.sin(y * 4 + t * 3) * 0.03 * k);
+      pos.setY(i, y - k * k * 0.05);
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+  };
+  return m;
+}

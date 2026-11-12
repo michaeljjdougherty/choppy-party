@@ -106,7 +106,7 @@ export function sky(name: SkyName): THREE.Texture | null {
  */
 const PH: Partial<Record<TexName, string>> = {
   floor_wood_planks: 'wood_planks',
-  floor_wood_planks_wide: 'plank_flooring',
+  floor_wood_planks_wide: 'wood_floor', // plank_flooring read as a noisy patchwork
   floor_ground_grass: 'leafy_grass',
   floor_ground_sand: 'sand_01',
   floor_ground_dirt: 'park_dirt',

@@ -236,52 +236,45 @@ export function onTop(o: THREE.Object3D, child: THREE.Object3D, frac = 1, dy = 0
   return child;
 }
 
-/** A soft, lumpy fog patch texture. */
-function fogTex(): THREE.Texture {
-  return canvasTex('fog', 256, (g, s) => {
-    for (let i = 0; i < 26; i++) {
-      const a = Math.random() * Math.PI * 2, d = Math.random() * s * 0.22;
-      const x = s / 2 + Math.cos(a) * d, y = s / 2 + Math.sin(a) * d, r = s * (0.12 + Math.random() * 0.16);
-      const gr = g.createRadialGradient(x, y, 0, x, y, r);
-      gr.addColorStop(0, 'rgba(255,255,255,0.22)');
-      gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = gr;
-      g.fillRect(0, 0, s, s);
-    }
-  });
-}
-
 /**
  * Low ground mist that rolls slowly across an area (graveyards, swamps, night scenes). Layers of soft
  * patches just above the ground, drifting with a breeze and wrapping round. Animates itself.
  */
 export function groundFog(area: [number, number, number, number], opts: { count?: number; color?: THREE.ColorRepresentation; opacity?: number; y?: number; size?: number } = {}): THREE.Group {
+  // continuous low-lying mist: two drifting layers of soft noise (wisps that thin out and pool),
+  // fading out toward the edges, rather than separate cotton-ball patches
   const g = new THREE.Group();
-  const mat = new THREE.MeshBasicMaterial({ map: fogTex(), color: opts.color ?? '#c8d4ff', transparent: true, opacity: opts.opacity ?? 0.55, depthWrite: false, fog: false });
-  const n = opts.count ?? 24;
   const [x0, z0, x1, z1] = area;
   const W = x1 - x0, D = z1 - z0;
-  const patches: { m: THREE.Mesh; x: number; z: number; v: number; spin: number }[] = [];
-  for (let i = 0; i < n; i++) {
-    const sz = (opts.size ?? 7) * (0.7 + Math.random() * 0.7);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(sz, sz).rotateX(-Math.PI / 2), mat);
-    m.position.y = (opts.y ?? 0.25) + (i % 3) * 0.18;
+  const time = { value: 0 };
+  const scale = 1 / (opts.size ?? 7);
+  for (let layer = 0; layer < 2; layer++) {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uTime: time, uColor: { value: new THREE.Color(opts.color ?? '#c8d4ff') }, uOpacity: { value: (opts.opacity ?? 0.5) * (layer ? 0.55 : 0.8) }, uScale: { value: scale * (layer ? 1.6 : 1) }, uSeed: { value: layer * 17.3 } },
+      vertexShader: 'varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: `uniform float uTime, uOpacity, uScale, uSeed; uniform vec3 uColor; varying vec2 vUv; varying vec3 vW;
+        float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(h(i), h(i+vec2(1,0)), f.x), mix(h(i+vec2(0,1)), h(i+vec2(1,1)), f.x), f.y); }
+        float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ v += a * n(p); p *= 2.03; a *= 0.5; } return v; }
+        void main(){
+          vec2 p = vW.xz * uScale + vec2(uSeed);
+          vec2 drift = vec2(uTime * 0.05, uTime * 0.018);
+          float f = fbm(p + drift + 0.6 * fbm(p * 0.7 - drift));
+          float wisp = smoothstep(0.38, 0.78, f);
+          vec2 e = min(vUv, 1.0 - vUv);
+          float edge = smoothstep(0.0, 0.18, min(e.x, e.y));
+          float a = wisp * edge * uOpacity;
+          gl_FragColor = vec4(uColor, a);
+        }`,
+      transparent: true,
+      depthWrite: false,
+    });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2), mat);
+    m.position.set(x0 + W / 2, (opts.y ?? 0.25) + layer * 0.35, z0 + D / 2);
     m.renderOrder = 7;
+    if (layer === 0) m.onBeforeRender = () => (time.value = clock());
     g.add(m);
-    patches.push({ m, x: Math.random() * W, z: Math.random() * D, v: 0.25 + Math.random() * 0.35, spin: (Math.random() - 0.5) * 0.08 });
   }
-  let lastT = clock();
-  patches[0].m.onBeforeRender = () => {
-    const t = clock();
-    const dt = Math.min(0.1, t - lastT);
-    lastT = t;
-    for (const p of patches) {
-      p.x = (p.x + p.v * dt + W) % W;
-      p.m.position.x = x0 + p.x;
-      p.m.position.z = z0 + p.z + Math.sin(t * 0.2 + p.x) * 0.6;
-      p.m.rotation.y += p.spin * dt;
-    }
-  };
   return g;
 }
 

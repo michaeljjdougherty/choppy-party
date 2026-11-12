@@ -235,3 +235,52 @@ export function onTop(o: THREE.Object3D, child: THREE.Object3D, frac = 1, dy = 0
   child.position.copy(parent.worldToLocal(p));
   return child;
 }
+
+/** A soft, lumpy fog patch texture. */
+function fogTex(): THREE.Texture {
+  return canvasTex('fog', 256, (g, s) => {
+    for (let i = 0; i < 26; i++) {
+      const a = Math.random() * Math.PI * 2, d = Math.random() * s * 0.22;
+      const x = s / 2 + Math.cos(a) * d, y = s / 2 + Math.sin(a) * d, r = s * (0.12 + Math.random() * 0.16);
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, 'rgba(255,255,255,0.22)');
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, s, s);
+    }
+  });
+}
+
+/**
+ * Low ground mist that rolls slowly across an area (graveyards, swamps, night scenes). Layers of soft
+ * patches just above the ground, drifting with a breeze and wrapping round. Animates itself.
+ */
+export function groundFog(area: [number, number, number, number], opts: { count?: number; color?: THREE.ColorRepresentation; opacity?: number; y?: number; size?: number } = {}): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ map: fogTex(), color: opts.color ?? '#c8d4ff', transparent: true, opacity: opts.opacity ?? 0.55, depthWrite: false, fog: false });
+  const n = opts.count ?? 24;
+  const [x0, z0, x1, z1] = area;
+  const W = x1 - x0, D = z1 - z0;
+  const patches: { m: THREE.Mesh; x: number; z: number; v: number; spin: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const sz = (opts.size ?? 7) * (0.7 + Math.random() * 0.7);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(sz, sz).rotateX(-Math.PI / 2), mat);
+    m.position.y = (opts.y ?? 0.25) + (i % 3) * 0.18;
+    m.renderOrder = 7;
+    g.add(m);
+    patches.push({ m, x: Math.random() * W, z: Math.random() * D, v: 0.25 + Math.random() * 0.35, spin: (Math.random() - 0.5) * 0.08 });
+  }
+  let lastT = clock();
+  patches[0].m.onBeforeRender = () => {
+    const t = clock();
+    const dt = Math.min(0.1, t - lastT);
+    lastT = t;
+    for (const p of patches) {
+      p.x = (p.x + p.v * dt + W) % W;
+      p.m.position.x = x0 + p.x;
+      p.m.position.z = z0 + p.z + Math.sin(t * 0.2 + p.x) * 0.6;
+      p.m.rotation.y += p.spin * dt;
+    }
+  };
+  return g;
+}

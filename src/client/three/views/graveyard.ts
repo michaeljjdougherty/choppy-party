@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { flame, lampGlow, onTop } from '../look/fxKit';
+import { flame, groundFog, lampGlow, onTop } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { GRAVES, GX0, GX1, GY0, GY1, type GraveyardState } from '../../../shared/games/graveyardShift';
 import { place, texture } from '../assets';
@@ -83,6 +83,8 @@ export function graveyardView(env: THREE.Texture, state: GraveyardState, players
     scene.add(m);
   });
 
+  // low mist rolling between the graves
+  scene.add(groundFog([L - 6, T - 4, R + 6, B + 4], { count: 22, opacity: 0.5 }));
   const fx = new Fx(scene);
   const team = crew(scene, players, state.keepers, fx);
   const glowTex = (() => {

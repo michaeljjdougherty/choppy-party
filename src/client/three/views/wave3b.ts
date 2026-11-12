@@ -11,7 +11,7 @@ import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
 import type { Tag, View } from '../stage';
 import { crew, fitProp, pool } from './crew';
 import { makeBeam, type Beam } from '../look/lightBeam';
-import { glowDisc } from '../look/fxKit';
+import { glowDisc, groundFog } from '../look/fxKit';
 
 const GRAVES = ['graveyard/gravestone-round', 'graveyard/gravestone-cross', 'graveyard/gravestone-bevel', 'graveyard/gravestone-decorative'];
 
@@ -70,6 +70,7 @@ export function lanternView(env: THREE.Texture, state: LanternState, players: Pl
   scene.add(beam.group);
   const lamp = new THREE.PointLight('#ffb860', 6, 5, 2);
   scene.add(lamp);
+  scene.add(groundFog([wx(LX0) - 5, wz(LY0) - 4, wx(LX1) + 5, wz(LY1) + 4], { count: 18, opacity: 0.35 }));
   const lantern = fitProp('graveyard/lantern-candle', 0.7, 'y');
   scene.add(lantern);
   const fx = new Fx(scene);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { glowDisc, lampGlow, onTop, softShadowMat } from '../look/fxKit';
+import { glowDisc, groundFog, lampGlow, onTop, softShadowMat } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { yardSize, type ZombieState } from '../../../shared/games/zombieTag';
 import { BURST, type ChiliState, type Pepper } from '../../../shared/games/chiliChallenge';
@@ -82,6 +82,7 @@ export function zombieView(env: THREE.Texture, state: ZombieState, players: Play
   // spooky trees and a crypt behind the yard
   place(scene, 'graveyard/crypt', 0, 0, wz(y0) - 4, { s: 3.2 });
   for (let i = 0; i < 8; i++) place(scene, i % 2 ? 'graveyard/pine-crooked' : 'graveyard/pine-fall', wx(x0) - 3 + (i % 4) * ((wx(x1) - wx(x0) + 6) / 3), 0, wz(y0) - 3 - (i >> 2) * 3, { s: 2.6 });
+  scene.add(groundFog([wx(x0) - 6, wz(y0) - 4, wx(x1) + 6, wz(y1) + 4], { count: 20, opacity: 0.45, color: '#c8ffd0' }));
   const fx = new Fx(scene);
   const team = crew(scene, players, state.walkers, fx);
   // a green glow under every zombie

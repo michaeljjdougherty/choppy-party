@@ -32,7 +32,7 @@ interface Face {
   tilt?: number;
 }
 
-type FacialHair = 'none' | 'moustache' | 'stubble' | 'moustache-goatee' | 'boxed' | 'full';
+type FacialHair = 'none' | 'moustache' | 'stubble' | 'short' | 'moustache-goatee' | 'boxed' | 'full';
 type HairStyle = 'spiky-crop' | 'wavy-tousle' | 'wavy-swoop' | 'side-sweep' | 'swept-up' | 'curly-fringe' | 'curly-crop' | 'tall-volume' | 'fade-crop' | 'curly-mop';
 
 export interface FolkSpec {
@@ -52,11 +52,23 @@ export interface FolkSpec {
   cheeks?: number;
   freckles?: boolean;
   earring?: boolean;
-  glasses?: 'aviator-shades' | 'round-wire';
+  glasses?: 'aviator-shades' | 'round-wire' | 'clear-round';
+  /** sunglasses pushed up on top of the head */
+  shadesUp?: boolean;
+  /** a hoodie over the shirt (takes the player's colour): hood down with a fleece lining, or up around the face */
+  hood?: { up: boolean; lining?: string };
+  /** a swirl of whipped cream (with a cherry) on top of the head */
+  whip?: boolean;
+  /** little puffs of smoke rising off the head */
+  smoke?: boolean;
+  /** a messy bun on top of the hair */
+  bun?: boolean;
+  /** a thin necklace chain in this colour */
+  chain?: string;
   /** something held in the mouth corner */
   toothpick?: boolean;
   /** a signature hat they always wear (goes in the hat slot) */
-  hat?: { kind: 'cap-backwards'; color: string };
+  hat?: { kind: 'cap-backwards' | 'cap-forward'; color: string; patch?: string };
   /** frame colour for round glasses */
   frames?: string;
   /** the signature resting face */
@@ -279,16 +291,122 @@ export const FOLKS: FolkSpec[] = [
     id: 'abi',
     name: 'Abi Buell',
     tagline: 'Sunny, sharp and secretly competitive',
-    skin: '#f3c7aa',
-    hair: '#8a4b2c',
+    // Michael sent a photo 2026-11-12: sleek dark brown lob, hazel-green eyes, rosy cheeks, the kissy pout
+    skin: '#f2c4aa',
+    hair: '#3a2a20',
     hairStyle: 'wavy-tousle',
-    eyes: '#6b7f4a',
+    eyes: '#7d8a58',
+    browW: 10,
+    facialHair: 'none',
+    cheeks: 0.7,
+    freckles: true,
+    chain: '#e4e4ea',
+    idle: { open: 1, brows: [7, -2, 7, -2], mouth: 'oh', mw: 0.6, tilt: 2 },
+    faces: { blink: { mouth: 'oh', mw: 0.6, tilt: 2 } },
+  },
+  {
+    id: 'kearns',
+    name: 'Kearns',
+    tagline: 'All in, no expression',
+    skin: '#efc5ad',
+    hair: '#241812',
+    hairStyle: 'side-sweep',
+    eyes: '#4a3222',
+    browW: 15,
+    // Michael 2026-11-12: thinner beard (short and trimmed, not full)
+    facialHair: 'short',
+    beard: '#2a1d16',
+    cheeks: 0.2,
+    hood: { up: false, lining: '#e9e6df' },
+    idle: { open: 0.5, brows: [-3, -3, -3, -3], mouth: 'flat', mw: 0.8, tilt: -2 },
+    faces: { blink: { mouth: 'flat', mw: 0.8, tilt: -2 } },
+  },
+  {
+    id: 'luke',
+    name: 'Luke',
+    tagline: 'Grinning through every round',
+    skin: '#f1c6ae',
+    hair: '#3a2619',
+    hairStyle: 'curly-crop',
+    eyes: '#5a3a24',
+    browW: 12,
+    facialHair: 'full',
+    beard: '#a85a30',
+    cheeks: 0.5,
+    hat: { kind: 'cap-forward', color: '#e3d8ad', patch: '#8a2f2f' },
+    chain: '#d8b25a',
+    idle: { open: 0.75, brows: [4, -2, 4, -2], mouth: 'grin', mw: 1.25 },
+    faces: { blink: { mouth: 'grin', mw: 1.25 } },
+  },
+  {
+    id: 'ryan',
+    name: 'Ryan Downling',
+    tagline: 'Cozy, sly and watching you',
+    skin: '#efc0a0',
+    hair: '#9a6238',
+    hairStyle: 'wavy-tousle',
+    eyes: '#6a4a30',
     browW: 9,
     facialHair: 'none',
-    cheeks: 0.6,
+    cheeks: 0.45,
     freckles: true,
-    idle: { open: 1, brows: [6, -2, 6, -2], mouth: 'grin', mw: 1.15 },
-    faces: { blink: { mouth: 'grin', mw: 1.15 } },
+    glasses: 'clear-round',
+    hood: { up: true },
+    bun: true,
+    idle: { open: 0.75, look: 1, brows: [2, 0, 2, 0], mouth: 'smile', mw: 0.9, tilt: 4 },
+    faces: { blink: { mouth: 'smile', mw: 0.9, tilt: 4 } },
+  },
+  {
+    id: 'erin',
+    name: 'Erin Bass',
+    tagline: 'Sunny side up, always',
+    skin: '#f3cbb2',
+    hair: '#8a6a4a',
+    hairStyle: 'wavy-tousle',
+    eyes: '#6f8296',
+    browW: 9,
+    facialHair: 'none',
+    cheeks: 0.55,
+    earring: true,
+    shadesUp: true,
+    chain: '#e4e4ea',
+    idle: { open: 0.7, brows: [3, -1, 3, -1], mouth: 'smile', mw: 1.05 },
+    faces: { blink: { mouth: 'smile', mw: 1.05 } },
+  },
+  {
+    // Michael 2026-11-12: "add a second Rik, called Creamy Rik"
+    id: 'rik-creamy',
+    name: 'Creamy Rik',
+    tagline: 'Smooth, rich and very pleased with himself',
+    skin: '#f6d2bb',
+    hair: '#ecd296',
+    hairStyle: 'wavy-swoop',
+    eyes: '#7c8fa6',
+    browW: 9,
+    facialHair: 'stubble',
+    beard: '#e6cf9a',
+    cheeks: 0.75,
+    whip: true,
+    idle: { open: 0.45, brows: [10, -4, 10, -4], mouth: 'grin', mw: 1.35, tilt: 3 },
+    faces: { blink: { mouth: 'grin', mw: 1.35, tilt: 3 }, happy: { mw: 1.45 } },
+  },
+  {
+    // Michael 2026-11-12: a THIRD Rik. Crispy: sunburnt, singed, still grinning
+    id: 'rik-crispy',
+    name: 'Crispy Rik',
+    tagline: 'Fell asleep in the sun. No regrets.',
+    skin: '#ec8f73',
+    hair: '#9a5a22',
+    hairStyle: 'wavy-swoop',
+    eyes: '#7c8fa6',
+    browW: 9,
+    facialHair: 'stubble',
+    beard: '#8a5426',
+    cheeks: 0.9,
+    glasses: 'aviator-shades',
+    smoke: true,
+    idle: { open: 1.1, brows: [8, -3, 8, -3], mouth: 'grin', mw: 1.3 },
+    faces: { blink: { mouth: 'grin', mw: 1.3 }, happy: { mw: 1.4 } },
   },
 ];
 
@@ -382,6 +500,17 @@ function drawFacialHair(g: CanvasRenderingContext2D, spec: FolkSpec): void {
     g.globalAlpha = 1;
   };
   switch (spec.facialHair) {
+    case 'short': {
+      // same coverage as a full beard, but thin: skin shows through, built up from short flecks
+      jawPath(132, 160);
+      softFill(0.6);
+      const full = (x: number, y: number) => y > 140 && !(y < 214 && x > 62 && x < 194 && y < 172) && !((x - 128) ** 2 / 1600 + (y - MOUTH_Y) ** 2 / 196 < 1);
+      speckle(0, 132, 256, 256, 1100, 0.3, (x, y) => full(x, y) || (y > 176 && y < 188 && Math.abs(x - 128) < 40));
+      g.beginPath();
+      g.ellipse(128, 182, 38, 7, 0, 0, Math.PI * 2);
+      softFill(0.35);
+      break;
+    }
     case 'stubble':
       // a soft shadow along the jaw and upper lip, plus fine flecks
       jawPath(168, 176);
@@ -1022,6 +1151,155 @@ function buildRoundGlasses(frames = '#3a3330'): THREE.Group {
   return g;
 }
 
+/** A baseball cap worn the right way round, with a patch on the front. */
+function buildForwardCap(color: string, patch = '#8a2f2f'): THREE.Group {
+  const g = new THREE.Group();
+  const mat = toy(color, 0.85);
+  const crown = mesh(rbox(HEAD + 0.1, 0.42, HEAD + 0.1, 0.18), mat);
+  crown.position.y = 0.06;
+  const seam = mesh(rbox(0.05, 0.02, HEAD + 0.12, 0.01), toy(css(darken(color, 0.15)), 0.8), { cast: false });
+  seam.position.y = 0.275;
+  const brim = mesh(rbox(0.9, 0.06, 0.5, 0.03), toy(css(darken(color, 0.06)), 0.8));
+  brim.position.set(0, -0.11, H + 0.27);
+  brim.rotation.x = 0.16;
+  const button = mesh(new THREE.SphereGeometry(0.07, 12, 8), mat);
+  button.position.y = 0.28;
+  // a little shield badge on the front panel
+  const badge = mesh(rbox(0.4, 0.24, 0.03, 0.06), toy(patch, 0.6), { cast: false });
+  badge.position.set(0, 0.07, H + 0.065);
+  const border = mesh(rbox(0.46, 0.3, 0.02, 0.07), toy('#f1ead0', 0.6), { cast: false });
+  border.position.set(0, 0.07, H + 0.055);
+  const mark = mesh(new THREE.ConeGeometry(0.06, 0.1, 3), toy('#f1ead0', 0.6), { cast: false });
+  mark.rotation.z = Math.PI;
+  mark.position.set(0, 0.06, H + 0.085);
+  g.add(crown, seam, brim, button, border, badge, mark);
+  return g;
+}
+
+/** Thick clear plastic frames. */
+function buildClearGlasses(): THREE.Group {
+  const g = new THREE.Group();
+  const frame = new THREE.MeshStandardMaterial({ color: '#eef3f6', transparent: true, opacity: 0.6, roughness: 0.15 });
+  const lens = new THREE.MeshStandardMaterial({ color: '#dff2ff', transparent: true, opacity: 0.15, roughness: 0.05 });
+  const z = H + 0.05;
+  const y = HEAD * (1 - 120 / 256);
+  for (const x of [-0.27, 0.27]) {
+    const rim = mesh(new THREE.TorusGeometry(0.2, 0.032, 8, 28), frame, { cast: false });
+    rim.scale.set(1.1, 0.92, 1);
+    rim.position.set(x, y, z);
+    const l = mesh(new THREE.CircleGeometry(0.2, 28), lens, { cast: false });
+    l.scale.set(1.1, 0.92, 1);
+    l.position.set(x, y, z - 0.005);
+    g.add(rim, l);
+  }
+  const bridge = mesh(new THREE.BoxGeometry(0.12, 0.04, 0.03), frame, { cast: false });
+  bridge.position.set(0, y + 0.05, z);
+  g.add(bridge);
+  for (const x of [-H - 0.01, H + 0.01]) {
+    const arm = mesh(new THREE.BoxGeometry(0.03, 0.035, HEAD * 0.85), frame, { cast: false });
+    arm.position.set(x, y + 0.06, 0.06);
+    g.add(arm);
+  }
+  return g;
+}
+
+/** Sunglasses pushed up on top of the head. */
+function buildShadesUp(): THREE.Group {
+  const g = new THREE.Group();
+  const frame = new THREE.MeshStandardMaterial({ color: '#2a2422', roughness: 0.3 });
+  const lens = new THREE.MeshStandardMaterial({ color: '#2c2a30', metalness: 0.3, roughness: 0.08 });
+  for (const x of [-0.25, 0.25]) {
+    const l = mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 20), lens, { cast: false });
+    l.scale.set(1.15, 1, 0.9);
+    l.position.set(x, HEAD + 0.24, 0.36);
+    l.rotation.x = Math.PI / 2 - 0.55;
+    const rim = mesh(new THREE.TorusGeometry(0.2, 0.025, 6, 24), frame, { cast: false });
+    rim.rotation.x = -0.55;
+    rim.scale.set(1.15, 0.9, 1);
+    rim.position.set(x, HEAD + 0.25, 0.36);
+    g.add(l, rim);
+  }
+  const bridge = mesh(new THREE.BoxGeometry(0.14, 0.03, 0.04), frame, { cast: false });
+  bridge.position.set(0, HEAD + 0.26, 0.38);
+  g.add(bridge);
+  for (const x of [-H - 0.03, H + 0.03]) {
+    const arm = mesh(new THREE.BoxGeometry(0.03, 0.03, HEAD * 0.7), frame, { cast: false });
+    arm.position.set(x, HEAD - 0.02, 0.0);
+    arm.rotation.x = -0.12;
+    g.add(arm);
+  }
+  return g;
+}
+
+/** Soft grey puffs that drift up off a singed head (animated in update). */
+function buildSmoke(): THREE.Group {
+  const g = new THREE.Group();
+  for (let i = 0; i < 5; i++) {
+    const m = new THREE.MeshStandardMaterial({ color: '#5e5854', transparent: true, opacity: 0.85, roughness: 1, depthWrite: false });
+    const p = mesh(new THREE.IcosahedronGeometry(0.12 + i * 0.03, 1), m, { cast: false });
+    p.userData.phase = i / 5;
+    p.userData.x = (i % 2 ? 1 : -1) * (0.15 + (i % 3) * 0.1);
+    g.add(p);
+  }
+  return g;
+}
+
+/** A big swirl of whipped cream with a cherry, sitting in the quiff. */
+function buildWhip(): THREE.Group {
+  const g = new THREE.Group();
+  const cream = new THREE.MeshStandardMaterial({ color: '#fffaf0', roughness: 0.45, emissive: '#fff4dc', emissiveIntensity: 0.12 });
+  const y0 = HEAD + 0.42;
+  // stacked, shrinking rings with a little twist read as a piped swirl
+  for (let i = 0; i < 6; i++) {
+    const r = 0.36 * (1 - i / 6.5);
+    const ring = mesh(new THREE.TorusGeometry(r, 0.1 * (1 - i / 9), 10, 24), cream);
+    ring.rotation.set(Math.PI / 2 + Math.sin(i) * 0.08, 0, i * 0.5);
+    ring.position.set(Math.sin(i * 1.3) * 0.02, y0 + i * 0.1, -0.05);
+    g.add(ring);
+  }
+  const tip = mesh(new THREE.ConeGeometry(0.1, 0.22, 12), cream);
+  tip.position.set(0.02, y0 + 0.66, -0.05);
+  tip.rotation.z = -0.35;
+  const cherry = mesh(new THREE.SphereGeometry(0.12, 16, 12), new THREE.MeshStandardMaterial({ color: '#d4122e', roughness: 0.15, metalness: 0.05 }));
+  cherry.position.set(-0.08, y0 + 0.72, -0.02);
+  const stem = mesh(new THREE.TorusGeometry(0.14, 0.014, 4, 12, Math.PI / 2), toy('#4f7a2a', 0.6), { cast: false });
+  stem.position.set(-0.22, y0 + 0.8, -0.02);
+  // a few drips running down into the hair
+  for (const [x, z] of [[-0.3, 0.12], [0.28, 0.05], [0.05, 0.3]]) {
+    const d = mesh(new THREE.CapsuleGeometry(0.05, 0.14, 4, 8), cream, { cast: false });
+    d.position.set(x, y0 - 0.06, z);
+    g.add(d);
+  }
+  g.add(tip, cherry, stem);
+  return g;
+}
+
+/** A messy bun of curls up top. */
+function buildBun(id: string, color: string): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.75 });
+  const dark = new THREE.MeshStandardMaterial({ color: css(darken(color, 0.25)), roughness: 0.8 });
+  const r = rng(hash(id + ':bun'));
+  const core = mesh(new THREE.IcosahedronGeometry(0.26, 2), dark);
+  core.position.set(0, HEAD + 0.4, -0.05);
+  g.add(core);
+  for (let i = 0; i < 16; i++) {
+    const a = r() * Math.PI * 2;
+    const b = r() * Math.PI * 0.6;
+    const c = mesh(new THREE.IcosahedronGeometry(0.09 + r() * 0.06, 1), r() < 0.5 ? mat : dark);
+    c.position.set(Math.cos(a) * Math.sin(b + 0.6) * 0.26, HEAD + 0.4 + Math.cos(b + 0.6) * 0.24, -0.05 + Math.sin(a) * Math.sin(b + 0.6) * 0.26);
+    g.add(c);
+  }
+  // a few loose wisps
+  for (let i = 0; i < 5; i++) {
+    const w = mesh(new THREE.TorusGeometry(0.08, 0.018, 4, 10, Math.PI * 1.3), mat, { cast: false });
+    w.position.set((r() - 0.5) * 0.5, HEAD + 0.6 + r() * 0.12, -0.05 + (r() - 0.5) * 0.3);
+    w.rotation.set(r() * 3, r() * 3, r() * 3);
+    g.add(w);
+  }
+  return g;
+}
+
 /** Strand-hair recipes, one per person (colours come from the spec). */
 const HAIR: Record<string, Omit<HairParams, 'color'>> = {
   rik: { top: 0.44, sides: 0.5, sideLen: 0.22, flow: 'up', part: 0, lift: 0.8, fringe: 0.2, wave: 0.6, volume: 1.6, thick: 0.09 },
@@ -1037,7 +1315,13 @@ const HAIR: Record<string, Omit<HairParams, 'color'>> = {
   shmama: { top: 0.4, sides: 0.45, sideLen: 0.1, flow: 'back', lift: 0.7, fringe: 0.16, fringeSide: -0.3, wave: 0.9, curl: 0.5, curlSize: 0.11, volume: 1.2 },
   aids: { top: 0.22, sides: 0.32, sideLen: 0.04, flow: 'up', lift: 0.9, wave: 0.6, volume: 0.8, thick: 0.065, grid: 10 },
   fick: { top: 0.0, sides: 0.42, sideLen: 0.14, flow: 'back', wave: 0.5, volume: 0.5 },
-  abi: { top: 0.44, sides: 0.75, sideLen: 0.42, flow: 'back', part: 0.22, fringe: 0.24, wave: 0.35, volume: 1.0, thick: 0.095 },
+  'rik-crispy': { top: 0.44, sides: 0.5, sideLen: 0.22, flow: 'up', part: 0, lift: 0.8, fringe: 0.2, wave: 0.9, volume: 1.6, thick: 0.09 },
+  'rik-creamy': { top: 0.44, sides: 0.5, sideLen: 0.22, flow: 'up', part: 0, lift: 0.8, fringe: 0.2, wave: 0.6, volume: 1.6, thick: 0.09 },
+  abi: { top: 0.46, sides: 0.85, sideLen: 0.55, flow: 'back', part: 0.12, fringe: 0.2, wave: 0.05, volume: 0.6, thick: 0.1 },
+  kearns: { top: 0.42, sides: 0.62, sideLen: 0.08, flow: 'forward', lift: 0.55, fringe: 0.22, fringeSide: -0.5, wave: 0.55, volume: 1.4, thick: 0.09 },
+  luke: { top: 0.1, sides: 0.55, sideLen: 0.12, flow: 'forward', curl: 0.85, curlSize: 0.1, volume: 1.0 },
+  ryan: { top: 0.3, sides: 0.45, sideLen: 0.1, flow: 'back', lift: 0.5, fringe: 0.1, fringeSide: 0.4, wave: 0.8, curl: 0.45, curlSize: 0.09, volume: 1.0 },
+  erin: { top: 0.5, sides: 1.0, sideLen: 0.95, flow: 'back', part: 0.0, fringe: 0.18, wave: 0.06, volume: 0.6, thick: 0.1 },
 };
 
 // ------------------------------------------------------------------ the model
@@ -1105,6 +1389,7 @@ export class FolkModel {
   private lookYaw = 0;
   private seed = Math.random() * 10;
   private pendingHat: THREE.Group | null = null;
+  private smoke: THREE.Group | null = null;
   private headCube!: THREE.Object3D;
   /** Body parts that outfits restyle or hide (see cosmetics.ts). */
   readonly parts = {
@@ -1215,8 +1500,14 @@ export class FolkModel {
     }
     if (spec.hat?.kind === 'cap-backwards') {
       this.pendingHat = buildBackwardsCap(spec.hat.color);
+    } else if (spec.hat?.kind === 'cap-forward') {
+      this.pendingHat = buildForwardCap(spec.hat.color, spec.hat.patch);
     }
-    const glasses = spec.glasses === 'aviator-shades' ? buildSunglasses() : spec.glasses === 'round-wire' ? buildRoundGlasses(spec.frames) : null;
+    if (spec.bun) this.hairTop.add(buildBun(spec.id, spec.hair));
+    if (spec.whip) this.hairTop.add(buildWhip());
+    if (spec.smoke) this.head.add((this.smoke = buildSmoke()));
+    if (spec.shadesUp) this.hairTop.add(buildShadesUp());
+    const glasses = spec.glasses === 'aviator-shades' ? buildSunglasses() : spec.glasses === 'round-wire' ? buildRoundGlasses(spec.frames) : spec.glasses === 'clear-round' ? buildClearGlasses() : null;
     if (glasses) {
       this.head.add(glasses);
       this.parts.ownGlasses = glasses;
@@ -1240,6 +1531,15 @@ export class FolkModel {
       feet: slot(this.body, 0, 0, 0),
     };
 
+    if (spec.hood) this.addHoodie(spec.hood);
+    if (spec.chain) {
+      const chain = mesh(new THREE.TorusGeometry(0.2, 0.012, 5, 28), new THREE.MeshStandardMaterial({ color: spec.chain, metalness: 0.85, roughness: 0.25 }), { cast: false });
+      chain.rotation.x = Math.PI / 2 - 0.55;
+      chain.scale.set(1, 1.15, 1);
+      chain.position.set(0, BODY.legH + BODY.torsoH - 0.06, 0.06);
+      this.body.add(chain);
+    }
+
     if (this.pendingHat) {
       this.slots.hat.add(this.pendingHat);
       this.parts.ownHat = this.pendingHat;
@@ -1248,6 +1548,66 @@ export class FolkModel {
 
     this.group.add(this.body);
     this.group.scale.setScalar(scale);
+  }
+
+  /** The signature hoodie: kangaroo pocket and drawstrings in the player's colour, hood down (fleece lined) or up. */
+  private addHoodie(hood: { up: boolean; lining?: string }): void {
+    const top = BODY.legH + BODY.torsoH;
+    const pocket = mesh(rbox(0.5, 0.2, 0.06, 0.04), this.shirtDark, { cast: false });
+    pocket.position.set(0, BODY.legH + 0.2, BODY.torsoD / 2 + 0.005);
+    this.body.add(pocket);
+    const cord = toy('#f2f2f2', 0.6);
+    for (const x of [-0.09, 0.09]) {
+      const c = mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.26, 5), cord, { cast: false });
+      c.position.set(x, top - 0.18, BODY.torsoD / 2 + 0.02);
+      this.body.add(c);
+    }
+    if (!hood.up) {
+      // hood bunched behind the neck, with its fleece lining showing round the collar
+      const lining = toy(hood.lining ?? '#ece8e0', 0.95);
+      this.parts.collar.visible = false;
+      const shell = mesh(rbox(0.74, 0.34, 0.2, 0.1), this.shirtMat);
+      shell.position.set(0, top - 0.06, -BODY.torsoD / 2 + 0.02);
+      shell.rotation.x = -0.35;
+      const inner = mesh(rbox(0.6, 0.24, 0.06, 0.05), lining, { cast: false });
+      inner.position.set(0, top + 0.02, -BODY.torsoD / 2 + 0.11);
+      inner.rotation.x = -1.0;
+      this.body.add(shell, inner);
+      // fluffy ring of sherpa round the neck opening
+      const n = 18;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const back = Math.cos(a) < 0 ? 1 : 0;
+        const puff = mesh(new THREE.IcosahedronGeometry(0.09 + back * 0.03, 1), lining, { cast: false });
+        puff.position.set(Math.sin(a) * 0.36, top + 0.03 + back * 0.06, Math.cos(a) * 0.26 - 0.03);
+        this.body.add(puff);
+      }
+      return;
+    }
+    // hood up: wraps the sides and back of the head with a thick rim framing the face
+    this.parts.collar.visible = false;
+    // the hood covers the hair on the sides and back
+    this.hairSides.visible = false;
+    const half = H + 0.05;
+    const backZ = -H - 0.05;
+    const h = HEAD + 0.14;
+    const g = new THREE.Group();
+    const t = 0.1;
+    // one soft rounded shell round the sides and back, so it reads as fabric rather than a box
+    const shell = mesh(rbox(half * 2 + t * 2, h, H - 0.04 - backZ + t, 0.26), this.shirtMat);
+    shell.position.set(0, h / 2 - 0.1, (H - 0.04 + backZ - t) / 2);
+    g.add(shell);
+    for (const sx of [-1, 1]) {
+      const rim = mesh(rbox(t + 0.06, h - 0.26, 0.12, 0.06), this.shirtDark);
+      rim.position.set(sx * (half + t / 2 - 0.02), h / 2 - 0.16, H + 0.03);
+      g.add(rim);
+    }
+    const crown = mesh(rbox(half * 2 + t * 2 - 0.1, 0.12, 0.14, 0.06), this.shirtDark);
+    crown.position.set(0, h - 0.16, H - 0.12);
+    const chin = mesh(rbox(half * 2 + t * 2, 0.16, 0.5, 0.06), this.shirtMat);
+    chin.position.set(0, -0.1, 0.1);
+    g.add(crown, chin);
+    this.head.add(g);
   }
 
   /** Change the shirt colour (e.g. when a player picks a different colour in the lobby). */
@@ -1401,6 +1761,13 @@ export class FolkModel {
    * bounce); standing still they breathe, shift their weight and look around now and then.
    */
   update(dt: number, t: number, motion: { speed?: number; cheer?: boolean; down?: boolean; air?: boolean } = {}): void {
+    if (this.smoke)
+      for (const p of this.smoke.children) {
+        const k = (t * 0.35 + p.userData.phase) % 1;
+        p.position.set(p.userData.x + Math.sin(t * 2 + p.userData.phase * 9) * 0.06, HEAD + 0.5 + k * 1.1, -0.1);
+        p.scale.setScalar(0.6 + k * 1.2);
+        ((p as THREE.Mesh).material as THREE.MeshStandardMaterial).opacity = 0.9 * (1 - k * k);
+      }
     if (this.exprT > 0) {
       this.exprT -= dt;
       if (this.exprT <= 0) this.expr = 'idle';

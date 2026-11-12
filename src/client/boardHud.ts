@@ -622,12 +622,11 @@ function drawItemGrid(ctx: CanvasRenderingContext2D, s: PartyState, cur: string,
   const x0 = 640 - w / 2;
   const y0 = 704 - rows * cell - (rows - 1) * gap;
   const pm = b.prompt as { kind: string; sel: number };
-  const used = mine.usedItemTurn === b.turn;
   // backing panel
   ctx.fillStyle = 'rgba(20,12,40,0.72)';
   roundRect(ctx, x0 - 16, y0 - 44, w + 32, rows * cell + (rows - 1) * gap + 56, 16);
   ctx.fill();
-  text(ctx, used ? 'Items  (used one this turn)' : 'Items  (1 per turn)', 640, y0 - 22, 20, { color: '#7dff6a' });
+  text(ctx, 'Items', 640, y0 - 22, 20, { color: '#7dff6a' });
   let cx = 0, cy = 0;
   ITEM_GRID.forEach((id, k) => {
     const x = x0 + (k % cols) * (cell + gap);
@@ -682,7 +681,7 @@ function drawItemGrid(ctx: CanvasRenderingContext2D, s: PartyState, cur: string,
   text(ctx, info.name, tx + 26, ty + 24, 24, { align: 'left', color: '#2a1b5e', outline: false });
   text(ctx, have ? `You have ${have}` : 'You have none', tx + tw - 18, ty + 24, 16, { align: 'right', color: have ? '#1f9d55' : '#9a8fbf', outline: false, weight: 700 });
   text(ctx, info.desc + (info.target ? '. You pick who.' : ''), tx + 26, ty + 56, 18, { align: 'left', color: '#4b3b80', outline: false, weight: 600 });
-  const action = !have ? '' : used ? '' : `${A()}: use   `;
+  const action = !have ? '' : `${A()}: use   `;
   text(ctx, `Stick: move   ${action}${B()}: close`, tx + 26, ty + 86, 15, { align: 'left', color: '#ff4d5a', outline: false, weight: 700 });
 }
 

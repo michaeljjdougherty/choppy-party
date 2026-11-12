@@ -56,7 +56,7 @@ describe('board rules', () => {
     for (const def of BOARDS) {
       const s = createBoard(def.id, ['a', 'b', 'c'], 5, 9);
       let ticks = 0;
-      while (s.sub !== 'done' && ticks++ < 30 * 200) {
+      while (s.sub !== 'done' && ticks++ < 30 * 600) {
         // a duel or Stew Battle hands over to the party layer: settle it straight away
         if (s.sub === 'event' && s.event) finishEvent(s, s.event.players.map((id, i) => ({ id, value: i })));
         else stepBoard(s, {}, DT);

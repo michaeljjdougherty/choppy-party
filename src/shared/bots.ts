@@ -443,8 +443,9 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
 
   if (b.sub === 'roll') {
     if (!ready) return NO_INPUT;
-    if (mem.itemTurn !== b.turn && me.items.length && me.usedItemTurn !== b.turn) {
-      mem.itemTurn = b.turn;
+    // think about the bag again each time it changes: there's no limit on items per turn
+    if (mem.itemTurn !== b.turn * 100 + me.items.length && me.items.length) {
+      mem.itemTurn = b.turn * 100 + me.items.length;
       const pick = pickItem(b, id, sk, r);
       if (pick >= 0) {
         mem.m = pick;
@@ -485,7 +486,7 @@ function boardBot(b: BoardState, id: string, sk: Skill, mem: BotMem, r: Rng): Ti
   if (!ready) return NO_INPUT;
   switch (pr.kind) {
     case 'items':
-      if (me.usedItemTurn === b.turn || !me.items.length) return pressB();
+      if (!me.items.length) return pressB();
       return choose(pr.sel, Math.max(0, ITEM_GRID.indexOf(me.items[Math.min(Math.max(0, mem.m), me.items.length - 1)])), ITEM_GRID.length);
     case 'target': {
       if (mem.n < 0) mem.n = pickTarget(b, id, pr.options, pr.purpose, smart(), r);

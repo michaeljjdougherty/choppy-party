@@ -26,7 +26,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   cutlass: { id: 'cutlass', name: 'Cutlass', desc: 'Close range: 15 damage to a player within 3 spaces', target: true, model: 'proto/weapon-sword', color: '#e8e8f0', range: 3, attack: 'close' },
   'fuse-bomb': { id: 'fuse-bomb', name: 'Fuse Bomb', desc: 'Close range: 10 damage to everyone within 2 spaces', target: false, model: 'platformer/bomb', color: '#ff5a3d', attack: 'close' },
   'treasure-shovel': { id: 'treasure-shovel', name: 'Treasure Shovel', desc: 'Dig 5 Pit Coin from everyone within 2 spaces', target: false, model: 'pirate/tool-shovel', color: '#d9b26a' },
-  'spike-trap': { id: 'spike-trap', name: 'Spike Trap', desc: 'Hide spikes here: the next player to land takes 10', target: false, model: 'platformer/trap-spikes', color: '#9aa3b5' },
+  'spike-trap': { id: 'spike-trap', name: 'Spike Trap', desc: 'Set spikes here: the next player to land takes 10', target: false, model: 'platformer/trap-spikes', color: '#9aa3b5' },
   'knight-shield': { id: 'knight-shield', name: 'Knight Shield', desc: 'Block the next hit, steal or swap', target: false, model: 'proto/weapon-shield', color: '#3fa9f5' },
   'swap-pipe': { id: 'swap-pipe', name: 'Swap Pipe', desc: 'Swap places with a player. Your turn ends', target: true, model: 'platformer/pipe', color: '#2ecc71' },
   'slow-roller': { id: 'slow-roller', name: 'Slow Roller', desc: 'Your dice spin in slow motion: stop them on the number you want', target: false, model: 'proto/number-3', color: '#7cf3ff' },

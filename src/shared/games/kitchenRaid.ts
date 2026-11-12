@@ -4,6 +4,7 @@ import { drawTimer, text } from '../draw';
 import { rand, randRange, type Rng } from '../rng';
 import { bump, newBody, steer, stepVertical, type Body } from '../physics';
 import { playerChips } from './hud';
+import { press, stick, type BotCtx } from '../botkit';
 
 /**
  * Kitchen Raid (Food + Furniture Kits), 1-vs-many. Snacks keep appearing on the big kitchen island.
@@ -22,6 +23,7 @@ const POUNCE_CD = 2.2;
 const STUN = 1.2;
 const MAX_T = 55;
 const MAX_SNACKS = 6;
+const GRAB = 115;
 export const SNACKS = ['food/apple', 'food/banana', 'food/cupcake', 'food/donut-sprinkles', 'food/croissant', 'food/cherries', 'food/pie', 'food/waffle'];
 
 export interface Raider extends Body {
@@ -144,8 +146,9 @@ export const kitchenRaid: Minigame<KitchenState> = {
           c.cd = POUNCE_CD;
         } else if (!c.chef && c.carry < 0) {
           // grab the nearest snack within reach of the island's edge
+          // generous reach: from any side of the island you can get the snacks on your half (it was too tight to reach most)
           let best = -1;
-          let bd = 70;
+          let bd = GRAB;
           s.snacks.forEach((sn, i) => {
             const d = Math.hypot(sn.x - c.x, sn.y - c.y);
             if (d < bd) (bd = d), (best = i);
@@ -213,6 +216,46 @@ export const kitchenRaid: Minigame<KitchenState> = {
         label: c.chef ? `Chef: ${c.score} ${c.score === 1 ? 'pounce' : 'pounces'}` : `${c.score} ${c.score === 1 ? 'snack' : 'snacks'}`,
       }))
       .sort((a, b) => b.value - a.value);
+  },
+
+  bot(s, id, k: BotCtx): import('../types').TickInput {
+    const me = s.cooks.find((c) => c.id === id);
+    if (!me || s.t < 3 || me.stun > 0) return NO_INPUT;
+    const err = 1 - k.sk.smart;
+    const go = (tx: number, ty: number, a = false) => {
+      const dx = tx - me.x, dy = ty - me.y, d = Math.hypot(dx, dy) || 1;
+      return stick(dx / d, dy / d, a);
+    };
+    if (me.chef) {
+      // hunt the nearest raider, carriers first; pounce when close
+      let best: Raider | null = null;
+      let bd = Infinity;
+      for (const c of s.cooks) {
+        if (c.chef || c.stun > 0 || c.safe > 0) continue;
+        const d = Math.hypot(c.x - me.x, c.y - me.y) * (c.carry >= 0 ? 0.6 : 1);
+        if (d < bd) (bd = d), (best = c);
+      }
+      if (!best) return go(ISLAND.x, ISLAND.y + ISLAND.h / 2 + 60);
+      const d = Math.hypot(best.x - me.x, best.y - me.y);
+      const lead = 0.18 + err * 0.2;
+      return go(best.x + best.vx * lead, best.y + best.vy * lead, me.cd === 0 && d < 150 - err * 40 && rand(k.r) < 0.25 + k.sk.smart * 0.4);
+    }
+    if (me.carry >= 0) return go(me.plateX, me.plateY);
+    // empty-handed: walk to the island edge beside the nearest snack, grab when in reach
+    const chef = s.cooks.find((c) => c.chef)!;
+    const scared = Math.hypot(chef.x - me.x, chef.y - me.y) < 110 && chef.cd === 0 && rand(k.r) < 0.6 * k.sk.smart;
+    if (scared) return go(me.x + (me.x - chef.x), me.y + (me.y - chef.y));
+    let sn: Snack | null = null;
+    let sd = Infinity;
+    for (const q of s.snacks) {
+      const d = Math.hypot(q.x - me.x, q.y - me.y);
+      if (d < sd) (sd = d), (sn = q);
+    }
+    if (!sn) return go(ISLAND.x + (me.plateX < ISLAND.x ? -1 : 1) * 60, me.plateY < ISLAND.y ? ISLAND.y - ISLAND.h / 2 - 60 : ISLAND.y + ISLAND.h / 2 + 60);
+    if (sd < GRAB - 10 - err * 20) return press();
+    // the edge spot nearest the snack
+    const top = me.y < ISLAND.y;
+    return go(sn.x, top ? ISLAND.y - ISLAND.h / 2 - R : ISLAND.y + ISLAND.h / 2 + R);
   },
 
   draw(ctx, s, players) {

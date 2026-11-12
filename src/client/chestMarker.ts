@@ -12,7 +12,7 @@ const M = 56; // keep off-screen markers this far inside the edge
 /**
  * Where the Chobglob is: a bobbing gold marker over each chest with how many spaces away it is for the
  * player whose turn it is. When the chest is off screen, a gold arrow lies on the ground at that player's
- * feet pointing at it (Michael: not floating over the HUD), with the number of spaces on it.
+ * feet... removed at Michael's ask: off screen, only the glowing trail along the path shows the way.
  */
 export function drawChestMarkers(ctx: CanvasRenderingContext2D, s: PartyState, t: number, project: Project, mapOpen: boolean): void {
   const b = s.board;
@@ -42,8 +42,7 @@ export function drawChestMarkers(ctx: CanvasRenderingContext2D, s: PartyState, t
       text(ctx, label, 0, -66, mapOpen ? 18 : 20, { color: '#ffd23f' });
     }
     ctx.restore();
-    // off screen: a gold arrow painted on the ground around the player whose turn it is, pointing at the chest
-    if (!on && me) ground(ctx, def.nodes[me.node], n, steps, t, project);
+    // off screen: nothing here (Michael: no arrows, the sparkle trail on the path does the pointing)
   }
 }
 
@@ -69,36 +68,3 @@ function arrow(ctx: CanvasRenderingContext2D, ang: number, s: number): void {
   ctx.restore();
 }
 
-/** Smoothed spot under the current player, so the ground arrow glides along as they hop. */
-const feet = new THREE.Vector3(NaN, 0, 0);
-function ground(ctx: CanvasRenderingContext2D, at: { x: number; y: number; z: number } | undefined, chest: { x: number; z: number }, steps: number | undefined, t: number, project: Project): void {
-  if (!at) return;
-  if (Number.isNaN(feet.x) || feet.distanceTo(new THREE.Vector3(at.x, at.y, at.z)) > 12) feet.set(at.x, at.y, at.z);
-  else feet.lerp(new THREE.Vector3(at.x, at.y, at.z), 0.12);
-  const ang = Math.atan2(chest.z - feet.z, chest.x - feet.x);
-  const ux = Math.cos(ang), uz = Math.sin(ang), vx = -uz, vz = ux;
-  const pulse = Math.sin(t * 4) * 0.12;
-  // arrow shape in (along, across) metres, starting just outside the player's space
-  const r0 = 1.25 + pulse;
-  const shape: [number, number][] = [[r0, -0.32], [r0 + 0.9, -0.32], [r0 + 0.9, -0.7], [r0 + 1.75, 0], [r0 + 0.9, 0.7], [r0 + 0.9, 0.32], [r0, 0.32]];
-  const pts = shape.map(([a, c]) => project(new THREE.Vector3(feet.x + ux * a + vx * c, feet.y + 0.08, feet.z + uz * a + vz * c)));
-  if (pts.some((q) => !q.visible)) return;
-  ctx.save();
-  ctx.beginPath();
-  pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
-  ctx.closePath();
-  ctx.shadowColor = 'rgba(255,190,40,0.9)';
-  ctx.shadowBlur = 14;
-  ctx.fillStyle = 'rgba(255,210,63,0.92)';
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#7a4a00';
-  ctx.stroke();
-  // the number of spaces sits on the arrow's tail
-  if (steps !== undefined) {
-    const c = project(new THREE.Vector3(feet.x + ux * (r0 + 0.5), feet.y + 0.1, feet.z + uz * (r0 + 0.5)));
-    text(ctx, String(steps), c.x, c.y + 1, 18, { color: '#3a2a10', outline: false });
-  }
-  ctx.restore();
-}

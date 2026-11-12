@@ -205,8 +205,7 @@ export function boardPointer(
     const tw = 540, th = 104;
     const ty = y0 - 44 - th - 10;
     const owned = !!me?.items.includes(ITEM_GRID[pm.sel]);
-    const usedTurn = me?.usedItemTurn === b.turn;
-    if (button(ctx, 'Use', 640 + tw / 2 + 14, ty + 4, 120, 46, { color: '#21c45a', size: 20, disabled: !owned || usedTurn || seeking() })) input.tap(dev, 'a');
+    if (button(ctx, 'Use', 640 + tw / 2 + 14, ty + 4, 120, 46, { color: '#21c45a', size: 20, disabled: !owned || seeking() })) input.tap(dev, 'a');
     if (button(ctx, 'Close', 640 + tw / 2 + 14, ty + 58, 120, 46, { color: '#ff4d5a', size: 20 })) {
       goal = null;
       input.tap(dev, 'b');

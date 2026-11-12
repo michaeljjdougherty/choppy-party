@@ -107,7 +107,7 @@ export const DEFAULT_PRESET: BoardPreset = {
   laserDamage: 15,
   dynamiteDamage: 15,
   maxItems: 3,
-  startItems: 1,
+  startItems: 0, // Michael: nobody starts with an item
 };
 
 export interface BoardDef {
@@ -258,7 +258,7 @@ export interface Hazards {
   pine: string[];
   /** Gulch: canyon lane the next boulder rolls down. */
   boulderLane: number;
-  /** Spike traps hidden on spaces, by owner. */
+  /** Spike traps set on spaces, by owner (shown on the board). */
   spikes: Record<string, string>;
 }
 
@@ -314,7 +314,8 @@ export interface BoardState {
   /** Gold Strike reel: key amounts (negative = cave-in), ending on the result. */
   gamble?: { reel: number[]; at: number; pick: number } | null;
   /** Mister Chunk's reel: which nasty surprise he picks. */
-  chunk?: { reel: ChunkKind[]; at: number; pick: ChunkKind; victim: string } | null;
+  /** hit: the surprise already happened and the result is on screen for a moment before he leaves. */
+  chunk?: { reel: ChunkKind[]; at: number; pick: ChunkKind; victim: string; hit?: boolean } | null;
   /** The villain's reel of player ids, stopping on his victim. */
   boss?: { reel: string[]; at: number; pick: string; hit?: boolean; /** still dancing to his song: nothing moves on until the host skips */ dance?: boolean } | null;
   /** Round the villain last struck, and who he got (so he doesn't pick on the same player twice running). */

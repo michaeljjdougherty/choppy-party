@@ -82,6 +82,8 @@ export const GOLD_LOSSES = [-5, -10];
 const SPIN_TIME = SPIN_STOP + 0.9;
 /** Mister Chunk lands with a thud and glares before his reel starts. */
 export const CHUNK_INTRO = 1.6;
+/** How long the result stays up (and Mister Chunk stays) after his surprise, so everyone can read it (Michael). */
+export const CHUNK_HOLD = 3;
 /** What each of Mister Chunk's surprises is called and does, for the reel and the result line. */
 export const CHUNK_EVENTS: Record<ChunkKind, { name: string; line: string; weight: number }> = {
   tax: { name: 'Chunk Tax', line: '-12 Pit Coin', weight: 3 },
@@ -645,11 +647,19 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       break;
 
     case 'chunk':
-      if (s.t > CHUNK_INTRO + SPIN_TIME && s.chunk) {
+      if (s.t > CHUNK_INTRO + SPIN_TIME && s.chunk && !s.chunk.hit) {
         const c = s.chunk;
         s.chunk = null;
+        const t0 = s.t;
         chunkHit(s, def, c.victim, c.pick);
-        if (s.sub === 'chunk') set(s, 'land');
+        // still here: hold on the result before he leaves
+        if (s.sub === 'chunk') {
+          s.chunk = { ...c, hit: true };
+          s.t = t0;
+        }
+      } else if (s.chunk?.hit && s.t > CHUNK_INTRO + SPIN_TIME + CHUNK_HOLD) {
+        s.chunk = null;
+        set(s, 'land');
       }
       break;
 
@@ -724,10 +734,7 @@ function stepPrompt(s: BoardState, def: BoardDef, id: string, inp: TickInput): v
       if (slot < 0) {
         say(s, `You don't have a ${ITEMS[item].name}`, '#ff5a5f');
         s.t = 0.05;
-      } else if (me.usedItemTurn === s.turn) {
-        say(s, 'Only 1 item per turn', '#ff5a5f');
-        s.t = 0.05;
-      } else useItem(s, def, id, slot);
+      } else useItem(s, def, id, slot); // no limit per turn (Michael)
     }
     return;
   }
@@ -888,7 +895,7 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
       break;
     case 'spike-trap':
       s.hazards.spikes[at] = id;
-      say(s, 'Spikes hidden here...', info.color);
+      say(s, 'Spike Trap set!', info.color);
       break;
     case 'pirate-cannon': {
       const d = forwardDist(def, s, at, 10);

@@ -95,7 +95,7 @@ describe('board layer', () => {
     expect(['a', 'c']).toContain(s.event!.sitOut);
   });
 
-  it('items: Spring Boots add 5, and the item menu only allows one item per turn', () => {
+  it('items: Spring Boots add 5, and the you can use more than one item a turn', () => {
     const def = BOARDS[0];
     const s = createBoard(def.id, ['a'], 10, 1);
     s.players.a.items = ['spring-boots', 'heart-snack'];
@@ -111,7 +111,7 @@ describe('board layer', () => {
     stepBoard(s, { a: A }, DT);
     expect(s.players.a.rollBonus).toBe(5);
     expect(s.sub).toBe('roll');
-    // the bag still opens to look, but a second item is refused
+    // a second item works too: no limit per turn
     s.t = 1;
     stepBoard(s, { a: B }, DT);
     expect(s.prompt?.kind).toBe('items');
@@ -120,9 +120,7 @@ describe('board layer', () => {
     s.t = 1;
     s.promptAge = 1;
     stepBoard(s, { a: A }, DT);
-    expect(s.players.a.items).toEqual(['heart-snack']);
-    s.t = 1;
-    stepBoard(s, { a: B }, DT);
+    expect(s.players.a.items).toEqual([]);
     expect(s.sub).toBe('roll');
   });
 

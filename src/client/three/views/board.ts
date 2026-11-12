@@ -33,6 +33,7 @@ import { sfx } from '../../sfx';
 import { postPulse } from '../look/post';
 import { courtDecor, setCourtNames } from '../stewCourtDecor';
 import { BoardAnims } from '../anim/boardReveal';
+import { buildBoardStatus } from '../anim/boardStatus';
 
 /** A soft ring of light: clear in the middle (under the tile), bright at the tile's edge, fading out. */
 let glowTex: THREE.Texture | null = null;
@@ -1440,6 +1441,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const anims = new BoardAnims(scene, fx);
   const weather = buildWeather(scene, def, fx);
   const pieces = buildSetPieces(scene, def, fx, gy);
+  // traps, shields and roll boosts you can see (Michael: every item should be visible on the board)
+  const status = buildBoardStatus(scene, def, (id) => players.find((p) => p.id === id)?.color ?? '#ffffff', TILE_H);
   const residents = buildResidents(scene, def, gy);
   const kick = (nodeId: string, v: number) => {
     const sp = springs.get(nodeId);
@@ -1610,6 +1613,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       weather.update(b, t, dt);
       pieces.update(b, t, dt);
       residents.update(b, t, dt);
+      status.update(b, t, (id) => pos.get(id));
       // sandblind players can't see the chests on their own turn
       const blind = weather.chestsHidden(b, currentPlayer(b));
       const quiet = b.sub === 'tour' || b.sub === 'orderRoll' || b.sub === 'orderShow' || b.sub === 'done';

@@ -275,7 +275,7 @@ export function moonView(env: THREE.Texture, state: MoonState, players: PlayerIn
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 260);
   const x0 = 640 - state.w / 2, x1 = 640 + state.w / 2, y0 = 400 - state.h / 2, y1 = 400 + state.h / 2;
   frameRect(camera, x0 - 70, x1 + 70, y0 - 20, y1 + 10, 0.95);
-  floor(scene, 140, 100, wz(400), moonMaterial('#a4a4b4', 14));
+  floor(scene, 140, 100, wz(400), moonMaterial('#8c8c9c', 5));
   // pitch markings
   const line = toy('#f4f4ff', 0.6);
   const markings: [number, number, number, number][] = [

@@ -53,6 +53,6 @@ export const GAMES: Minigame[] = [shrinkingRink, quickDrawCactus, pancakePanic, 
 
 export function getGame(id: string): Minigame {
   const g = GAMES.find((x) => x.id === id);
-  if (!g) throw new Error(`Unknown minigame ${id}`);
+  if (!g) throw new Error(`Unknown Crust Game ${id}`);
   return g;
 }

@@ -57,9 +57,9 @@ function describe(type: SpaceType, s: PartyState): [string, string] {
     case 'chunk':
       return ['Mister Chunk', 'Spins a reel of nasty surprises'];
     case 'duel':
-      return ['Duel', 'Pick a rival for a 1v1 minigame'];
+      return ['Duel', 'Pick a rival for a 1v1 Crust Game'];
     case 'stew':
-      return ['Stew Battle', 'Team minigame for the pot'];
+      return ['Stew Battle', 'Team Crust Game for the pot'];
     case 'shop':
       return ['Shops', 'The Square Deal sells boosts, the Chop Shop sells weapons'];
     case 'post':

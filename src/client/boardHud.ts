@@ -155,7 +155,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   } else if (b.sub === 'turnIntro') {
     turnCard(ctx, name, me?.color ?? '#ffd23f', b.t, b.cur === 0 ? 3.6 : 2.8);
     if (b.cur === 0) text(ctx, `Turn ${b.turn}`, 640, 168, 30, { color: '#ffffff' });
-    if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Turn order follows the last minigame\'s finish!', 640, 204, 22, { color: '#ffd23f' });
+    if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Turn order follows the last Crust Game\'s finish!', 640, 204, 22, { color: '#ffd23f' });
     if (b.cur === 0) roundWarnings(ctx, s, b.t);
   } else if (b.sub === 'roll') {
     const first = b.rolls.length === 0;
@@ -359,7 +359,7 @@ function drawRoundSummary(ctx: CanvasRenderingContext2D, s: PartyState, age: num
   ctx.stroke();
   const left = b.maxTurns - b.turn;
   text(ctx, 'STANDINGS', 640, y0 + 36, 34, { color: '#ffd23f' });
-  text(ctx, left <= 0 ? 'Final round! One last minigame...' : `Round ${b.turn} of ${b.maxTurns}  ·  ${left} to go`, 640, y0 + 70, 17, { color: '#bfe0ff', weight: 800, outline: false });
+  text(ctx, left <= 0 ? 'Final round! One last Crust Game...' : `Round ${b.turn} of ${b.maxTurns}  ·  ${left} to go`, 640, y0 + 70, 17, { color: '#bfe0ff', weight: 800, outline: false });
   const snap = b.standSnap;
   let place = 0;
   rows.forEach((p, i) => {

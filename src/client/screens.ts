@@ -116,8 +116,8 @@ export type LobbyKind = 'boards' | 'mix' | 'free' | 'online';
 /** Each lobby has its own colour, title and backdrop pattern, so the modes feel like different places. */
 export const LOBBY_THEME: Record<LobbyKind, { color: string; title: string; sub: string; deco: 'dice' | 'stars' | 'tiles' | 'waves' }> = {
   boards: { color: '#ff4d5a', title: 'Party Boards', sub: 'Roll the dice, race the board, grab Chobglobs', deco: 'dice' },
-  mix: { color: '#2f8cff', title: 'Minigame Mix', sub: 'Back-to-back minigames. Most points wins', deco: 'stars' },
-  free: { color: '#21c45a', title: 'Free Play', sub: 'Pick any minigame and play it right now', deco: 'tiles' },
+  mix: { color: '#2f8cff', title: 'Crust Game Mix', sub: 'Back-to-back Crust Games. Most points wins', deco: 'stars' },
+  free: { color: '#21c45a', title: 'Free Play', sub: 'Pick any Crust Game and play it right now', deco: 'tiles' },
   online: { color: '#9a5bff', title: 'Play Online', sub: 'Friends join with the room code', deco: 'waves' },
 };
 
@@ -256,7 +256,7 @@ function mixCard(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void 
         ? 'Two even teams every round (odd numbers take turns sitting out)'
         : `${count('Free-for-all')} free-for-all  ·  ${count('Team')} team  ·  ${count('1-vs-many')} 1-vs-many, never the same twice in a row`;
   fitLine(ctx, label, x + w / 2, y + h + STRIP / 2 + 1, 16, w - 40, '#bfe0ff');
-  cornerChip(ctx, `${pool.length} minigames`, pool.length > 0);
+  cornerChip(ctx, `${pool.length} Crust Games`, pool.length > 0);
 }
 
 export function drawLobby(ctx: CanvasRenderingContext2D, s: PartyState, sc: ScreenCtx, t = 0): void {
@@ -481,7 +481,7 @@ export function drawIntro(ctx: CanvasRenderingContext2D, s: PartyState, t: numbe
       : s.boardEvent === 'stew'
         ? 'STEW BATTLE!  Red team vs Blue team'
         : s.board
-          ? `Turn ${s.board.turn} minigame  ·  ${g.mode}`
+          ? `Turn ${s.board.turn} Crust Game  ·  ${g.mode}`
           : `Round ${s.round + 1} of ${s.playlist.length}  ·  ${g.mode}`;
   const rib = easeOut(age / 0.4);
   ctx.save();
@@ -742,7 +742,7 @@ function drawAward(ctx: CanvasRenderingContext2D, s: PartyState, t: number): voi
   }
 }
 
-const REEL = ['MINIGAME MASTER', 'PUNCHING BAG', 'LUCKY SEVENS', 'DOUBLE TROUBLE', 'ROAD RUNNER', 'SLOWPOKE', 'BULLY', 'UNTOUCHABLE', 'NINE LIVES', 'COIN HOARDER', "BRIAN'S FAVORITE", 'PARTICIPATION TROPHY'];
+const REEL = ['CRUST GAME MASTER', 'PUNCHING BAG', 'LUCKY SEVENS', 'DOUBLE TROUBLE', 'ROAD RUNNER', 'SLOWPOKE', 'BULLY', 'UNTOUCHABLE', 'NINE LIVES', 'COIN HOARDER', "BRIAN'S FAVORITE", 'PARTICIPATION TROPHY'];
 
 /** "And the champion is..." with a drumroll, before the podium. */
 function drawDrum(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void {
@@ -768,7 +768,7 @@ function drawChamp(ctx: CanvasRenderingContext2D, s: PartyState, t: number, age:
     lastFireworks = Math.floor(age / 1.7);
     burst(45);
   }
-  ribbon(ctx, 330, 46, 380, 52, '#ffcf3a', s.board ? 'PARTY CHAMPION' : 'MINIGAME CHAMPION', 22, '#3a2a10');
+  ribbon(ctx, 330, 46, 380, 52, '#ffcf3a', s.board ? 'PARTY CHAMPION' : 'CRUST GAME CHAMPION', 22, '#3a2a10');
   if (winners.length > 1) slam(ctx, 'IT\'S A TIE!', 330, 130, 70, age, '#ffd23f', 0.2);
   else if (champ) {
     const k = springIn(clamp01((age - 0.15) / 0.5));

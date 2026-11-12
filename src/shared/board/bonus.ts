@@ -28,7 +28,7 @@ interface Def {
 }
 
 const DEFS: Def[] = [
-  { id: 'master', title: 'Minigame Master', line: 'Won the most minigames. Show-off.', unit: 'minigames won', need: true, value: (p) => p.stats.wins },
+  { id: 'master', title: 'Crust Game Master', line: 'Won the most Crust Games. Show-off.', unit: 'Crust Games won', need: true, value: (p) => p.stats.wins },
   { id: 'bag', title: 'Punching Bag', line: 'Took the most damage. Ouch, ouch, and ouch.', unit: 'damage taken', need: true, value: (p) => p.stats.damageTaken },
   { id: 'sevens', title: 'Lucky Sevens', line: 'Rolled the most sevens. Somebody check those dice.', unit: 'sevens rolled', need: true, value: (p) => p.stats.sevens },
   { id: 'doubles', title: 'Double Trouble', line: 'Rolled the most doubles.', unit: 'doubles rolled', need: true, value: (p) => p.stats.doubles ?? 0 },

@@ -33,8 +33,8 @@ export interface DevHooks {
   project(v: THREE.Vector3): { x: number; y: number; visible: boolean };
 }
 
-type Tab = 'Load' | 'Board' | 'Events' | 'Player' | 'Minigame' | 'View';
-const TABS: Tab[] = ['Load', 'Board', 'Events', 'Player', 'Minigame', 'View'];
+type Tab = 'Load' | 'Board' | 'Events' | 'Player' | 'Crust Game' | 'View';
+const TABS: Tab[] = ['Load', 'Board', 'Events', 'Player', 'Crust Game', 'View'];
 
 interface Row {
   label: string;
@@ -217,7 +217,7 @@ export class DevMode {
     // start on the tab that fits what's on screen
     const s = this.state();
     if (s?.phase === 'board') this.tab = TABS.indexOf('Board');
-    else if (s?.phase === 'play' || s?.phase === 'intro') this.tab = TABS.indexOf('Minigame');
+    else if (s?.phase === 'play' || s?.phase === 'intro') this.tab = TABS.indexOf('Crust Game');
     else this.tab = 0;
     this.sel = -1;
     // the player tools start on whoever's turn it is
@@ -264,7 +264,7 @@ export class DevMode {
     const needLocal = () => (!this.local() ? 'Only in local games' : null);
     const needBoard = () => needLocal() ?? (s?.phase !== 'board' || !b ? 'Load a board first' : null);
     const needIdle = () => needBoard() ?? (!dev.boardIdle(b) ? 'Wait for the next roll' : null);
-    const needGame = () => needLocal() ?? (s?.phase !== 'play' && s?.phase !== 'intro' ? 'No minigame on right now' : null);
+    const needGame = () => needLocal() ?? (s?.phase !== 'play' && s?.phase !== 'intro' ? 'No Crust Game on right now' : null);
     const who = () => (s ? s.players[wrapI(this.who, s.players.length)] : undefined);
     const whoId = () => who()?.id ?? '';
     const bp = () => (b ? b.players[whoId()] : undefined);
@@ -278,12 +278,12 @@ export class DevMode {
         { label: 'Skip tour and order roll', value: () => (this.skipIntro ? 'On' : 'Off'), step: () => (this.skipIntro = !this.skipIntro) },
         { label: 'Load the board', act: () => this.loadBoard(), actLabel: 'Load board', color: '#21c45a' },
         {
-          label: 'Minigame',
+          label: 'Crust Game',
           value: () => `${g.name}`,
           step: (d) => (this.gameIdx = wrapI(this.gameIdx + d, GAMES.length)),
         },
-        { label: `Play it (${g.mode}, ${g.minPlayers}-${g.maxPlayers} players)`, act: () => this.loadGame(g.id), actLabel: 'Play minigame', color: '#2f8cff' },
-        { label: 'A random minigame', act: () => this.loadGame(GAMES[Math.floor(Math.random() * GAMES.length)].id), actLabel: 'Surprise me', color: '#9a5bff' },
+        { label: `Play it (${g.mode}, ${g.minPlayers}-${g.maxPlayers} players)`, act: () => this.loadGame(g.id), actLabel: 'Play Crust Game', color: '#2f8cff' },
+        { label: 'A random Crust Game', act: () => this.loadGame(GAMES[Math.floor(Math.random() * GAMES.length)].id), actLabel: 'Surprise me', color: '#9a5bff' },
       ];
     }
     if (tab === 'Board') {
@@ -326,7 +326,7 @@ export class DevMode {
         { label: 'Stew Battle now', act: () => (dev.devStew(s!), this.close()), actLabel: 'Start battle', off: needIdle, color: '#ff9f1c' },
         { label: 'End the round (hazards go off)', act: () => (dev.devRoundEnd(s!), this.close()), actLabel: 'End round', off: needIdle, color: '#9a5bff' },
         {
-          label: 'Minigame',
+          label: 'Crust Game',
           value: next,
           step: (d) => (this.nextIdx = this.nextIdx + d < -1 ? GAMES.length - 1 : this.nextIdx + d >= GAMES.length ? -1 : this.nextIdx + d),
           off: needBoard,
@@ -391,7 +391,7 @@ export class DevMode {
         },
       ];
     }
-    if (tab === 'Minigame') {
+    if (tab === 'Crust Game') {
       const cur = s?.gameId ? getGame(s.gameId) : null;
       return [
         { label: 'Playing now', value: () => cur?.name ?? 'Nothing', off: needGame },

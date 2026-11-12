@@ -385,7 +385,7 @@ export function removePlayer(s: PartyState, id: string): boolean {
 export function selectionLabel(s: PartyState): string {
   const o = OPTIONS[s.selection];
   if (o.kind === 'board') return `${getBoard(o.id).name}: ${TURN_OPTIONS[s.turnsIdx]} turns`;
-  if (o.kind === 'mix') return `Minigame Mix (${MIX_MODES[s.mixMode ?? 0]}): ${ROUND_OPTIONS[s.roundsIdx]} rounds`;
+  if (o.kind === 'mix') return `Crust Game Mix (${MIX_MODES[s.mixMode ?? 0]}): ${ROUND_OPTIONS[s.roundsIdx]} rounds`;
   return getGame(o.id).name;
 }
 

@@ -349,7 +349,7 @@ function wrap(ctx: CanvasRenderingContext2D, s: string, maxW: number): string[] 
 export const LINES = {
   title: ['Welcome. I am Square Brian. I have been expecting you.', 'Every great party begins with one button. That button is A.'],
   menu: [
-    'Choose your path. Every path has a minigame at the end of it.',
+    'Choose your path. Every path has a Crust Game at the end of it.',
     'The board rewards patience. And Pit Coin. Mostly Pit Coin.',
     'I have seen ten thousand parties. Make this one count.',
   ],

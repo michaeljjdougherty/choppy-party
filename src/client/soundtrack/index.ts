@@ -65,7 +65,7 @@ const RECORDED_TRACKS: OstTrack[] = [
   { id: 'mr-chop', title: 'A Seat at the Infinite Table', where: 'Mister Chop' },
   { id: 'duel-space', title: 'Six Seconds to Draw', where: 'Duel Space' },
   { id: 'stew-space', title: 'Clash of the Cast Iron', where: 'Stew Battle Space' },
-  { id: 'results', title: 'Confetti Parade', where: 'Minigame Winner' },
+  { id: 'results', title: 'Confetti Parade', where: 'Crust Game Winner' },
   { id: 'evil-lebron', title: 'Seven Feet of Evil', where: 'Evil LeBron' },
 ];
 

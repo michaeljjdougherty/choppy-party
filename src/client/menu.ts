@@ -15,8 +15,8 @@ interface Item {
 
 const MAIN: Item[] = [
   { key: 'boards', title: 'Party Boards', sub: 'Roll, race and grab Chobglobs on 4 boards', color: '#ff4d5a', icon: 'dice' },
-  { key: 'mix', title: 'Minigame Mix', sub: 'Back-to-back minigames for points', color: '#2f8cff', icon: 'stars' },
-  { key: 'free', title: 'Free Play', sub: 'Pick any minigame', color: '#21c45a', icon: 'pad' },
+  { key: 'mix', title: 'Crust Game Mix', sub: 'Back-to-back Crust Games for points', color: '#2f8cff', icon: 'stars' },
+  { key: 'free', title: 'Free Play', sub: 'Pick any Crust Game', color: '#21c45a', icon: 'pad' },
   { key: 'online', title: 'Play Online', sub: 'Host a room or join friends', color: '#9a5bff', icon: 'globe' },
   { key: 'customize', title: 'Customize', sub: 'Hats, shirts and extras for the crew', color: '#ff8a1f', icon: 'hat' },
   { key: 'ost', title: 'Choppy Party - OST', sub: 'The soundtrack, by DJ Tuna (on the beat)', color: '#ff4fa3', icon: 'note' },

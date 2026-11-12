@@ -26,7 +26,7 @@ export const SCREEN_SONGS: S[] = [
     bass: { voice: 'synthbass', style: 'synco' }, drums: 'funk', seed: 11,
   },
   {
-    id: 'results', title: 'Who Got the Coin?', mood: 'Minigame results: cheery strut',
+    id: 'results', title: 'Who Got the Coin?', mood: 'Crust Game results: cheery strut',
     bpm: 116, key: 67, mode: 'major', form: 'AB', prog: { A: '1 4 1 5', B: '4 5 3 6' }, swing: 0.25,
     lead: 'pulse', melody: 'bouncy', parts: [{ voice: 'piano', style: 'stab' }, { voice: 'bell', style: 'arp', oct: 1, gain: 0.2 }],
     bass: { voice: 'upright', style: 'walking' }, drums: 'shuffle', seed: 3,

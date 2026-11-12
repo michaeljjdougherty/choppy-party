@@ -152,3 +152,31 @@ export function toneDown(): { exposure: number; bloom: number; env: number } {
   if (g.surface >= 2) return { exposure: 0.82, bloom: 0.45, env: 0.62 };
   return { exposure: 0.93, bloom: 0.75, env: 0.8 };
 }
+
+/** True when any option has been changed away from the preset. */
+export function isCustom(): boolean {
+  const base = PRESETS[preset];
+  return (Object.keys(overrides) as (keyof Gfx)[]).some((k) => overrides[k] !== undefined && overrides[k] !== base[k]);
+}
+
+/**
+ * Brightness: the player's own dial (0.5 to 1.5) on top of everything. Kept apart from the presets
+ * because it needs no rebuild, so it can change live while you watch.
+ */
+const BKEY = 'choppy.brightness';
+let bright = 1;
+try {
+  const v = Number(localStorage.getItem(BKEY));
+  if (v >= 0.4 && v <= 1.6) bright = v;
+} catch {
+  /* no storage */
+}
+export const brightness = (): number => bright;
+export function setBrightness(v: number): void {
+  bright = Math.max(0.5, Math.min(1.5, Math.round(v * 20) / 20));
+  try {
+    localStorage.setItem(BKEY, String(bright));
+  } catch {
+    /* private mode */
+  }
+}

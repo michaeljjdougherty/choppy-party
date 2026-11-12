@@ -96,6 +96,10 @@ export interface PartyState {
   /** Pause menu: who opened it and which option is picked. The whole party waits while it's up. */
   /** `settings` counts picks of the Settings row; the pauser's screen opens its own Settings panel. */
   pause: { by: string; sel: number; cool: number; help: boolean; settings?: number } | null;
+  /** An online room: each player's pause menu is their own and doesn't stop the game. */
+  online?: boolean;
+  /** Online pause menus, by player. */
+  menus?: Record<string, { by: string; sel: number; cool: number; help: boolean; settings?: number }>;
   /** Last "quit to main menu" from the pause menu; the quitter's screen leaves the room. */
   quit: { id: string; n: number } | null;
   /** Local lobbies stay on the mode picked in the main menu; an online room can switch modes with Start. */
@@ -148,6 +152,39 @@ export function endParty(s: PartyState): void {
  * Start (or Esc) pauses everything for everyone; only the player who paused drives the menu.
  * Returns true while paused, so the rest of the party holds still.
  */
+type PauseMenu = NonNullable<PartyState['pause']>;
+
+/** One player's pause menu: returns false once it closes. */
+function stepMenu(s: PartyState, p: PauseMenu, inp: TickInput, dt: number): boolean {
+  p.cool = Math.max(0, p.cool - dt);
+  if (p.help) {
+    if (inp.aPressed || inp.bPressed || inp.startPressed) p.help = false;
+    return true;
+  }
+  if (inp.startPressed || inp.bPressed) return false;
+  if (p.cool === 0 && Math.abs(inp.y) > 0.6) {
+    p.sel = (p.sel + (inp.y > 0 ? 1 : -1) + PAUSE_OPTIONS.length) % PAUSE_OPTIONS.length;
+    p.cool = 0.2;
+  }
+  if (inp.aPressed && p.cool < 0.15) {
+    const opt = PAUSE_OPTIONS[p.sel];
+    if (opt === 'Resume') return false;
+    else if (opt === 'How to play') p.help = true;
+    else if (opt === 'Settings') p.settings = (p.settings ?? 0) + 1;
+    else if (opt.startsWith('End party')) {
+      if (hostId(s) === p.by) endParty(s);
+    } else {
+      s.quit = { id: p.by, n: (s.quit?.n ?? 0) + 1 };
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Start (or Esc) pauses everything for everyone in a local game, where everyone shares one screen; only the
+ * player who paused drives the menu. Returns true while paused, so the rest of the party holds still.
+ */
 function stepPause(s: PartyState, inputs: Inputs, dt: number): boolean {
   if (!s.pause) {
     if (s.phase === 'lobby') return false;
@@ -162,33 +199,42 @@ function stepPause(s: PartyState, inputs: Inputs, dt: number): boolean {
     s.pause = null;
     return false;
   }
-  const inp = inputs[p.by] ?? NO_INPUT;
-  p.cool = Math.max(0, p.cool - dt);
-  if (p.help) {
-    if (inp.aPressed || inp.bPressed || inp.startPressed) p.help = false;
-    return true;
+  if (!stepMenu(s, p, inputs[p.by] ?? NO_INPUT, dt) && s.pause === p) s.pause = null;
+  return true;
+}
+
+/**
+ * Online, the pause menu is each player's own: the game keeps running for everyone else (and for you, with
+ * your hands off the controls while the menu is up). Returns the inputs with menu owners' inputs taken out.
+ */
+function stepMenus(s: PartyState, inputs: Inputs, dt: number): Inputs {
+  s.menus ??= {};
+  if (s.phase === 'lobby') {
+    s.menus = {};
+    return inputs;
   }
-  if (inp.startPressed || inp.bPressed) {
-    s.pause = null;
-    return true;
-  }
-  if (p.cool === 0 && Math.abs(inp.y) > 0.6) {
-    p.sel = (p.sel + (inp.y > 0 ? 1 : -1) + PAUSE_OPTIONS.length) % PAUSE_OPTIONS.length;
-    p.cool = 0.2;
-  }
-  if (inp.aPressed && p.cool < 0.15) {
-    const opt = PAUSE_OPTIONS[p.sel];
-    if (opt === 'Resume') s.pause = null;
-    else if (opt === 'How to play') p.help = true;
-    else if (opt === 'Settings') p.settings = (p.settings ?? 0) + 1;
-    else if (opt.startsWith('End party')) {
-      if (hostId(s) === p.by) endParty(s);
-    } else {
-      s.quit = { id: p.by, n: (s.quit?.n ?? 0) + 1 };
-      s.pause = null;
+  const out: Inputs = { ...inputs };
+  for (const pl of s.players) {
+    if (pl.bot) continue;
+    const inp = inputs[pl.id] ?? NO_INPUT;
+    const m = s.menus[pl.id];
+    if (!m) {
+      if (inp.startPressed && !pl.away) {
+        s.menus[pl.id] = { by: pl.id, sel: 0, cool: 0.2, help: false };
+        delete out[pl.id];
+      }
+      continue;
+    }
+    delete out[pl.id];
+    if (pl.away || !stepMenu(s, m, inp, dt)) delete s.menus[pl.id];
+    // the host ended the party from their menu
+    if ((s.phase as Phase) === 'lobby') {
+      s.menus = {};
+      break;
     }
   }
-  return true;
+  for (const id of Object.keys(s.menus)) if (!s.players.some((q) => q.id === id)) delete s.menus[id];
+  return out;
 }
 
 export function createParty(seed: number): PartyState {
@@ -453,7 +499,10 @@ export function placementsFrom(rows: ResultRow[]): Placement[] {
 export function stepParty(s: PartyState, humanInputs: Inputs, dt: number): void {
   s.pause ??= null;
   s.quit ??= null;
-  if (stepPause(s, humanInputs, dt)) return;
+  if (s.online) {
+    s.pause = null;
+    humanInputs = stepMenus(s, humanInputs, dt);
+  } else if (stepPause(s, humanInputs, dt)) return;
   s.phaseT += dt;
   const inputs = addBotInputs(s, humanInputs, dt);
   const host = hostId(s);

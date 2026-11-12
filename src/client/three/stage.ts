@@ -8,7 +8,7 @@ import { shakeOffset } from './fx';
 import type { SquareBrian } from './brian';
 import { Ambience } from './ambience';
 import { Post } from './look/post';
-import { gfx, onGfx, toneDown } from './look/quality';
+import { brightness, gfx, onGfx, toneDown } from './look/quality';
 import { detailTree, loadDetail, tickDetail } from './look/detail';
 import { loadHdris } from './look/lighting';
 import { dressView, type Dressed } from './look/dress';
@@ -143,6 +143,7 @@ export class Stage {
       this.ambience.swayCamera(cam, t);
     }
     const undo = applyLightLook(this.view.scene);
+    this.renderer.toneMappingExposure = 0.92 * brightness();
     const sc = this.view.scene;
     const envI = sc.environmentIntensity;
     sc.environmentIntensity = envI * toneDown().env;

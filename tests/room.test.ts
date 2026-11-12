@@ -70,3 +70,25 @@ describe('online room', () => {
     expect(room.party.players).toHaveLength(0);
   });
 });
+
+describe('online pause menus', () => {
+  it("opening your menu doesn't pause anyone else, and your inputs stay out of the game while it's up", async () => {
+    const { stepParty, createParty, addPlayer, startParty } = await import('../src/shared/party');
+    const { NO_INPUT } = await import('../src/shared/types');
+    const s = createParty(3);
+    s.online = true;
+    addPlayer(s, 'a.kb1');
+    addPlayer(s, 'b.pad0');
+    s.selection = 0;
+    startParty(s);
+    const t0 = s.board!.t;
+    stepParty(s, { 'a.kb1': { ...NO_INPUT, startPressed: true } }, 1 / 30);
+    expect(s.pause).toBeNull();
+    expect(s.menus!['a.kb1']).toBeDefined();
+    for (let i = 0; i < 30; i++) stepParty(s, {}, 1 / 30);
+    expect(s.board!.t).toBeGreaterThan(t0 + 0.9); // the board kept going
+    // B closes it
+    stepParty(s, { 'a.kb1': { ...NO_INPUT, bPressed: true } }, 1 / 30);
+    expect(s.menus!['a.kb1']).toBeUndefined();
+  });
+});

@@ -238,6 +238,16 @@ export class OnlineSession implements Session {
   }
 
   view(): PartyState | null {
+    const st = this.blended();
+    if (!st) return null;
+    // online pause menus are per player: this screen shows (and is held by) only its own player's menu
+    const menus = st.menus;
+    if (!menus) return st;
+    const mine = [...this.localIds()].find((id) => menus[id]);
+    return { ...st, pause: mine ? menus[mine] : null };
+  }
+
+  private blended(): PartyState | null {
     const cur = this.curSnap;
     const prev = this.prevSnap;
     if (!cur) return null;

@@ -881,7 +881,8 @@ function pauseLayer(s: PartyState) {
     seenPauseSettings = p.settings ?? 0;
     if (mine) settings.show();
   }
-  ctx.fillStyle = 'rgba(14,8,32,0.62)';
+  // online the game runs on underneath, so keep it visible
+  ctx.fillStyle = s.online ? 'rgba(14,8,32,0.3)' : 'rgba(14,8,32,0.62)';
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   ctx.fillStyle = 'rgba(255,255,255,0.97)';
   roundRect(ctx, 400, 112, 480, 496, 30);
@@ -889,8 +890,8 @@ function pauseLayer(s: PartyState) {
   ctx.strokeStyle = '#ffd23f';
   ctx.lineWidth = 6;
   ctx.stroke();
-  text(ctx, 'PAUSED', 640, 160, 48, { color: '#2a1b5e', outline: false });
-  text(ctx, `${who?.name ?? 'Someone'} paused the game`, 640, 202, 18, { color: who?.color ?? '#6b5aa8', outline: false, weight: 700 });
+  text(ctx, s.online ? 'MENU' : 'PAUSED', 640, 160, 48, { color: '#2a1b5e', outline: false });
+  text(ctx, s.online ? 'The game keeps going for everyone else' : `${who?.name ?? 'Someone'} paused the game`, 640, 202, 18, { color: s.online ? '#ff5a5f' : who?.color ?? '#6b5aa8', outline: false, weight: 700 });
   if (settings.open) return;
   pausePointer(s, input, mine);
   if (p.help) {

@@ -70,6 +70,7 @@ export class Room {
     seed = (Math.random() * 2 ** 31) | 0,
   ) {
     this.party = createParty(seed);
+    this.party.online = true;
   }
 
   anyoneHere(): boolean {

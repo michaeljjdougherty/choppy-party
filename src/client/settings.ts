@@ -2,7 +2,7 @@ import type { GrabEvent, InputManager } from './input';
 import { roundRect, text } from '../shared/draw';
 import { button, clicked, inside, pointerAt, takeStrayClick } from './ui';
 import { A, B, STICK, isTouch, promptKind } from './prompts';
-import { QUALITY_NAMES, qualityName, setQuality, type QualityName } from './three/look/quality';
+import { QUALITY_NAMES, brightness, gfx, isCustom, qualityName, setBrightness, setGfx, setQuality, type Gfx, type QualityName } from './three/look/quality';
 import { music } from './soundtrack';
 import { setSfxVolume, sfx, sfxVolume } from './sfx';
 import { setShakeEnabled, shakeEnabled } from './three/fx';
@@ -13,10 +13,11 @@ import { setShakeEnabled, shakeEnabled } from './three/fx';
  * While it is open it takes every controller, keyboard and touch button (input.grab), so the game
  * underneath hears nothing. Mouse and touch click the controls directly.
  */
-type Row = 'graphics' | 'music' | 'sfx' | 'shake' | 'fullscreen' | 'dev' | 'done';
-const ROWS: Row[] = ['graphics', 'music', 'sfx', 'shake', 'fullscreen', 'dev', 'done'];
+type Row = 'graphics' | 'advanced' | 'music' | 'sfx' | 'shake' | 'fullscreen' | 'dev' | 'done';
+const ROWS: Row[] = ['graphics', 'advanced', 'music', 'sfx', 'shake', 'fullscreen', 'dev', 'done'];
 const LABEL: Record<Row, string> = {
   graphics: 'Graphics',
+  advanced: 'Graphics options',
   music: 'Music',
   sfx: 'Sound effects',
   shake: 'Screen shake',
@@ -26,9 +27,55 @@ const LABEL: Record<Row, string> = {
 };
 const QUALITY_LABEL: Record<QualityName, string> = { low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra' };
 
+/**
+ * The graphics options page: every switch a PC game usually has, each a list of choices stepped with
+ * left / right (or clicked). Changing one turns the preset into "Custom".
+ */
+interface GfxOpt {
+  label: string;
+  /** What it does, shown under the list for the highlighted row. */
+  help: string;
+  names: string[];
+  get: () => number;
+  set: (i: number) => void;
+}
+const pick = <K extends keyof Gfx>(key: K, values: Gfx[K][]) => ({
+  get: () => {
+    const v = gfx()[key];
+    let best = 0;
+    values.forEach((x, i) => {
+      if (Math.abs(Number(x) - Number(v)) < Math.abs(Number(values[best]) - Number(v))) best = i;
+    });
+    return best;
+  },
+  set: (i: number) => setGfx({ [key]: values[i] } as Partial<Gfx>),
+});
+const OFF_ON = ['Off', 'On'];
+const BRIGHT = Array.from({ length: 21 }, (_, i) => 0.5 + i * 0.05);
+const GFX_OPTS: GfxOpt[] = [
+  { label: 'Brightness', help: 'Darker or brighter picture. 100% is normal.', names: BRIGHT.map((b) => `${Math.round(b * 100)}%`), get: () => Math.round((brightness() - 0.5) / 0.05), set: (i) => setBrightness(BRIGHT[i]) },
+  { label: 'Resolution scale', help: 'Pixels drawn per screen pixel (capped by your display). Lower runs faster.', names: ['50%', '75%', '100%', '125%', '150%', '200%'], ...pick('maxPixelRatio', [0.5, 0.75, 1, 1.25, 1.5, 2]) },
+  { label: 'Texture quality', help: 'Resolution of the ground, wall and wood textures.', names: ['Low', 'High'], ...pick('texSize', [512, 1024]) },
+  { label: 'Surface detail', help: 'Photo textures, bumps and cloud shadows on every surface.', names: ['Off', 'Low', 'Medium', 'High'], ...pick('surface', [0, 1, 2, 3]) },
+  { label: 'Shadows', help: 'Shadow sharpness. Off is fastest.', names: ['Off', 'Low', 'Medium', 'High'], ...pick('shadowMap', [0, 1024, 2048, 4096]) },
+  { label: 'Soft shadows', help: 'Blurred shadow edges.', names: OFF_ON, ...pick('softShadows', [false, true]) },
+  { label: 'Anti-aliasing', help: 'Smooths jagged edges. MSAA looks best and costs the most.', names: ['FXAA', 'MSAA 2x', 'MSAA 4x'], ...pick('msaa', [0, 2, 4]) },
+  { label: 'Post effects', help: 'Colour grading, glow and screen flashes. Off is fastest.', names: OFF_ON, ...pick('post', [false, true]) },
+  { label: 'Glow (bloom)', help: 'Bright things glow. Turn off if the picture looks washed out.', names: OFF_ON, ...pick('bloom', [false, true]) },
+  { label: 'Ambient occlusion', help: 'Soft shading in corners and under props. Expensive.', names: OFF_ON, ...pick('ao', [false, true]) },
+  { label: 'Realistic lighting', help: 'Sky light from real photos (HDRI).', names: OFF_ON, ...pick('hdri', [false, true]) },
+  { label: 'Miniature blur', help: 'Tilt-shift blur at the edges of the board.', names: OFF_ON, ...pick('tiltShift', [false, true]) },
+  { label: 'Scenery', help: 'How much background scenery there is.', names: ['Low', 'Medium', 'High', 'Ultra'], ...pick('scenery', [0.35, 0.7, 1, 1.3]) },
+  { label: 'Grass and clutter', help: 'Grass tufts and small props on the ground.', names: ['Off', 'Low', 'High', 'Ultra'], ...pick('clutter', [0, 0.45, 1, 1.4]) },
+  { label: 'Particles', help: 'Dust, sparkles and snow in the air.', names: ['Low', 'Medium', 'High', 'Ultra'], ...pick('particles', [0.4, 0.7, 1, 1.3]) },
+];
+const G_ROW_Y0 = 56 + 140; // P.y + 140
+/* rows end at about P.y + 560; Back sits under them */
+const G_ROW_H = 27;
+
 const P = { x: 300, y: 56, w: 680, h: 608 };
-const ROW_Y0 = P.y + 140;
-const ROW_H = 64;
+const ROW_Y0 = P.y + 136;
+const ROW_H = 58;
 /** Where a row's value control sits. */
 const CTRL = { x: P.x + 270, w: 370 };
 
@@ -36,6 +83,9 @@ export class Settings {
   open = false;
   private sel = 0;
   private bump = 0;
+  /** The graphics options page is open (with its own highlighted row; the last row is Back). */
+  private page: 'main' | 'gfx' = 'main';
+  private gsel = 0;
   private openedAt = 0;
   private onClose: (() => void) | null = null;
   /** The Developer mode row was pressed (main.ts closes Settings and asks for the code). */
@@ -49,6 +99,7 @@ export class Settings {
     if (this.open) return;
     this.open = true;
     this.sel = 0;
+    this.page = 'main';
     this.openedAt = performance.now();
     this.onClose = onClose ?? null;
     this.input.grab = (e) => this.handle(e);
@@ -69,6 +120,7 @@ export class Settings {
 
   private handle(e: GrabEvent): void {
     if (!this.open) return;
+    if (this.page === 'gfx') return this.handleGfx(e);
     if (e.kind === 'b') return this.close();
     const row = ROWS[this.sel];
     if (e.kind === 'move') {
@@ -81,7 +133,45 @@ export class Settings {
     }
     // A: toggles flip, Done closes, steppers go up one
     if (row === 'done') this.close();
+    else if (row === 'advanced') this.openGfx();
     else this.change(row, 1, true);
+  }
+
+  private openGfx(): void {
+    this.page = 'gfx';
+    this.gsel = 0;
+    sfx.select();
+  }
+
+  private handleGfx(e: GrabEvent): void {
+    const n = GFX_OPTS.length + 1; // + Back
+    if (e.kind === 'b') {
+      this.page = 'main';
+      sfx.back();
+      return;
+    }
+    if (e.kind === 'move') {
+      if (e.y) {
+        this.gsel = (this.gsel + e.y + n) % n;
+        sfx.move();
+      } else if (e.x && this.gsel < GFX_OPTS.length) this.stepGfx(this.gsel, e.x, false);
+      return;
+    }
+    if (this.gsel >= GFX_OPTS.length) {
+      this.page = 'main';
+      sfx.back();
+    } else this.stepGfx(this.gsel, 1, true);
+  }
+
+  private stepGfx(i: number, dir: number, wrap: boolean): void {
+    const o = GFX_OPTS[i];
+    const cur = o.get();
+    let j = cur + dir;
+    if (wrap) j = (j + o.names.length) % o.names.length;
+    j = Math.max(0, Math.min(o.names.length - 1, j));
+    if (j === cur) return;
+    o.set(j);
+    sfx.move();
   }
 
   /** Step a row's value left (-1) or right (+1). `wrap` cycles round (A presses). */
@@ -124,6 +214,7 @@ export class Settings {
     ctx.strokeStyle = '#ffd23f';
     ctx.lineWidth = 6;
     ctx.stroke();
+    if (this.page === 'gfx') return this.drawGfx(ctx);
     gear(ctx, P.x + P.w / 2 - 152, P.y + 50, 20, t * 0.6, '#9a5bff');
     text(ctx, 'SETTINGS', P.x + P.w / 2 + 14, P.y + 50, 42, { color: '#2a1b5e', outline: false });
     text(ctx, 'Saved on this device', P.x + P.w / 2, P.y + 90, 15, { color: '#8a7fb8', outline: false, weight: 700 });
@@ -149,6 +240,13 @@ export class Settings {
       }
       text(ctx, LABEL[row], P.x + 56, y + 1, 22, { align: 'left', color: '#2a1b5e', outline: false, weight: 800 });
       if (row === 'dev') this.devButton(ctx, y);
+      else if (row === 'advanced') {
+        if (button(ctx, 'Change', CTRL.x + CTRL.w - 160, y - 19, 160, 38, { color: '#9a5bff', size: 17, sound: 'none' })) {
+          this.sel = i;
+          this.openGfx();
+        }
+        text(ctx, isCustom() ? 'Custom' : `${QUALITY_LABEL[qualityName()]} preset`, CTRL.x + 70, y + 1, 16, { color: '#8a7fb8', outline: false, weight: 800 });
+      }
       else if (row === 'graphics') this.segments(ctx, y);
       else if (row === 'music' || row === 'sfx') this.meter(ctx, row, y);
       else this.toggle(ctx, row as 'shake' | 'fullscreen', y);
@@ -163,6 +261,44 @@ export class Settings {
           : `Arrows or WASD: choose and change   ·   ${A()}: pick   ·   Esc: close`;
     text(ctx, hint, P.x + P.w / 2, P.y + P.h - 26, 16, { color: '#6b5aa8', outline: false, weight: 700 });
     // a click outside the panel closes it
+    const stray = takeStrayClick();
+    if (stray && !fresh && !inside(stray, P.x, P.y, P.w, P.h)) this.close();
+  }
+
+  private drawGfx(ctx: CanvasRenderingContext2D): void {
+    text(ctx, 'GRAPHICS OPTIONS', P.x + P.w / 2, P.y + 46, 34, { color: '#2a1b5e', outline: false });
+    text(ctx, `Preset: ${isCustom() ? `Custom (from ${QUALITY_LABEL[qualityName()]})` : QUALITY_LABEL[qualityName()]}  ·  pick a preset on the main page to reset`, P.x + P.w / 2, P.y + 80, 14, { color: '#8a7fb8', outline: false, weight: 700 });
+    const ptr = pointerAt();
+    const fresh = performance.now() - this.openedAt < 150;
+    GFX_OPTS.forEach((o, i) => {
+      const y = G_ROW_Y0 + i * G_ROW_H;
+      const on = i === this.gsel;
+      if (!fresh && inside(ptr, P.x + 30, y - 13, P.w - 60, 27) && promptKind() === 'mouse' && !isTouch()) this.gsel = i;
+      if (on) {
+        ctx.fillStyle = '#fff3b8';
+        roundRect(ctx, P.x + 30, y - 13, P.w - 60, 27, 10);
+        ctx.fill();
+      }
+      text(ctx, o.label, P.x + 50, y + 1, 17, { align: 'left', color: '#2a1b5e', outline: false, weight: 800 });
+      const v = o.get();
+      const cx = P.x + P.w - 170;
+      if (button(ctx, '‹', cx - 100, y - 12, 30, 24, { color: v > 0 ? '#6b6f86' : '#c9c4dc', size: 18, sound: 'none' })) {
+        this.gsel = i;
+        this.stepGfx(i, -1, false);
+      }
+      if (button(ctx, '›', cx + 70, y - 12, 30, 24, { color: v < o.names.length - 1 ? '#2f8cff' : '#c9c4dc', size: 18, sound: 'none' })) {
+        this.gsel = i;
+        this.stepGfx(i, 1, false);
+      }
+      text(ctx, o.names[v] ?? '', cx, y + 1, 16, { color: '#2a1b5e', outline: false, weight: 900 });
+    });
+    const by = G_ROW_Y0 + GFX_OPTS.length * G_ROW_H + 14;
+    if (button(ctx, 'Back', P.x + P.w / 2 - 90, by - 4, 180, 36, { color: '#21c45a', size: 18, selected: this.gsel >= GFX_OPTS.length, sound: 'none' })) {
+      this.page = 'main';
+      sfx.back();
+    }
+    const help = GFX_OPTS[this.gsel]?.help ?? 'Back to Settings';
+    text(ctx, help, P.x + P.w / 2, P.y + 108, 15, { color: '#9a5bff', outline: false, weight: 800 });
     const stray = takeStrayClick();
     if (stray && !fresh && !inside(stray, P.x, P.y, P.w, P.h)) this.close();
   }

@@ -159,7 +159,8 @@ export const FOLKS: FolkSpec[] = [
     hairStyle: 'tall-volume',
     eyes: '#4f5a48',
     browW: 12,
-    facialHair: 'full',
+    // Michael (2026-11-12): KG shaved the beard and has a moustache now, on every KG
+    facialHair: 'moustache',
     beard: '#2a1d15',
     cheeks: 0.35,
     idle: { open: 0.75, brows: [-2, 8, 10, -4], mouth: 'smirk', mw: 0.95, tilt: -5 },

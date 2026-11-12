@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { makeBeam } from '../look/lightBeam';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { PlayerInfo } from '../../../shared/types';
 import { DX0, DX1, DY0, DY1, type DigState } from '../../../shared/games/treasureDig';
 import { KX0, KX1, KY0, KY1, LANES, laneY, type CannonState } from '../../../shared/games/cannonKing';
@@ -471,7 +473,8 @@ export function burgerView(env: THREE.Texture, state: BurgerState, players: Play
 /* ------------------------------------------------------------------ Color Craze */
 
 export function crazeView(env: THREE.Texture, state: CrazeState, players: PlayerInfo[]): View {
-  const scene = makeScene(env, { sky: 'day', skyTop: '#8fd0ff', skyBottom: '#fdeaff', fog: ['#e6e6ff', 40, 110], shadowSize: 18 });
+  // a game-show dance floor at night: light-up glass tiles and sweeping stage lights
+  const scene = makeScene(env, { sky: 'night', skyTop: '#140a2e', skyBottom: '#3a1d5c', fog: ['#1c1036', 40, 110], sunColor: '#d8c8ff', sunIntensity: 1.1, shadowSize: 18 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 200);
   camera.position.set(0, 16, 13.5);
   camera.lookAt(0, 0, 1.6);
@@ -479,17 +482,27 @@ export function crazeView(env: THREE.Texture, state: CrazeState, players: Player
   pit.rotation.x = -Math.PI / 2;
   pit.position.y = -6;
   scene.add(pit);
-  for (const [x, z] of [[-17, -9], [17, -9]]) {
-    const col = mesh(new THREE.CylinderGeometry(0.8, 0.8, 9, 16), toy('#ffffff', 0.4));
-    col.position.set(x, -1.5, z);
-    scene.add(col);
-    place(scene, 'proto/shape-hexagon', x, 3, z, { s: 1.6 });
-  }
+  // light rigs on tall trusses either side, each throwing a coloured beam that sweeps the floor
+  const truss = new THREE.MeshStandardMaterial({ color: '#3a3a48', metalness: 0.7, roughness: 0.35 });
+  const beams = [[-15, -8, '#ff5ad1'], [15, -8, '#45e3ff'], [-15, 6, '#ffd23f'], [15, 6, '#7cff6a']].map(([x, z, c], i) => {
+    const post = mesh(new THREE.CylinderGeometry(0.22, 0.28, 12, 10), truss);
+    post.position.set(x as number, 0, z as number);
+    scene.add(post);
+    const head = mesh(new THREE.CylinderGeometry(0.45, 0.6, 0.8, 16), truss);
+    head.position.set(x as number, 6.2, z as number);
+    scene.add(head);
+    const b = makeBeam(c as string, 15, 0.12, { strength: 0.32 });
+    scene.add(b.group);
+    return { b, at: new THREE.Vector3(x as number, 6.2, z as number), ph: i * 1.7 };
+  });
   const mats = PALETTE.map((c) => toy(c, 0.35));
-  const geo = new THREE.BoxGeometry(TILE * PX - 0.08, 0.4, TILE * PX - 0.08);
+  const geo = new RoundedBoxGeometry(TILE * PX - 0.1, 0.4, TILE * PX - 0.1, 2, 0.06);
   const tiles: THREE.Mesh[] = [];
+  // each tile is its own frosted glass panel lit from below in its colour
+  const tileMats = Array.from({ length: COLS * ROWS }, () => new THREE.MeshPhysicalMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.5, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.08 }));
+  void mats;
   for (let i = 0; i < COLS * ROWS; i++) {
-    const m = mesh(geo, mats[0], { cast: false, receive: true });
+    const m = mesh(geo, tileMats[i], { cast: false, receive: true });
     m.position.set(wx(FX0 + ((i % COLS) + 0.5) * TILE), -0.2, wz(FY0 + (Math.floor(i / COLS) + 0.5) * TILE));
     scene.add(m);
     tiles.push(m);
@@ -503,9 +516,21 @@ export function crazeView(env: THREE.Texture, state: CrazeState, players: Player
     camera,
     update(s: CrazeState, _p, t, dt) {
       last = s;
+      beams.forEach((L, k) => {
+        const tx = Math.sin(t * 0.7 + L.ph) * 7, tz = Math.cos(t * 0.53 + L.ph * 1.3) * 4;
+        L.b.aim(L.at, new THREE.Vector3(tx - L.at.x, -L.at.y, tz - L.at.z), 1);
+        L.b.update(t + k, dt);
+      });
       tiles.forEach((m, i) => {
-        m.material = mats[s.tiles[i]];
         const wrong = s.call >= 0 && s.tiles[i] !== s.call;
+        const mat = tileMats[i];
+        const col = PALETTE[s.tiles[i]];
+        mat.color.set(col);
+        mat.emissive.set(col);
+        // idle: a slow chase ripples across the floor; called: the right colour blazes, the rest go dim
+        const col_i = i % COLS, row_i = Math.floor(i / COLS);
+        const chase = 0.45 + 0.25 * Math.sin(t * 3 - (col_i + row_i) * 0.6);
+        mat.emissiveIntensity = s.call < 0 ? chase : wrong ? 0.08 + (s.phase === 'call' && s.callTime - s.phaseT < 0.7 ? 0.25 * Math.max(0, Math.sin(t * 30)) : 0) : 1.1 + 0.3 * Math.sin(t * 8);
         let y = -0.2;
         if (s.phase === 'drop' && wrong) y = -0.2 - Math.min(8, s.phaseT * s.phaseT * 30);
         else if (s.phase === 'call' && wrong && s.callTime - s.phaseT < 0.7) y = -0.2 + Math.sin(t * 50 + i) * 0.04;

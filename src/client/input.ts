@@ -571,6 +571,48 @@ export class InputManager {
       d.raw.x = n.x;
       d.raw.y = n.y;
     }
+    this.shareSolo();
+  }
+
+  /**
+   * One person playing alone can switch between keyboard and controller at any time: while a party is on
+   * and only one device on this screen has a player, every other device also drives that player.
+   * (Without this, someone who joined with the keyboard saw controller prompts but the pad did nothing.)
+   * Set by main.ts each frame; null in menus and the lobby, where each device is its own (it joins there).
+   */
+  solo: string | null = null;
+  private seen = new Map<string, { a: number; b: number; x: number; y: number; st: number; f: number; lx: number; ly: number }>();
+  private shareSolo(): void {
+    const target = this.solo ? this.devices.get(this.solo) : undefined;
+    for (const d of this.devices.values()) {
+      const r = d.raw;
+      const now = { a: r.aCount, b: r.bCount, x: r.xCount ?? 0, y: r.yCount ?? 0, st: r.startCount ?? 0, f: r.fireCount ?? 0, lx: r.lookX ?? 0, ly: r.lookY ?? 0 };
+      const was = this.seen.get(d.key);
+      this.seen.set(d.key, now);
+      if (!target || d === target || !was || (this.soloKeys && d.key === 'kb2')) continue;
+      const t = target.raw;
+      t.aCount += now.a - was.a;
+      t.bCount += now.b - was.b;
+      t.xCount = (t.xCount ?? 0) + now.x - was.x;
+      t.yCount = (t.yCount ?? 0) + now.y - was.y;
+      t.startCount = (t.startCount ?? 0) + now.st - was.st;
+      t.fireCount = (t.fireCount ?? 0) + now.f - was.f;
+      t.lookX = (t.lookX ?? 0) + now.lx - was.lx;
+      t.lookY = (t.lookY ?? 0) + now.ly - was.ly;
+      t.a ||= r.a;
+      t.b ||= r.b;
+      t.fire ||= r.fire;
+      t.scope ||= r.scope;
+      if (Math.hypot(r.x, r.y) > Math.hypot(t.x, t.y)) {
+        t.x = r.x;
+        t.y = r.y;
+      }
+    }
+    // the target's own totals now include the borrowed presses: remember them so they aren't counted twice
+    if (target) {
+      const r = target.raw;
+      this.seen.set(target.key, { a: r.aCount, b: r.bCount, x: r.xCount ?? 0, y: r.yCount ?? 0, st: r.startCount ?? 0, f: r.fireCount ?? 0, lx: r.lookX ?? 0, ly: r.lookY ?? 0 });
+    }
   }
 
   /** Stick steps for the grabbing menu: one step on a push, then repeats while held. */

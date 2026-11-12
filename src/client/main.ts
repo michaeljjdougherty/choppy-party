@@ -413,6 +413,13 @@ function addSecondKeyboard() {
   session.join('kb2');
   sfx.join();
 }
+/** The one device that has a player on this screen once a party is under way, so every other device can drive it too. */
+function soloDevice(): string | null {
+  const s = session?.view();
+  if (!session || !s || s.phase === 'lobby' || customize) return null;
+  const devs = new Set([...session.localIds()].map(deviceOf).filter((d) => input.get(d)));
+  return devs.size === 1 ? [...devs][0] : null;
+}
 function hasLocal(dev: string): boolean {
   return [...(session?.localIds() ?? [])].some((id) => deviceOf(id) === dev);
 }
@@ -478,6 +485,7 @@ function frame(now: number) {
   const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
   last = now;
   input.soloKeys = !hasLocal('kb2');
+  input.solo = soloDevice();
   input.poll();
   // the touch pad shows during a party; menus, the lobby and Customize are tapped directly
   const ph = session?.view()?.phase;

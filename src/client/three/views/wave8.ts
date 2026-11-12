@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { flame, glowTex, wavingFlag } from '../look/fxKit';
+import { barkTexture } from '../look/wood';
+import { ropeMaterial } from '../look/marble';
 import { rockGeometry, stoneMaterial } from '../life/rocks';
 import type { PlayerInfo } from '../../../shared/types';
 import { CELL as HCELL, COLS, FX0, FY0, ROWS as HROWS, laneKind, type HopState } from '../../../shared/games/roadHopper';
@@ -572,7 +574,25 @@ export function stewRelayView(env: THREE.Texture, state: RelayState, players: Pl
   }
   // the fence down the middle
   const midZ = wz((LANE_Y[0] + LANE_H + LANE_Y[1]) / 2);
-  for (let i = 0; i < 14; i++) place(scene, 'pirate/structure-fence', wx(80 + i * 85), 0, midZ, { s: 1.6 });
+  // a low post-and-rope market fence (it must never hide the far lane)
+  {
+    const postGeo = new THREE.LatheGeometry([[0.12, 0], [0.12, 0.75], [0.15, 0.78], [0.15, 0.86], [0.09, 0.92], [0.001, 0.95]].map(([r, y]) => new THREE.Vector2(r, y)), 14);
+    const postMat = new THREE.MeshStandardMaterial({ map: barkTexture(), color: '#b08a66', roughness: 0.9 });
+    const rope = ropeMaterial('#d8b67a', 30);
+    const n = 15;
+    const xs = Array.from({ length: n }, (_, i) => wx(70 + i * (1150 / (n - 1))));
+    for (const x of xs) {
+      const p = mesh(postGeo, postMat);
+      p.position.set(x, 0, midZ);
+      scene.add(p);
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const a = new THREE.Vector3(xs[i], 0.78, midZ), b = new THREE.Vector3(xs[i + 1], 0.78, midZ);
+      const mid = a.clone().lerp(b, 0.5).setY(0.58);
+      const tube = mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(a, mid, b), 16, 0.04, 6), rope, { cast: true });
+      scene.add(tube);
+    }
+  }
   // market dressing around the outside
   for (let i = 0; i < 7; i++) {
     place(scene, i % 2 ? 'pirate/barrel' : 'pirate/crate', wx(120 + i * 170), 0, wz(LANE_Y[0] - 40), { s: 1.5, ry: i });
@@ -584,8 +604,11 @@ export function stewRelayView(env: THREE.Texture, state: RelayState, players: Pl
     const p = potAt(team);
     const g = new THREE.Group();
     g.position.set(wx(p.x), 0, wz(p.y));
-    const pot = mesh(new THREE.CylinderGeometry(1.2, 0.95, 1.3, 20, 1, true), new THREE.MeshStandardMaterial({ color: '#2d2d34', roughness: 0.4, metalness: 0.5, side: THREE.DoubleSide }));
-    pot.position.y = 0.95;
+    // a cast-iron cauldron: bellied sides and a rolled lip
+    const potGeo = new THREE.LatheGeometry([[0.001, 0], [0.6, 0.02], [1.05, 0.25], [1.28, 0.7], [1.25, 1.05], [1.12, 1.25], [1.18, 1.3], [1.12, 1.32], [1.05, 1.2], [1.12, 0.7], [0.9, 0.3], [0.001, 0.22]].map(([r, y]) => new THREE.Vector2(r, y)), 40);
+    potGeo.computeVertexNormals();
+    const pot = mesh(potGeo, new THREE.MeshPhysicalMaterial({ color: '#2a2a30', roughness: 0.45, metalness: 0.7, clearcoat: 0.2 }));
+    pot.position.y = 0.3;
     const bottom = mesh(new THREE.CircleGeometry(0.95, 20), toy('#2d2d34', 0.4));
     bottom.rotation.x = -Math.PI / 2;
     bottom.position.y = 0.31;
@@ -613,7 +636,7 @@ export function stewRelayView(env: THREE.Texture, state: RelayState, players: Pl
       const at = stallAt(state, k, team);
       const g = new THREE.Group();
       g.position.set(wx(at.x), 0, wz(at.y));
-      const counter = mesh(new THREE.BoxGeometry(1.7, 0.7, 1.2), new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', 1, 1), color: '#b98a58', roughness: 0.9 }), { receive: true });
+      const counter = mesh(new RoundedBoxGeometry(1.7, 0.7, 1.2, 2, 0.06), new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', 1, 1), color: '#b98a58', roughness: 0.9 }), { receive: true });
       counter.position.y = 0.35;
       g.add(counter);
       for (let j = 0; j < 3; j++) {

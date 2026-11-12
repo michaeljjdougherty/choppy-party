@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { glowSprite } from '../look/fxKit';
+import { snowMaterial } from '../look/snow';
 import type { PlayerInfo } from '../../../shared/types';
 import { tileCentre, type PlazaState } from '../../../shared/games/paintPlaza';
 import type { CountState } from '../../../shared/games/alienCount';
@@ -215,7 +216,7 @@ export function lightsView(env: THREE.Texture, state: LightsState, players: Play
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 220);
   const L = TRACK * PX; // 100 units of snowy path
   const hw = state.halfW * PX;
-  const snow = mesh(new THREE.PlaneGeometry(L + 60, 60), toy('#f2f6ff', 0.9), { cast: false, receive: true });
+  const snow = mesh(new THREE.PlaneGeometry(L + 60, 60), snowMaterial((L + 60) / 9, 60 / 9), { cast: false, receive: true });
   snow.rotation.x = -Math.PI / 2;
   snow.position.set(L / 2, -0.02, 0);
   scene.add(snow);

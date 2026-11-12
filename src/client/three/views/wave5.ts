@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { glowSprite } from '../look/fxKit';
+import { flame, glowSprite, groundFog, lampGlow, onTop } from '../look/fxKit';
 import { snowMaterial } from '../look/snow';
 import { moonMaterial } from '../look/moon';
 import type { PlayerInfo } from '../../../shared/types';
@@ -430,10 +430,28 @@ export function bowlView(env: THREE.Texture, state: BowlState, players: PlayerIn
     ['graveyard/pine-crooked', -wide / 2 - 4, -8, 3], ['graveyard/pine-crooked', wide / 2 + 4, -12, 3.4], ['graveyard/pine-fall', -wide / 2 - 5, 2, 3],
     ['graveyard/lightpost-double', -wide / 2 - 1.5, 4, 2], ['graveyard/lightpost-double', wide / 2 + 1.5, 4, 2], ['graveyard/pumpkin-tall-carved', wide / 2 + 3, 6, 1.4],
     ['graveyard/fire-basket', -wide / 2 - 3, -2, 1.4], ['graveyard/candle-multiple', wide / 2 + 3, -4, 1.2],
-  ] as [string, number, number, number][])
-    place(scene, nm, x, 0, z, { s });
+  ] as [string, number, number, number][]) {
+    const o = place(scene, nm, x, 0, z, { s });
+    // everything that should glow, glows: lamps, the brazier, the jack-o'-lantern
+    if (nm === 'graveyard/lightpost-double') {
+      onTop(o, lampGlow('#ffc070', 1.8), 0.9);
+      const l = new THREE.PointLight('#ffb35c', 14, 12, 1.6);
+      onTop(o, l, 0.9);
+    }
+    if (nm === 'graveyard/fire-basket') onTop(o, flame(0.9, { light: 6 }), 0.85);
+    if (nm === 'graveyard/pumpkin-tall-carved' || nm === 'graveyard/candle-multiple') onTop(o, lampGlow('#ff9a3a', 1.6), 0.5);
+  }
+  scene.add(groundFog([-wide / 2 - 8, back - 6, wide / 2 + 8, 9], { count: 16, opacity: 0.3 }));
   const pins = pool(scene, () => fitProp('graveyard/gravestone-round', 0.62, 'y'));
-  const balls = pool(scene, () => fitProp('graveyard/pumpkin-carved', BALL_R * 2 * PX * 1.3, 'max'));
+  // the pumpkin balls glow from inside as they roll
+  const balls = pool(scene, () => {
+    const g = new THREE.Group();
+    g.add(fitProp('graveyard/pumpkin-carved', BALL_R * 2 * PX * 1.3, 'max'));
+    const glow = glowSprite('#ffa040', BALL_R * 2 * PX * 2.6, 0.75);
+    glow.position.y = BALL_R * PX * 1.3;
+    g.add(glow);
+    return g;
+  });
   const aims = pool(scene, () => {
     const g = new THREE.Group();
     for (let k = 0; k < 6; k++) {

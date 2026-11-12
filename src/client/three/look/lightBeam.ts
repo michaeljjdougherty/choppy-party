@@ -192,7 +192,7 @@ export function makeBeam(color: THREE.ColorRepresentation, length: number, half:
       time.value = t;
       const flick = 1 + Math.sin(t * 11) * 0.03 + Math.sin(t * 23.7) * 0.02;
       strength.value = (opts.strength ?? 0.55) * str * flick;
-      poolStrength.value = (opts.strength ?? 0.55) * 0.7 * str * flick;
+      poolStrength.value = (opts.strength ?? 0.55) * 1.05 * str * flick;
       glow.material.opacity = Math.min(1, 0.9 * str * flick);
       // motes: slow drifting points kept inside the cone
       const side = new THREE.Vector3().crossVectors(fwd, Math.abs(fwd.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0)).normalize();

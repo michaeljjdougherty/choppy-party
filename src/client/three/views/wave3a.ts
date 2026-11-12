@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { glowSprite } from '../look/fxKit';
+import { marbleMaterial, rugTexture } from '../look/marble';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { sfx } from '../../sfx';
 import type { PlayerInfo } from '../../../shared/types';
 import { HX0, HX1, HY0, HY1, type PotatoState } from '../../../shared/games/hotPotato';
@@ -160,10 +162,10 @@ export function kitchenView(env: THREE.Texture, state: KitchenState, players: Pl
   // the island
   const iw = ISLAND.w * PX;
   const ih = ISLAND.h * PX;
-  const island = mesh(new THREE.BoxGeometry(iw, 1.1, ih), toy('#8a5a3a', 0.6), { receive: true });
+  const island = mesh(new RoundedBoxGeometry(iw, 1.1, ih, 2, 0.06), new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', iw / 2, 1), color: '#9a6a44', roughness: 0.7 }), { receive: true });
   island.position.set(wx(ISLAND.x), 0.55, wz(ISLAND.y));
   scene.add(island);
-  const top = mesh(new THREE.BoxGeometry(iw + 0.3, 0.14, ih + 0.3), toy('#f2f2f2', 0.3), { receive: true });
+  const top = mesh(new RoundedBoxGeometry(iw + 0.3, 0.14, ih + 0.3, 2, 0.05), marbleMaterial(), { receive: true });
   top.position.set(wx(ISLAND.x), 1.17, wz(ISLAND.y));
   scene.add(top);
   const plateMat = toy('#ffffff', 0.3);
@@ -173,7 +175,7 @@ export function kitchenView(env: THREE.Texture, state: KitchenState, players: Pl
   for (const c of state.cooks) {
     if (c.chef) continue;
     const col = players.find((p) => p.id === c.id)?.color ?? '#fff';
-    const rug = mesh(new THREE.CircleGeometry(1.25, 32), toy(col, 0.8), { cast: false, receive: true });
+    const rug = mesh(new THREE.CircleGeometry(1.25, 48), new THREE.MeshStandardMaterial({ map: rugTexture(col), roughness: 0.95 }), { cast: false, receive: true });
     rug.rotation.x = -Math.PI / 2;
     rug.position.set(wx(c.plateX), 0.02, wz(c.plateY));
     scene.add(rug);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { flame } from '../look/fxKit';
+import { flame, glowTex } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { CELL as HCELL, COLS, FX0, FY0, ROWS as HROWS, laneKind, type HopState } from '../../../shared/games/roadHopper';
 import { CH, CW, craneX, sway, type StackState } from '../../../shared/games/crateStacker';
@@ -916,9 +916,37 @@ export function sparkTrailsView(env: THREE.Texture, state: SparkState, players: 
   }
   for (let i = 0; i < 8; i++) place(scene, ['space/crater', 'space/rock_crystals', 'space/meteor'][i % 3], (i - 3.5) * 8, 0, z0 - 6 - (i % 2) * 3, { s: 3 });
   // trails: one instanced mesh of glowing wall blocks, coloured by rider
-  const trails = new THREE.InstancedMesh(new THREE.BoxGeometry(C * 1.02, 0.42, C * 1.02), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.55, roughness: 0.4 }), gw * gh);
+  // each block reads as a wall of light: dim glassy base rising to a white-hot top edge
+  const lc = document.createElement('canvas');
+  lc.width = 4;
+  lc.height = 64;
+  const lg = lc.getContext('2d')!;
+  const grad = lg.createLinearGradient(0, 64, 0, 0);
+  grad.addColorStop(0, '#303030');
+  grad.addColorStop(0.7, '#9a9a9a');
+  grad.addColorStop(0.86, '#ffffff');
+  grad.addColorStop(1, '#ffffff');
+  lg.fillStyle = grad;
+  lg.fillRect(0, 0, 4, 64);
+  const lightTex = new THREE.CanvasTexture(lc);
+  lightTex.colorSpace = THREE.SRGBColorSpace;
+  const trails = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(C * 1.02, 0.42, C * 1.02),
+    new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveMap: lightTex, emissiveIntensity: 1.25, roughness: 0.25, metalness: 0.1 }),
+    gw * gh,
+  );
   trails.count = 0;
   scene.add(trails);
+  // and spills coloured light onto the floor around it
+  const spill = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(C * 3, C * 3).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: glowTex(), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }),
+    gw * gh,
+  );
+  spill.count = 0;
+  spill.position.y = 0.025;
+  spill.renderOrder = 2;
+  scene.add(spill);
   const colors = state.riders.map((r) => new THREE.Color(colorOf(players, r.id)));
   const drawn = state.riders.map(() => 0);
   const m4 = new THREE.Matrix4();
@@ -957,6 +985,12 @@ export function sparkTrailsView(env: THREE.Texture, state: SparkState, players: 
           const k = trails.count++;
           trails.setMatrixAt(k, m4);
           trails.setColorAt(k, colors[i]);
+          m4.setPosition(m4.elements[12], 0, m4.elements[14]);
+          spill.count = k + 1;
+          spill.setMatrixAt(k, m4);
+          spill.setColorAt(k, colors[i]);
+          spill.instanceMatrix.needsUpdate = true;
+          if (spill.instanceColor) spill.instanceColor.needsUpdate = true;
           drawn[i]++;
           trails.instanceMatrix.needsUpdate = true;
           if (trails.instanceColor) trails.instanceColor.needsUpdate = true;

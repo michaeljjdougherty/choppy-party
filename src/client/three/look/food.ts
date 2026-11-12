@@ -138,7 +138,7 @@ function cheese(r: number): THREE.Object3D {
     pos.setY(i, 0.04 - over * over * 2.2 - over * 0.4);
   }
   geo.computeVertexNormals();
-  const m = new THREE.Mesh(geo, mat('cheese', () => new THREE.MeshPhysicalMaterial({ color: '#ffbf1f', roughness: 0.35, clearcoat: 0.4, side: THREE.DoubleSide, transmission: 0, sheen: 0.3, sheenColor: new THREE.Color('#fff0a0') })));
+  const m = new THREE.Mesh(geo, mat('cheese', () => new THREE.MeshPhysicalMaterial({ color: '#ffbf1f', roughness: 0.35, clearcoat: 0.4, side: THREE.DoubleSide, sheen: 0.3, sheenColor: new THREE.Color('#fff0a0') })));
   m.rotation.y = rnd() * Math.PI;
   m.castShadow = true;
   return m;
@@ -224,7 +224,7 @@ function tomato(r: number): THREE.Object3D {
 
 function onion(r: number): THREE.Object3D {
   const g = new THREE.Group();
-  const m = mat('onion', () => new THREE.MeshPhysicalMaterial({ color: '#f4e4f4', roughness: 0.3, transmission: 0.35, thickness: 0.2, clearcoat: 0.6 }));
+  const m = mat('onion', () => new THREE.MeshPhysicalMaterial({ color: '#f4e4f4', roughness: 0.3, clearcoat: 0.6, opacity: 0.9, transparent: true }));
   for (let i = 0; i < 5; i++) {
     const rr = r * (0.28 + rnd() * 0.22);
     const t = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.04 * r, 8, 32), m);

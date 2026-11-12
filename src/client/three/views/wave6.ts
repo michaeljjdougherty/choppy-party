@@ -515,7 +515,31 @@ export function sushiView(env: THREE.Texture, state: SushiState, players: Player
   counter.scale.y = 1.1;
   counter.position.set(0, 0.55, wz(400));
   scene.add(counter);
-  const beltTop = mesh(oval(1, (rx + 26) * PX, (ry + 26) * PX), toy('#3a3a44', 0.5), { receive: true });
+  // the belt: jointed steel slats that visibly run round with the plates
+  const slatTex = (() => {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#3a3a44';
+    g.fillRect(0, 0, S, S);
+    for (let i = 0; i < 96; i++) {
+      const a = (i / 96) * Math.PI * 2;
+      g.strokeStyle = i % 2 ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.45)';
+      g.lineWidth = i % 2 ? 1.5 : 3;
+      g.beginPath();
+      g.moveTo(S / 2, S / 2);
+      g.lineTo(S / 2 + Math.cos(a) * S, S / 2 + Math.sin(a) * S);
+      g.stroke();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.center.set(0.5, 0.5);
+    return t;
+  })();
+  const beltMat = new THREE.MeshStandardMaterial({ map: slatTex, metalness: 0.6, roughness: 0.35 });
+  beltMat.userData.noDetail = true;
+  const beltTop = mesh(oval(1, (rx + 26) * PX, (ry + 26) * PX), beltMat, { receive: true });
   beltTop.scale.y = 0.08;
   beltTop.position.set(0, 1.14, wz(400));
   scene.add(beltTop);
@@ -528,13 +552,27 @@ export function sushiView(env: THREE.Texture, state: SushiState, players: Player
   const [hx, hy] = beltXY(state, 0);
   hatch.position.set(wx(hx), 2.3, wz(hy) - 1.4);
   scene.add(hatch);
+  // paper lanterns on cords, glowing warm through the paper
   const lamps: THREE.Mesh[] = [];
   for (let i = 0; i < 6; i++) {
-    const l = mesh(new THREE.SphereGeometry(0.4, 16, 12), new THREE.MeshStandardMaterial({ color: '#ff4a3a', emissive: '#ff3a1a', emissiveIntensity: 0.8 }), { cast: false });
+    const l = mesh(new THREE.SphereGeometry(0.4, 20, 14), new THREE.MeshStandardMaterial({ color: '#ff4a3a', emissive: '#ff5a2a', emissiveIntensity: 1.2, roughness: 0.9 }), { cast: false });
+    l.scale.set(1, 1.25, 1);
     l.position.set(-(rx * PX) + (i * 2 * rx * PX) / 5, 6, wz(400 - ry) - 2);
     scene.add(l);
+    const cord = mesh(new THREE.CylinderGeometry(0.015, 0.015, 3, 4), toy('#222', 0.5), { cast: false });
+    cord.position.copy(l.position).add(new THREE.Vector3(0, 2, 0));
+    scene.add(cord);
+    const halo = glowSprite('#ff8a4a', 2.2, 0.7);
+    halo.position.copy(l.position);
+    scene.add(halo);
     lamps.push(l);
   }
+  const warm = new THREE.PointLight('#ff9a6a', 30, 26, 1.6);
+  warm.position.set(0, 5.5, wz(400 - ry) - 1);
+  scene.add(warm);
+  // a little garden in the middle of the counter
+  place(scene, 'furniture/pottedPlant', 0, 1.35, wz(400), { s: 1.6 });
+  let beltRot = 0;
   // plates: a little pool of plate + sushi pairs, re-dressed every frame
   const plates = state.plates.map(() => {
     const g = new THREE.Group();
@@ -583,6 +621,8 @@ export function sushiView(env: THREE.Texture, state: SushiState, players: Player
     camera,
     update(s: SushiState, _p, t, dt) {
       last = s;
+      beltRot += s.speed * dt * Math.PI * 2;
+      slatTex.rotation = beltRot;
       s.plates.forEach((p, i) => {
         const v = plates[i];
         v.g.visible = p.gone <= 0;

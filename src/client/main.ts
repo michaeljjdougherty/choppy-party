@@ -35,7 +35,7 @@ import { FPS_LOOK } from './three/views/scopeSnap';
 import { preloadAll } from './three/assets';
 import { logo } from './menu';
 import type { BotLevel } from '../shared/bots';
-import { HostLine, LINES, countIn, finishBanner, hostCorner, pick } from './showtime';
+import { HostLine, LINES, countIn, finishBanner, hostCorner, pick, sunburst } from './showtime';
 import { getBoard } from '../shared/board/boards';
 import type { View } from './three/stage';
 import { setCharacters, setOutlined } from './three/choppy';
@@ -1205,25 +1205,91 @@ function drawTags(tags: Tag[]) {
 
 // load every model first, with a little loading screen
 let loadT = 0;
+const LOAD_TIPS = [
+  'Roll doubles for +5 Pit Coin.',
+  'A Chobglob costs 40 Pit Coin at the chest.',
+  'Win the minigame and you go first next round.',
+  'Square Brian sells the helpful stuff. Mista Chunk sells the nasty stuff.',
+  'Press Y or M on the board for the map.',
+  'One item per turn. Make it count.',
+  'Bonus Chobglobs are handed out at the very end. Nobody is safe.',
+];
+let loadDone = 0;
+let loadTotal = 1;
+let loading = true;
 function drawLoading(done: number, total: number) {
-  loadT += 0.05;
+  loadDone = done;
+  loadTotal = total;
+}
+/** The loading screen: the title's dusk sky, the logo, a chunky candy progress bar and a rotating tip. */
+function loadingFrame() {
+  if (!loading) return;
+  loadT += 1 / 60;
+  const done = loadDone, total = loadTotal;
   ctx.clearRect(0, 0, VIEW_W, VIEW_H);
   const g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
-  g.addColorStop(0, '#3ba7ff');
-  g.addColorStop(1, '#c9f0ff');
+  g.addColorStop(0, '#1d0f45');
+  g.addColorStop(0.55, '#7a2a7a');
+  g.addColorStop(1, '#ff8a4a');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-  logo(ctx, 640, 255, 1.3, loadT);
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  roundRect(ctx, 390, 470, 500, 34, 17);
+  sunburst(ctx, 640, 250, 620, loadT, '#ffd23f', 0.16, 20);
+  // drifting lanterns
+  for (let i = 0; i < 14; i++) {
+    const x = ((i * 173 + loadT * (8 + (i % 4) * 4)) % 1400) - 60;
+    const y = 720 - ((loadT * (14 + (i % 5) * 5) + i * 97) % 820);
+    ctx.fillStyle = `rgba(255,${190 + (i % 3) * 20},120,${0.25 + (i % 3) * 0.12})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 3 + (i % 3) * 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  logo(ctx, 640, 250, 1.3, loadT);
+  const k = Math.max(0, Math.min(1, done / Math.max(1, total)));
+  const bx = 390, by = 474, bw = 500, bh = 30;
+  // extruded track, then a striped candy fill that slides along, then gloss
+  ctx.fillStyle = '#12082c';
+  roundRect(ctx, bx, by + 7, bw, bh, bh / 2);
   ctx.fill();
+  ctx.fillStyle = '#2b1858';
+  roundRect(ctx, bx, by, bw, bh, bh / 2);
+  ctx.fill();
+  const fw = Math.max(bh, (bw - 8) * k);
+  ctx.save();
+  roundRect(ctx, bx + 4, by + 4, fw, bh - 8, (bh - 8) / 2);
+  ctx.clip();
   ctx.fillStyle = '#ffd23f';
-  roundRect(ctx, 394, 474, Math.max(26, 492 * (done / Math.max(1, total))), 26, 13);
-  ctx.fill();
-  text(ctx, `Loading party supplies… ${done}/${total}`, 640, 540, 22, { weight: 700 });
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = '#ff9f1c';
+  for (let x = -40 + ((loadT * 60) % 40); x < bw + 40; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(bx + x, by + bh);
+    ctx.lineTo(bx + x + 16, by + bh);
+    ctx.lineTo(bx + x + 36, by);
+    ctx.lineTo(bx + x + 20, by);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(bx, by + 5, bw, 6);
+  ctx.restore();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  roundRect(ctx, bx, by, bw, bh, bh / 2);
+  ctx.stroke();
+  text(ctx, `Loading party supplies… ${Math.round(k * 100)}%`, 640, 540, 20, { weight: 800 });
+  const tip = LOAD_TIPS[Math.floor(loadT / 4) % LOAD_TIPS.length];
+  const ta = Math.min(1, (loadT % 4) * 3, (4 - (loadT % 4)) * 3);
+  ctx.save();
+  ctx.globalAlpha = ta;
+  text(ctx, `TIP  ·  ${tip}`, 640, 640, 19, { weight: 700, color: '#ffe6b0' });
+  ctx.restore();
+  requestAnimationFrame(loadingFrame);
 }
-drawLoading(0, 1);
-Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px 'Kenney Future Narrow'").catch(() => undefined)]).then(() => requestAnimationFrame(frame));
+loadingFrame();
+Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px 'Kenney Future Narrow'").catch(() => undefined)]).then(() => {
+  loading = false;
+  requestAnimationFrame(frame);
+});
 
 // expose for automated smoke tests
 (window as any).__choppy = {

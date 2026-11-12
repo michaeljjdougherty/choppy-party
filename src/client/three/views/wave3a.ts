@@ -61,7 +61,7 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
 
   const fx = new Fx(scene);
   const team = crew(scene, players, state.sailors, fx);
-  const bomb = fitProp('platformer/bomb', 1.2, 'y');
+  const bomb = fitProp('platformer/bomb', 1.55, 'y');
   scene.add(bomb);
   const glow = new THREE.PointLight('#ff7a2a', 0, 6, 2);
   scene.add(glow);

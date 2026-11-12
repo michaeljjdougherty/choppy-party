@@ -555,17 +555,17 @@ export function crownView(env: THREE.Texture, state: CrownState, players: Player
   // a border of stones marks the camp's edge (instead of the lawn just ending)
   {
     const geo = rockGeometry(0.28, 4, 0.35);
-    const per = Math.round((fw + fd) * 2 / 0.62);
-    const stones = new THREE.InstancedMesh(geo, stoneMaterial('#b8b0a2'), per);
+    const per = Math.round((fw + fd) * 2 / 0.75);
+    const stones = new THREE.InstancedMesh(geo, stoneMaterial('#8a8478'), per);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
     let n = 0;
     const edge = (x0: number, z0: number, x1: number, z1: number) => {
-      const L = Math.hypot(x1 - x0, z1 - z0), k = Math.floor(L / 0.62);
+      const L = Math.hypot(x1 - x0, z1 - z0), k = Math.floor(L / 0.75);
       for (let i = 0; i < k && n < per; i++) {
         const f = (i + 0.5) / k;
         pos.set(x0 + (x1 - x0) * f, 0.04, z0 + (z1 - z0) * f);
         q.setFromEuler(new THREE.Euler(Math.random() * 0.4, Math.random() * 6, Math.random() * 0.4));
-        const r = 0.75 + Math.random() * 0.55;
+        const r = 0.55 + Math.random() * 0.8;
         sc.set(r, r * 0.6, r);
         stones.setMatrixAt(n++, m4.compose(pos, q, sc));
       }

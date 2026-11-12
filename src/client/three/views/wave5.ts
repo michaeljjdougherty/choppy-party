@@ -37,6 +37,8 @@ function ground(scene: THREE.Scene, color: string, r = 90, y = -0.02, mat?: THRE
   scene.add(g);
 }
 
+const XAXIS = new THREE.Vector3(1, 0, 0);
+
 /* ------------------------------------------------------------------ Paint the Plaza */
 
 export function plazaView(env: THREE.Texture, state: PlazaState, players: PlayerInfo[]): View {
@@ -449,6 +451,7 @@ export function bowlView(env: THREE.Texture, state: BowlState, players: PlayerIn
     g.add(fitProp('graveyard/pumpkin-carved', BALL_R * 2 * PX * 1.3, 'max'));
     const glow = glowSprite('#ffa040', BALL_R * 2 * PX * 2.6, 0.75);
     glow.position.y = BALL_R * PX * 1.3;
+    glow.name = 'glow';
     g.add(glow);
     return g;
   });
@@ -500,6 +503,8 @@ export function bowlView(env: THREE.Texture, state: BowlState, players: PlayerIn
           const bx = aiming ? b.aim * (LANE_W / 2 - BALL_R) : b.bx;
           o.position.set(x0 + bx * PX, 0.12, zOf(aiming ? 0 : b.by) + (aiming ? 0.2 : 0));
           o.rotation.set(-b.spin, 0, 0);
+          // keep the inner glow at the pumpkin's middle however far it has rolled
+          o.children[1]?.position.set(0, BALL_R * PX * 1.3, 0).applyAxisAngle(XAXIS, b.spin);
         }
         if (aiming) {
           const a = aims.take();

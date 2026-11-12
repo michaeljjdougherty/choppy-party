@@ -29,6 +29,8 @@ export const CHARACTERS: Character[] = [
   crew('chops', 'Chops'),
   crew('maddog', 'Mad Dog'),
   crew('mm', 'MM'),
+  // back by Michael's call (2026-11-12), rebranded
+  crew('regs', 'Ass Kisser Regs'),
   crew('shmama', 'Shmama'),
   crew('aids', 'Aids'),
   crew('fick', 'Fick'),

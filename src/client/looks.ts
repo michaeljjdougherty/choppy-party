@@ -21,6 +21,8 @@ const STARTER: Record<string, Look> = {
   'kg-evil': { hat: 'devil', shirt: 'leather', acc: 'bat' },
   'kg-space': { hat: 'space', shirt: 'spacesuit', acc: 'jetpack' },
   'kg-chef': { hat: 'chef', shirt: 'chef', acc: 'cleaver' },
+  // the boss's biggest fan: party hat, varsity jacket and a foam finger
+  regs: { hat: 'party', shirt: 'varsity', acc: 'foamfinger' },
 };
 
 export function savedLook(folkId: string): Look {

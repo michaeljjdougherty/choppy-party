@@ -4,6 +4,8 @@ import { ANVIL_HIT, AX0, AX1, AY0, AY1, FALL_TIME, type CloudburstState } from '
 import { ChoppyModel } from '../choppy';
 import { place, prop } from '../assets';
 import { Fx, shake } from '../fx';
+import { scatterGrass } from '../look/grass';
+import { rockGeometry } from '../life/rocks';
 import { glowSprite, softShadowMat, telegraph, type Telegraph } from '../look/fxKit';
 import { PX, makeScene, mesh, stripeTexture, toy, wx, wz, yaw, frameRect } from '../kit';
 import type { Tag, View } from '../stage';
@@ -33,11 +35,19 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
   field.position.set(cx, 0, cz);
   scene.add(field);
   // hedges around the field
-  const hedge = toy('#2f7d35', 0.8);
+  // leafy hedges: rows of lumpy overlapping bushes in a few greens, not boxes
+  const hedgeMats = ['#2f7d35', '#3a8a3a', '#2a6e30'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
   const bush = (x: number, z: number, w: number, d: number) => {
-    const b = mesh(new THREE.BoxGeometry(w, 0.8, d), hedge, { receive: true });
-    b.position.set(x, 0.4, z);
-    scene.add(b);
+    const len = Math.max(w, d), along = w >= d;
+    const n = Math.max(2, Math.round(len / 0.75));
+    for (let i = 0; i < n; i++) {
+      const u = (i + 0.5) / n - 0.5;
+      const r = 0.55 + ((i * 7) % 5) * 0.05;
+      const b = mesh(rockGeometry(r, i % 6, 0.22), hedgeMats[i % 3], { receive: true });
+      b.position.set(x + (along ? u * len : (((i * 13) % 5) - 2) * 0.04), r * 0.55, z + (along ? (((i * 13) % 5) - 2) * 0.04 : u * len));
+      b.rotation.y = i * 1.3;
+      scene.add(b);
+    }
   };
   bush(cx, cz - fd / 2 - 0.5, fw + 2, 1);
   bush(cx - fw / 2 - 0.5, cz, 1, fd);
@@ -51,6 +61,7 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
   place(scene, 'platformer/hedge', cx - fw / 2 - 2, 0, cz + fd / 2 + 0.6, { s: 2 });
   place(scene, 'platformer/hedge', cx + fw / 2 + 2, 0, cz + fd / 2 + 0.6, { s: 2 });
   place(scene, 'platformer/mushrooms', cx + fw / 2 + 1.8, 0, cz + fd / 4, { s: 1.6, shadow: false });
+  scatterGrass(scene, { area: [cx - fw / 2 - 9, cz - fd / 2 - 7, cx + fw / 2 + 9, cz + fd / 2 + 5], count: 900, color: '#4f9e3a', size: 0.55, keep: (x, z) => Math.abs(x - cx) > fw / 2 + 1.1 || Math.abs(z - cz) > fd / 2 + 1.1 });
   // puffy clouds overhead (where the loot comes from)
   const cloudMat = toy('#ffffff', 0.6);
   const clouds: THREE.Group[] = [];

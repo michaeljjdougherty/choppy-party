@@ -349,7 +349,7 @@ function haloTex(): THREE.Texture {
   });
 }
 /** Burnt ground: a dark blast mark with ragged streaks thrown outward. */
-function scorchTex(): THREE.Texture {
+export function scorchTex(): THREE.Texture {
   return canvasTex('scorch', (g, S) => {
     const c = S / 2;
     const r = g.createRadialGradient(c, c, 0, c, c, c);
@@ -372,7 +372,7 @@ function scorchTex(): THREE.Texture {
   });
 }
 /** Glowing embers: hot speckles and cracks, brightest in the middle. */
-function emberTex(): THREE.Texture {
+export function emberTex(): THREE.Texture {
   return canvasTex('ember', (g, S) => {
     const c = S / 2;
     const r = g.createRadialGradient(c, c, 0, c, c, c);

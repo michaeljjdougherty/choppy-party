@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { softShadowMat } from '../look/fxKit';
+import { glowSprite, softShadowMat } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import type { FuseState } from '../../../shared/games/fuseDraw';
 import { BALL_R, PADDLE_H, PX0, PX1, PY0, PY1, type PaddleState } from '../../../shared/games/paddleClash';
@@ -34,6 +34,8 @@ export function fuseView(env: THREE.Texture, state: FuseState, players: PlayerIn
   scene.add(fuse);
   const spark = new THREE.PointLight('#ffb347', 0, 6, 1.5);
   scene.add(spark);
+  const sparkGlow = glowSprite('#ffc060', 1, 1);
+  scene.add(sparkGlow);
   const fx = new Fx(scene);
   const models = state.ids.map((id, i) => {
     const p = players.find((q) => q.id === id);
@@ -58,6 +60,10 @@ export function fuseView(env: THREE.Texture, state: FuseState, players: PlayerIn
       fuse.visible = s.phase === 'fuse';
       spark.intensity = s.phase === 'fuse' ? 3 + Math.sin(t * 40) * 1.5 : 0;
       spark.position.set(0, 1.1 + fuse.scale.y, 0);
+      sparkGlow.visible = s.phase === 'fuse';
+      sparkGlow.position.copy(spark.position);
+      sparkGlow.scale.setScalar(0.7 + Math.random() * 0.5);
+      if (s.phase === 'fuse' && Math.random() < dt * 14) fx.emit(spark.position, { tex: 'puff', color: ['#cfc8c0', '#a8a19a'], n: 1, speed: [0.1, 0.3], up: 1.2, life: [0.6, 1.1], size: [0.12, 0.5], drag: 1, vel: [0.25, 0.4, 0] });
       if (s.phase === 'fuse' && Math.floor(t * 20) !== Math.floor((t - dt) * 20)) fx.emit(spark.position, { tex: 'star', n: 2, color: ['#ffd23f', '#ff7a1a'], speed: [0.5, 1.5], up: 1, life: [0.2, 0.4], size: [0.25, 0] });
       keg.visible = s.phase !== 'bang';
       if (s.phase !== lastPhase) {

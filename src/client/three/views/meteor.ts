@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { glowSprite, telegraph, trail, trailMaterial, type Telegraph } from '../look/fxKit';
 import { moltenMaterial, rockGeometry } from '../life/rocks';
+import { emberTex, scorchTex } from '../life/setPieces';
 import type { PlayerInfo } from '../../../shared/types';
 import { BLAST, FALL, MCX, MCY, MR, type MeteorState } from '../../../shared/games/meteorShower';
 import { place, texture } from '../assets';
 import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
 import type { View } from '../stage';
-import { crew, fitProp, pool } from './crew';
+import { crew, pool } from './crew';
 
 /** Meteor Shower: a round moon base under a nebula sky, ringed by Space Kit gear. */
 export function meteorView(env: THREE.Texture, state: MeteorState, players: PlayerInfo[]): View {
@@ -90,7 +91,16 @@ export function meteorView(env: THREE.Texture, state: MeteorState, players: Play
     return g;
   });
   const telePool = pool(scene, () => telegraph('#ff4030'));
-  const craterPool = pool(scene, () => fitProp('space/crater', 2.1));
+  // craters: a charred scorch with embers still glowing in it (they cool as the crater fades)
+  const craterPool = pool(scene, () => {
+    const g = new THREE.Group();
+    const scorch = new THREE.Mesh(new THREE.CircleGeometry(1.25, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: scorchTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    const ember = new THREE.Mesh(new THREE.CircleGeometry(0.95, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: emberTex(), color: '#ff7a2a', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    ember.position.y = 0.01;
+    ember.name = 'ember';
+    g.add(scorch, ember);
+    return g;
+  });
   const trailPool = pool(scene, () => trail(tailMat, 0.75, 6));
   const hearts = new Map(state.astros.map((a) => [a.id, a.hearts]));
   let last = state;
@@ -130,7 +140,9 @@ export function meteorView(env: THREE.Texture, state: MeteorState, players: Play
       for (const c of s.craters) {
         const o = craterPool.take();
         const shrink = Math.min(1, c.life / 0.8);
-        o.scale.setScalar((o.userData.s ??= o.scale.x) * shrink);
+        o.scale.setScalar(shrink);
+        const em = o.getObjectByName('ember') as THREE.Mesh;
+        (em.material as THREE.MeshBasicMaterial).opacity = Math.min(1, c.life * 0.6) * (0.75 + Math.sin(t * 5 + c.x) * 0.2);
         o.position.set(wx(c.x), 0.01, wz(c.y));
       }
       for (const b of s.booms) {

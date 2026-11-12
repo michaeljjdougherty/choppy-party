@@ -675,7 +675,7 @@ export function repairView(env: THREE.Texture, state: RepairState, players: Play
   scene.add(base);
   for (const side of [0, 1]) {
     const hw = fw / 2 - 0.15;
-    const deck = new THREE.MeshStandardMaterial({ color: '#5a6188', metalness: 0.55, roughness: 0.38, emissive: TEAM_COLORS[side], emissiveMap: hexPlating(hw / 1.4), emissiveIntensity: 0.45 });
+    const deck = new THREE.MeshStandardMaterial({ color: '#3c4266', metalness: 0.5, roughness: 0.5, emissive: TEAM_COLORS[side], emissiveMap: hexPlating(hw / 1.4), emissiveIntensity: 0.4 });
     (deck.emissiveMap as THREE.Texture).repeat.set(hw / 1.4, fd / 1.4);
     deck.userData.noDetail = true;
     const plate = mesh(new THREE.PlaneGeometry(hw, fd), deck, { cast: false, receive: true });
@@ -695,7 +695,8 @@ export function repairView(env: THREE.Texture, state: RepairState, players: Play
         float edge = smoothstep(0.0, 0.25, vUv.y) * (1.0 - smoothstep(0.75, 1.0, vUv.y));
         float fade = 1.0 - vUv.y;
         float a = (0.25 + scan * 0.35) * fade * (0.6 + 0.4 * sin(vUv.x * 30.0 + uTime * 3.0)) + 0.2 * (1.0 - smoothstep(0.0, 0.08, vUv.y));
-        gl_FragColor = vec4(vec3(0.55, 0.85, 1.0) * a, a);
+        a *= 0.45;
+        gl_FragColor = vec4(vec3(0.45, 0.8, 1.0) * a, a);
       }`,
     transparent: true,
     depthWrite: false,
@@ -706,7 +707,7 @@ export function repairView(env: THREE.Texture, state: RepairState, players: Play
   barrier.rotation.y = Math.PI / 2;
   barrier.position.set(wx(MID), 0.8, wz((SY0 + SY1) / 2));
   scene.add(barrier);
-  const rail = mesh(new RoundedBoxGeometry(0.34, 0.16, fd, 2, 0.06), new THREE.MeshStandardMaterial({ color: '#c8d4ff', emissive: '#7fd4ff', emissiveIntensity: 1.2 }), { cast: false });
+  const rail = mesh(new RoundedBoxGeometry(0.34, 0.16, fd, 2, 0.06), new THREE.MeshStandardMaterial({ color: '#7c88b8', emissive: '#4fb8ff', emissiveIntensity: 0.45 }), { cast: false });
   rail.position.set(wx(MID), 0.08, wz((SY0 + SY1) / 2));
   scene.add(rail);
   for (const z of [wz(SY0), wz(SY1)]) {

@@ -4,6 +4,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import { yardSize, type ZombieState } from '../../../shared/games/zombieTag';
 import { BURST, type ChiliState, type Pepper } from '../../../shared/games/chiliChallenge';
 import { earthGlobe, moonMaterial } from '../look/moon';
+import { movingTruck, rectRugTexture } from '../look/truck';
 import { BALL_R, type MoonState } from '../../../shared/games/moonball';
 import { bpmAt, songT, type ShantyState } from '../../../shared/games/shantyShuffle';
 import { beltR, beltXY, DISHES, type Dish, type SushiState } from '../../../shared/games/sushiBelt';
@@ -723,7 +724,7 @@ export function movingView(env: THREE.Texture, state: MovingState, players: Play
       m.position.copy(P(c, x + ww / 2, y + hh / 2)).setY(0.25);
       scene.add(m);
     }
-    const rug = mesh(new THREE.PlaneGeometry(RUG.w * PX, RUG.h * PX), toy(TEAM_COLORS[c.team], 0.95), { cast: false, receive: true });
+    const rug = mesh(new THREE.PlaneGeometry(RUG.w * PX, RUG.h * PX), new THREE.MeshStandardMaterial({ map: rectRugTexture(TEAM_COLORS[c.team], RUG.w, RUG.h), roughness: 0.95 }), { cast: false, receive: true });
     rug.rotation.x = -Math.PI / 2;
     rug.position.copy(P(c, RUG.x + RUG.w / 2, RUG.y + RUG.h / 2)).setY(0.03);
     scene.add(rug);
@@ -743,12 +744,9 @@ export function movingView(env: THREE.Texture, state: MovingState, players: Play
       scene.add(b);
     }
     // the moving truck the couch starts beside
-    const truck = mesh(new THREE.BoxGeometry(TRUCK.w * PX * 0.7, 2.2, TRUCK.h * PX * 0.8), toy('#ffffff', 0.5));
-    truck.position.copy(P(c, TRUCK.x + TRUCK.w * 0.6, TRUCK.y + TRUCK.h * 0.75)).setY(1.4);
+    const truck = movingTruck(TRUCK.w * PX * 0.85, TRUCK.h * PX * 0.8, TEAM_COLORS[c.team]);
+    truck.position.copy(P(c, TRUCK.x + TRUCK.w * 0.6, TRUCK.y + TRUCK.h * 0.75));
     scene.add(truck);
-    const stripe = mesh(new THREE.BoxGeometry(TRUCK.w * PX * 0.71, 0.3, TRUCK.h * PX * 0.81), toy(TEAM_COLORS[c.team], 0.5));
-    stripe.position.copy(truck.position).setY(1.1);
-    scene.add(stripe);
     // the route, as faint footprints
     for (let i = 0; i < ROUTE.length - 1; i++) {
       const [ax, ay] = ROUTE[i], [bx, by] = ROUTE[i + 1];

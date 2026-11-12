@@ -3,6 +3,7 @@ import { glowDisc, glowSprite, groundFog, lampGlow, onTop, softShadowMat } from 
 import type { PlayerInfo } from '../../../shared/types';
 import { yardSize, type ZombieState } from '../../../shared/games/zombieTag';
 import { BURST, type ChiliState, type Pepper } from '../../../shared/games/chiliChallenge';
+import { earthGlobe, moonMaterial } from '../look/moon';
 import { BALL_R, type MoonState } from '../../../shared/games/moonball';
 import { bpmAt, songT, type ShantyState } from '../../../shared/games/shantyShuffle';
 import { beltR, beltXY, DISHES, type Dish, type SushiState } from '../../../shared/games/sushiBelt';
@@ -273,7 +274,7 @@ export function moonView(env: THREE.Texture, state: MoonState, players: PlayerIn
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 260);
   const x0 = 640 - state.w / 2, x1 = 640 + state.w / 2, y0 = 400 - state.h / 2, y1 = 400 + state.h / 2;
   frameRect(camera, x0 - 70, x1 + 70, y0 - 20, y1 + 10, 0.95);
-  floor(scene, 140, 100, wz(400), new THREE.MeshStandardMaterial({ map: texture('floor_ground_sand', 40, 30), color: '#9a9aa8', roughness: 1 }));
+  floor(scene, 140, 100, wz(400), moonMaterial('#a4a4b4', 14));
   // pitch markings
   const line = toy('#f4f4ff', 0.6);
   const markings: [number, number, number, number][] = [
@@ -298,23 +299,34 @@ export function moonView(env: THREE.Texture, state: MoonState, players: PlayerIn
     arch.position.set(gx, 0, wz(400));
     arch.rotation.y = Math.PI / 2;
     scene.add(arch);
-    const glow = mesh(new THREE.PlaneGeometry(2.4, state.mouth * 2 * PX), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }), { cast: false });
-    glow.rotation.x = -Math.PI / 2;
+    const glow = glowDisc(col, state.mouth * PX, 0.4);
     glow.position.set(gx + side * 1.2, 0.04, wz(400));
     scene.add(glow);
+    // an energy field across the goal mouth, and glowing emitters on the posts
+    const field = mesh(new THREE.CircleGeometry(state.mouth * PX, 40, 0, Math.PI), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }), { cast: false });
+    field.position.set(gx, 0, wz(400));
+    field.rotation.y = Math.PI / 2;
+    scene.add(field);
+    for (const dz of [-1, 1]) {
+      const e = glowSprite(col, 1.2, 0.9);
+      e.position.set(gx, 0.2, wz(400) + dz * state.mouth * PX);
+      scene.add(e);
+    }
   }
   for (const [nm, x, z, s] of [
-    ['space/crater', -9, wz(y0) - 3, 2], ['space/rock_crystalsLargeA', 12, wz(y0) - 4, 2.4], ['space/hangar_roundGlass', -14, wz(y0) - 6, 3.2],
+    ['space/crater', -9, wz(y0) - 3, 2], ['space/rock_crystalsLargeA', 12, wz(y0) - 4, 2.4],
     ['space/satelliteDish_large', 6, wz(y0) - 6, 3], ['space/rover', 15, wz(y1) + 3, 1.8], ['space/rocket_baseA', -17, wz(y0) - 3, 2.4],
   ] as [string, number, number, number][])
     place(scene, nm, x, 0, z, { s });
   // the Earth hanging in the sky
-  const earth = mesh(new THREE.SphereGeometry(5, 32, 24), new THREE.MeshStandardMaterial({ color: '#3f8cff', emissive: '#0b2a66', roughness: 0.6 }), { cast: false });
+  const earth = earthGlobe(5);
   earth.position.set(-18, 22, -45);
   scene.add(earth);
   // the ball: big, striped and bouncy
   const ballTex = checkerTexture('#ffffff', '#ff4fa3', 4, 128);
-  const ball = mesh(new THREE.SphereGeometry(BALL_R * PX, 32, 24), new THREE.MeshStandardMaterial({ map: ballTex, roughness: 0.35 }));
+  const ballMat = new THREE.MeshPhysicalMaterial({ map: ballTex, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 });
+  ballMat.userData.noDetail = true;
+  const ball = mesh(new THREE.SphereGeometry(BALL_R * PX, 48, 32), ballMat);
   scene.add(ball);
   const shadow = mesh(new THREE.PlaneGeometry((BALL_R * PX) * 2.4, (BALL_R * PX) * 2.4), softShadowMat(0.48), { cast: false });
   shadow.rotation.x = -Math.PI / 2;

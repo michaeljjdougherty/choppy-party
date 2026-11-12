@@ -158,3 +158,70 @@ export function hexPlating(tiles: number): THREE.Texture {
   t.needsUpdate = true;
   return t;
 }
+
+/** A home planet for the sky: oceans, green-brown continents, drifting cloud bands and a blue atmosphere. */
+export function earthGlobe(radius: number): THREE.Group {
+  const g = new THREE.Group();
+  const W = 512, H = 256;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const x = c.getContext('2d')!;
+  const sea = x.createLinearGradient(0, 0, 0, H);
+  sea.addColorStop(0, '#1d4f9a');
+  sea.addColorStop(0.5, '#2a72c8');
+  sea.addColorStop(1, '#1d4f9a');
+  x.fillStyle = sea;
+  x.fillRect(0, 0, W, H);
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  // continents: clusters of overlapping blobs
+  for (let k = 0; k < 6; k++) {
+    const cx = rnd() * W, cy = H * (0.25 + rnd() * 0.5);
+    for (let i = 0; i < 40; i++) {
+      const px = cx + (rnd() - 0.5) * 120, py = cy + (rnd() - 0.5) * 70;
+      x.fillStyle = rnd() < 0.7 ? '#4f9a3e' : '#9a8a52';
+      x.beginPath();
+      x.ellipse(px, py, 6 + rnd() * 18, 4 + rnd() * 12, rnd() * 3, 0, Math.PI * 2);
+      x.fill();
+    }
+  }
+  // ice caps
+  x.fillStyle = '#f2f6ff';
+  x.fillRect(0, 0, W, 14);
+  x.fillRect(0, H - 14, W, 14);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const body = new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 40), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55, metalness: 0.05, emissive: '#0a1a40', emissiveIntensity: 0.4 }));
+  body.material.userData.noDetail = true;
+  g.add(body);
+  // clouds on their own slowly turning shell
+  const cc = document.createElement('canvas');
+  cc.width = W;
+  cc.height = H;
+  const cx2 = cc.getContext('2d')!;
+  for (let i = 0; i < 160; i++) {
+    cx2.fillStyle = `rgba(255,255,255,${0.15 + rnd() * 0.35})`;
+    cx2.beginPath();
+    cx2.ellipse(rnd() * W, rnd() * H, 10 + rnd() * 40, 2 + rnd() * 6, 0, 0, Math.PI * 2);
+    cx2.fill();
+  }
+  const ct = new THREE.CanvasTexture(cc);
+  const clouds = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.015, 48, 32), new THREE.MeshStandardMaterial({ map: ct, transparent: true, depthWrite: false, roughness: 1 }));
+  clouds.material.userData.noDetail = true;
+  clouds.onBeforeRender = () => (clouds.rotation.y = performance.now() * 0.00002);
+  g.add(clouds);
+  const ac = document.createElement('canvas');
+  ac.width = ac.height = 128;
+  const ag = ac.getContext('2d')!;
+  const gr = ag.createRadialGradient(64, 64, 42, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(140,200,255,0.7)');
+  gr.addColorStop(1, 'rgba(80,150,255,0)');
+  ag.fillStyle = gr;
+  ag.fillRect(0, 0, 128, 128);
+  const atmo = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(ac), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  atmo.scale.setScalar(radius * 2.9);
+  g.add(atmo);
+  g.rotation.z = 0.4;
+  return g;
+}

@@ -1526,11 +1526,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   let trailPts: THREE.Vector3[] = [];
   /** Shortest way along the board's open paths from a space to the nearest chest. */
   function pathToChest(b: BoardState, from: string): string[] {
-    // the way that's open right now; failing that, any way (a gate may open later)
-    return bfsChest(b, from, (id) => exits(def, b, id)) || bfsChest(b, from, (id) => {
-      const n = def.nodes[id];
-      return [...n.next, ...(n.gate ? [...n.gate.day, ...n.gate.night] : [])];
-    }) || [];
+    // only the way that's open right now (Michael: never show a route you can't actually walk)
+    return bfsChest(b, from, (id) => exits(def, b, id)) || [];
   }
   function bfsChest(b: BoardState, from: string, step: (id: string) => string[]): string[] | null {
     const prev = new Map<string, string>([[from, '']]);

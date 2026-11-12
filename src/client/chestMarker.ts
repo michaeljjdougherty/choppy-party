@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
-import { currentPlayer, forwardDist, nearDist } from '../shared/board/engine';
+import { currentPlayer, forwardDist } from '../shared/board/engine';
 import { text } from '../shared/draw';
 
 type Project = (v: THREE.Vector3) => { x: number; y: number; visible: boolean };
@@ -11,7 +11,8 @@ const M = 56; // keep off-screen markers this far inside the edge
 
 /**
  * Where the Chobglob is: a bobbing gold marker over each chest with how many spaces away it is for the
- * player whose turn it is. When the chest is off screen, the marker sits on the screen edge pointing at it.
+ * player whose turn it is. When the chest is off screen, a gold arrow lies on the ground at that player's
+ * feet pointing at it (Michael: not floating over the HUD), with the number of spaces on it.
  */
 export function drawChestMarkers(ctx: CanvasRenderingContext2D, s: PartyState, t: number, project: Project, mapOpen: boolean): void {
   const b = s.board;
@@ -24,7 +25,7 @@ export function drawChestMarkers(ctx: CanvasRenderingContext2D, s: PartyState, t
     if (!n) continue;
     const p = project(new THREE.Vector3(n.x, n.y + 3.4, n.z));
     // forward along the path when it can get there; otherwise (a gate that only opens at night) as the crow walks
-    const steps = dist?.get(node) ?? (me ? nearDist(def, me.node, 99).get(node) : undefined);
+    const steps = dist?.get(node);
     const label = steps === undefined ? 'CHOBGLOB' : steps === 0 ? 'CHOBGLOB · HERE!' : `CHOBGLOB · ${steps} ${steps === 1 ? 'SPACE' : 'SPACES'}`;
     // behind the camera, project() mirrors the point: flip it so the edge arrow still points the right way
     let x = p.x, y = p.y;
@@ -39,50 +40,10 @@ export function drawChestMarkers(ctx: CanvasRenderingContext2D, s: PartyState, t
       ctx.translate(x, y + bob);
       arrow(ctx, Math.PI / 2, 1);
       text(ctx, label, 0, -66, mapOpen ? 18 : 20, { color: '#ffd23f' });
-    } else {
-      // pin it to the edge, pointing at the chest
-      const cx = 640, cy = 360;
-      const dx = x - cx, dy = y - cy;
-      const k = Math.min((640 - M) / Math.max(1e-3, Math.abs(dx)), (360 - M) / Math.max(1e-3, Math.abs(dy)));
-      // keep clear of the roll prompt at the top and the standings in the corner
-      let ex = Math.max(M, Math.min(1280 - M, cx + dx * k)), ey = Math.max(M + 30, cy + dy * k);
-      // then nudge it out of the HUD: standings down the left, board info + weather top right, prompt pill top centre
-      const n = b.order.length;
-      const keep = [
-        { x: 0, y: 0, w: 262, h: 10 + Math.min(62, 600 / Math.max(1, n)) * n },
-        { x: 960, y: 0, w: 320, h: 156 + ((def.weather?.length ?? 0) ? 30 + (def.weather?.length ?? 0) * 46 : 0) },
-        { x: 300, y: 0, w: 680, h: 130 },
-      ];
-      for (const r of keep) {
-        const pad = 40;
-        if (ex > r.x - pad && ex < r.x + r.w + pad && ey > r.y - pad && ey < r.y + r.h + pad) {
-          const opts = [
-            { x: ex, y: r.y + r.h + pad },
-            { x: r.x - pad, y: ey },
-            { x: r.x + r.w + pad, y: ey },
-          ].filter((o) => o.x >= M && o.x <= 1280 - M && o.y <= 720 - M);
-          opts.sort((a, c) => Math.hypot(a.x - ex, a.y - ey) - Math.hypot(c.x - ex, c.y - ey));
-          if (opts[0]) ({ x: ex, y: ey } = opts[0]);
-        }
-      }
-      ctx.translate(ex, ey);
-      ctx.fillStyle = 'rgba(20,10,50,0.8)';
-      ctx.beginPath();
-      ctx.arc(0, 0, 30, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = '#ffd23f';
-      ctx.stroke();
-      ctx.save();
-      ctx.rotate(Math.atan2(dy, dx));
-      ctx.translate(22 + Math.sin(t * 6) * 3, 0);
-      arrow(ctx, 0, 0.6);
-      ctx.restore();
-      text(ctx, steps === undefined ? '?' : String(steps), 0, 2, 24, { color: '#ffd23f' });
-      const ly = ey < 300 ? 44 : -44;
-      text(ctx, 'CHOBGLOB', 0, ly, 16, { color: '#ffd23f' });
     }
     ctx.restore();
+    // off screen: a gold arrow painted on the ground around the player whose turn it is, pointing at the chest
+    if (!on && me) ground(ctx, def.nodes[me.node], n, steps, t, project);
   }
 }
 
@@ -105,5 +66,39 @@ function arrow(ctx: CanvasRenderingContext2D, ang: number, s: number): void {
   ctx.lineWidth = 4;
   ctx.strokeStyle = '#7a4a00';
   ctx.stroke();
+  ctx.restore();
+}
+
+/** Smoothed spot under the current player, so the ground arrow glides along as they hop. */
+const feet = new THREE.Vector3(NaN, 0, 0);
+function ground(ctx: CanvasRenderingContext2D, at: { x: number; y: number; z: number } | undefined, chest: { x: number; z: number }, steps: number | undefined, t: number, project: Project): void {
+  if (!at) return;
+  if (Number.isNaN(feet.x) || feet.distanceTo(new THREE.Vector3(at.x, at.y, at.z)) > 12) feet.set(at.x, at.y, at.z);
+  else feet.lerp(new THREE.Vector3(at.x, at.y, at.z), 0.12);
+  const ang = Math.atan2(chest.z - feet.z, chest.x - feet.x);
+  const ux = Math.cos(ang), uz = Math.sin(ang), vx = -uz, vz = ux;
+  const pulse = Math.sin(t * 4) * 0.12;
+  // arrow shape in (along, across) metres, starting just outside the player's space
+  const r0 = 1.25 + pulse;
+  const shape: [number, number][] = [[r0, -0.32], [r0 + 0.9, -0.32], [r0 + 0.9, -0.7], [r0 + 1.75, 0], [r0 + 0.9, 0.7], [r0 + 0.9, 0.32], [r0, 0.32]];
+  const pts = shape.map(([a, c]) => project(new THREE.Vector3(feet.x + ux * a + vx * c, feet.y + 0.08, feet.z + uz * a + vz * c)));
+  if (pts.some((q) => !q.visible)) return;
+  ctx.save();
+  ctx.beginPath();
+  pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+  ctx.closePath();
+  ctx.shadowColor = 'rgba(255,190,40,0.9)';
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = 'rgba(255,210,63,0.92)';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#7a4a00';
+  ctx.stroke();
+  // the number of spaces sits on the arrow's tail
+  if (steps !== undefined) {
+    const c = project(new THREE.Vector3(feet.x + ux * (r0 + 0.5), feet.y + 0.1, feet.z + uz * (r0 + 0.5)));
+    text(ctx, String(steps), c.x, c.y + 1, 18, { color: '#3a2a10', outline: false });
+  }
   ctx.restore();
 }

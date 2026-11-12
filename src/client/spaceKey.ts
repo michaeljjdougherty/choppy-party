@@ -29,7 +29,8 @@ export const mapKey = {
   },
 };
 
-const ORDER: SpaceType[] = ['key', 'thorn', 'heart', 'lucky', 'crate', 'event', 'chunk', 'duel', 'stew', 'shop', 'post', 'fountain', 'spring', 'cannon', 'vent', 'dynamite', 'snare', 'wisp', 'station', 'counter', 'oop', 'camp'];
+// only the spaces people couldn't guess (Michael): plain, thorn, heart, lucky, crate and shops explain themselves
+const ORDER: SpaceType[] = ['event', 'chunk', 'duel', 'stew', 'post', 'fountain', 'spring', 'cannon', 'vent', 'dynamite', 'snare', 'wisp', 'station', 'counter', 'oop', 'camp'];
 
 function describe(type: SpaceType, s: PartyState): [string, string] {
   const b = s.board!;

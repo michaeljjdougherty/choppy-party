@@ -27,6 +27,95 @@ export function buildWeather(scene: THREE.Scene, def: BoardDef, fx: Fx) {
     tints.push({ z, mat });
   }
 
+  // The Fog Marsh is a marsh even by day: cattails along the lane, murky puddles and a sign, so you can tell where it is
+  const reedStem = toy('#6f8f3a', 0.8), reedHead = toy('#6b4423', 0.9), murk = new THREE.MeshBasicMaterial({ color: '#4d6b5a', transparent: true, opacity: 0.45, depthWrite: false });
+  for (const z of zones.filter((q) => q.kind === 'fog')) {
+    z.nodes.forEach((id, i) => {
+      const n = def.nodes[id];
+      const to = def.nodes[n.next[0]] ?? n;
+      const dx = to.x - n.x, dz = to.z - n.z, l = Math.hypot(dx, dz) || 1;
+      const px = -dz / l, pz = dx / l;
+      for (const side of [-1, 1]) {
+        if ((i + (side > 0 ? 1 : 0)) % 2) continue;
+        const cx = n.x + px * side * 1.9, cz = n.z + pz * side * 1.9;
+        const pud = new THREE.Mesh(new THREE.CircleGeometry(0.9, 18), murk);
+        pud.rotation.x = -Math.PI / 2;
+        pud.position.set(cx, n.y + 0.02, cz);
+        scene.add(pud);
+        for (let k = 0; k < 4; k++) {
+          const a = k * 1.7 + i, r = 0.35 + (k % 2) * 0.3, h = 0.8 + ((k * 37 + i * 13) % 5) * 0.12;
+          const g = new THREE.Group();
+          const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, h, 5), reedStem);
+          stem.position.y = h / 2;
+          const head = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.18, 3, 6), reedHead);
+          head.position.y = h + 0.08;
+          g.add(stem, head);
+          g.position.set(cx + Math.cos(a) * r, n.y, cz + Math.sin(a) * r);
+          g.rotation.z = Math.sin(a) * 0.12;
+          scene.add(g);
+        }
+      }
+    });
+    // a sign at the marsh's first space
+    const first = def.nodes[z.nodes[0]];
+    if (first) {
+      const cv = document.createElement('canvas');
+      cv.width = 256;
+      cv.height = 80;
+      const c2 = cv.getContext('2d')!;
+      c2.fillStyle = '#4a3220';
+      c2.fillRect(0, 0, 256, 80);
+      c2.fillStyle = '#e8eef8';
+      c2.font = '900 40px system-ui, sans-serif';
+      c2.textAlign = 'center';
+      c2.textBaseline = 'middle';
+      c2.fillText(z.name.toUpperCase(), 128, 42);
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sign = new THREE.Group();
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, 0.12), toy('#6b4423', 0.9));
+      post.position.y = 0.8;
+      const board = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 0.06), [toy('#4a3220'), toy('#4a3220'), toy('#4a3220'), toy('#4a3220'), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 })]);
+      board.position.y = 1.5;
+      board.userData.noDetail = true;
+      sign.add(post, board);
+      const to = def.nodes[first.next[0]] ?? first;
+      const dx = to.x - first.x, dz = to.z - first.z, l = Math.hypot(dx, dz) || 1;
+      sign.position.set(first.x + (dz / l) * 1.6, first.y, first.z - (dx / l) * 1.6);
+      sign.rotation.y = Math.atan2(dx, dz) + Math.PI / 2;
+      scene.add(sign);
+    }
+  }
+
+  // Will-o'-Wind: glowing chevrons painted down the path showing which way it blows this round
+  const chevShape = new THREE.Shape();
+  chevShape.moveTo(-0.28, -0.42);
+  chevShape.lineTo(0.12, 0);
+  chevShape.lineTo(-0.28, 0.42);
+  chevShape.lineTo(-0.08, 0.42);
+  chevShape.lineTo(0.32, 0);
+  chevShape.lineTo(-0.08, -0.42);
+  chevShape.closePath();
+  const chevGeo = new THREE.ShapeGeometry(chevShape);
+  const chevs: { m: THREE.Mesh; mat: THREE.MeshBasicMaterial; ang: number; k: number }[] = [];
+  for (const z of zones.filter((q) => q.kind === 'wind')) {
+    z.nodes.forEach((id, i) => {
+      const n = def.nodes[id];
+      const to = def.nodes[n.next[0]];
+      if (!to || !z.nodes.includes(to.id)) return;
+      for (let j = 0; j < 3; j++) {
+        const f = 0.3 + j * 0.2;
+        const mat = new THREE.MeshBasicMaterial({ color: '#19d3ff', transparent: true, opacity: 0.8, depthWrite: false, toneMapped: false });
+        const m = new THREE.Mesh(chevGeo, mat);
+        m.position.set(n.x + (to.x - n.x) * f, n.y + (to.y - n.y) * f + 0.32, n.z + (to.z - n.z) * f);
+        m.scale.setScalar(2.1);
+        m.renderOrder = 2;
+        scene.add(m);
+        chevs.push({ m, mat, ang: Math.atan2(to.z - n.z, to.x - n.x), k: i * 3 + j });
+      }
+    });
+  }
+
   // Solar Flare shelters: glass domes over the safe spaces
   const domeMat = new THREE.MeshStandardMaterial({ color: '#bff3ff', transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1, depthWrite: false, side: THREE.DoubleSide });
   const domeRim = toy('#d7dde8', 0.3);
@@ -77,10 +166,19 @@ export function buildWeather(scene: THREE.Scene, def: BoardDef, fx: Fx) {
 
   return {
     update(b: BoardState, t: number, dt: number): void {
+      // the board tour shows each zone at its worst, so you can see what it means
+      const step = b.sub === 'tour' && b.tour ? b.tour.steps[b.tour.i] : null;
+      const isOn = (z: WeatherZone) => zoneActive(b, z) || step?.title === z.name;
       for (const { z, mat } of tints) {
-        const on = zoneActive(b, z);
+        const on = isOn(z);
         const want = on ? 0.42 + Math.sin(t * 3) * 0.06 : 0.2;
         mat.opacity += (want - mat.opacity) * Math.min(1, dt * 3);
+      }
+      // chevrons flip with the wind and ripple the way it blows
+      const dir = (b.weather?.wind ?? 1) > 0 ? 1 : -1;
+      for (const c of chevs) {
+        c.m.rotation.set(-Math.PI / 2, 0, -(c.ang + (dir > 0 ? 0 : Math.PI)));
+        c.mat.opacity = 0.35 + 0.6 * Math.max(0, Math.sin(t * 5 - c.k * dir * 0.9));
       }
       for (const r of rocks) {
         r.o.position.set(r.base.x + Math.sin(t * 0.6 + r.k) * 0.3, r.base.y + Math.sin(t * 0.9 + r.k) * 0.35, r.base.z + Math.cos(t * 0.5 + r.k) * 0.3);
@@ -111,15 +209,20 @@ export function buildWeather(scene: THREE.Scene, def: BoardDef, fx: Fx) {
       acc = 0;
       for (const z of zones) {
         if (!z.nodes.length) continue;
-        const on = zoneActive(b, z);
+        const on = isOn(z);
         switch (z.kind) {
           case 'fog':
-            if (on) fx.emit(nodeV(pick(z), 0.35), { tex: 'soft', color: ['#e8eef8', '#cdd8ea'], n: 1, speed: [0.1, 0.3], spread: 0, up: 0.03, life: [2.5, 3.5], size: [1.8, 2.8], drag: 0.2, jitter: 1.8 });
+            // thick banks at night; a thin ground mist by day so the marsh still reads as a marsh
+            if (on) for (let k = 0; k < 3; k++) fx.emit(nodeV(pick(z), 0.5), { tex: 'soft', color: ['#e8eef8', '#cdd8ea'], n: 1, speed: [0.1, 0.3], spread: 0, up: 0.03, life: [2.5, 3.5], size: [2.4, 3.6], drag: 0.2, jitter: 1.8 });
+            else if (Math.random() < 0.35) fx.emit(nodeV(pick(z), 0.15), { tex: 'soft', color: ['#dfe8ee'], n: 1, speed: [0.05, 0.15], spread: 0, up: 0.02, life: [2, 3], size: [1.2, 1.8], drag: 0.2, jitter: 2 });
             break;
           case 'wind': {
-            const id = pick(z);
-            const d = along(id).multiplyScalar(4 * (b.weather?.wind ?? 1));
-            fx.emit(nodeV(id, 0.8), { tex: 'soft', color: ['#e6fbff', '#a8f0ff'], n: 2, speed: [0, 0.2], spread: 0.1, life: [0.7, 1.0], size: [0.35, 0.1], drag: 0, vel: [d.x, 0.2, d.z], jitter: 1.4 });
+            // stronger, longer streaks that clearly fly one way
+            for (let k = 0; k < 3; k++) {
+              const id = pick(z);
+              const d = along(id).multiplyScalar(7 * Math.sign(b.weather?.wind ?? 1));
+              fx.emit(nodeV(id, 0.5 + Math.random() * 1.2), { tex: 'soft', color: ['#ffffff', '#a8f0ff'], n: 3, speed: [0, 0.2], spread: 0.1, life: [0.8, 1.2], size: [0.5, 0.15], drag: 0, vel: [d.x, 0.3, d.z], jitter: 1.6 });
+            }
             break;
           }
           case 'flare':

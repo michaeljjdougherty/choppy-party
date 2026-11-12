@@ -107,7 +107,7 @@ export function forecast(s: BoardState, z: WeatherZone): { now: string; next: st
   const next = (txt: string) => (last ? '' : txt);
   switch (z.kind) {
     case 'fog':
-      return { now: s.night ? 'Hidden rolls, nobody can target you' : 'Clear by day', next: next(s.night ? 'Fog stays until day' : 'Fog rolls in at night'), warn: s.night };
+      return { now: s.night ? 'Fogged in: hidden rolls, items can\'t target you' : 'At night: hidden rolls, safe from items', next: next(s.night ? 'Until day' : 'Fogs in at night'), warn: s.night };
     case 'wind':
       return { now: `Round end: blows everyone ${w.wind > 0 ? 'ahead' : 'back'} 2`, next: next(`Next: ${w.windNext > 0 ? 'ahead' : 'back'}`), warn: true };
     case 'flare':

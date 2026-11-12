@@ -839,8 +839,9 @@ function renderScreens(wallT: number, dt: number) {
       break;
     case 'board':
       bakeItemIcons(stage.renderer);
-      drawBoardHud(ctx, s, wallT, mapCam.on);
+      // the chest marker sits under the HUD, so menus and the standings card cover it
       drawChestMarkers(ctx, s, wallT, (v) => stage.project(v), mapCam.on);
+      drawBoardHud(ctx, s, wallT, mapCam.on);
       drawCoinFly(ctx, s, dt, (v) => stage.project(v));
       hostCorner(ctx, hostLine, wallT, 'br', 340, 70, s.board?.sub === 'tour' ? Infinity : 4);
       // mouse / touch: clickable board menus, path markers and tour buttons

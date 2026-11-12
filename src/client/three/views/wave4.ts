@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { trail, trailMaterial } from '../look/fxKit';
 import { makeBeam } from '../look/lightBeam';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { PlayerInfo } from '../../../shared/types';
@@ -172,7 +173,19 @@ export function cannonView(env: THREE.Texture, state: CannonState, players: Play
   const capModel = new ChoppyModel(name(players, state.captain)?.color ?? '#fff', 0.95);
   scene.add(capModel.group);
   const team = crew(scene, players, state.runners, fx);
-  const balls = pool(scene, () => fitProp('pirate/cannon-ball', 0.95, 'max'));
+  // cannonballs tear down the lane with a smoky streak behind them
+  const streakMat = trailMaterial('#fff0d0', '#806a5a');
+  const balls = pool(scene, () => {
+    const g = new THREE.Group();
+    const b = fitProp('pirate/cannon-ball', 0.95, 'max');
+    b.name = 'ball';
+    g.add(b);
+    const tr = trail(streakMat, 0.38, 3.2);
+    tr.rotation.z = Math.PI / 2; // +y of the trail points back up the lane (-x)
+    tr.position.y = 0.45;
+    g.add(tr);
+    return g;
+  });
   let aimY = laneY(state.aim);
   let last = state;
   return {
@@ -191,16 +204,23 @@ export function cannonView(env: THREE.Texture, state: CannonState, players: Play
         m.opacity = warn ? 0.25 + (Math.sin(t * 22) * 0.5 + 0.5) * 0.35 : 0;
       });
       balls.begin();
+      streakMat.userData.time.value = t;
       for (const b of s.balls) {
         if (b.warn > 0) continue;
         const o = balls.take();
-        o.position.set(wx(b.x), 0.48, wz(laneY(b.lane)));
-        o.rotation.z = -b.x * 0.05;
+        o.position.set(wx(b.x), 0.03, wz(laneY(b.lane)));
+        o.getObjectByName('ball')!.rotation.z = -b.x * 0.05;
+        o.getObjectByName('ball')!.position.y = 0.45;
+        if (Math.random() < dt * 20) fx.emit(o.position.clone().setY(0.6), { tex: 'puff', color: ['#d8d0c8', '#b8b0a8'], n: 1, speed: [0.1, 0.4], up: 0.6, life: [0.4, 0.8], size: [0.25, 0.7], drag: 2 });
       }
       for (const l of s.booms) {
         sfx.boom();
         shake(0.1);
-        fx.emit(new THREE.Vector3(wx(KX0 - 20), 0.9, wz(laneY(l))), { tex: 'puff', color: ['#ffffff', '#cfcfcf'], n: 18, speed: [2, 6], up: 1, life: [0.3, 0.8], size: [0.9, 0.3] });
+        const muzzle = new THREE.Vector3(wx(KX0 - 20), 0.9, wz(laneY(l)));
+        // a real muzzle blast: white-hot flash lighting the deck, a fireball, then rolling smoke
+        fx.flash(muzzle, '#ffc070', 60, 9);
+        fx.emit(muzzle, { tex: 'soft', color: ['#fff6d0', '#ffd27a'], to: '#ff5a10', n: 6, speed: [2, 5], spread: 0.4, life: [0.12, 0.25], size: [1.2, 2.2], additive: true, drag: 6 });
+        fx.emit(muzzle, { tex: 'puff', color: ['#ffffff', '#e0dcd6'], to: '#9a948e', n: 18, speed: [2, 6], up: 1, life: [0.5, 1.1], size: [0.9, 1.8], drag: 3.5, gravity: -0.8 });
       }
       for (const sp of s.splats) {
         sfx.bump();

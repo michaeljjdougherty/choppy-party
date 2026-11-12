@@ -5,6 +5,7 @@ import { VIEW_H, VIEW_W } from '../../shared/types';
 import { disposeTree } from './kit';
 import { finishSurfaces, photoSurfaces } from './assets';
 import { shakeOffset } from './fx';
+import { tickSceneFx } from './anim/sceneFx';
 import type { SquareBrian } from './brian';
 import { Ambience } from './ambience';
 import { Post } from './look/post';
@@ -139,6 +140,7 @@ export class Stage {
     }
     tickDetail(t);
     tickScenery(t);
+    tickSceneFx(this.view.scene, dt);
     if (this.dressed) for (const l of this.dressed.lives) l.update(t, dt);
     const off = shakeOffset(dt, t);
     cam.position.add(off);
@@ -176,6 +178,7 @@ export class Stage {
       detailTree(view.scene);
       keepInView(view.scene);
     }
+    tickSceneFx(view.scene);
     r.setScissorTest(true);
     r.setScissor(vx, vy, vw, vh);
     r.setViewport(vx, vy, vw, vh);

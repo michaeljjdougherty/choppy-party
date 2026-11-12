@@ -42,7 +42,7 @@ describe('bouncy physics', () => {
     expect(b.vz).toBe(0);
   });
 
-  it('accelerates fast but glides a bit when you let go', () => {
+  it('accelerates fast and stops crisply (Mario Party feel), with a frame of slide', () => {
     const b = newBody();
     let ticks = 0;
     while (b.vx < 299 && ticks < 30) {
@@ -50,8 +50,15 @@ describe('bouncy physics', () => {
       ticks++;
     }
     expect(ticks * DT).toBeLessThan(0.2);
+    expect(ticks * DT).toBeLessThanOrEqual(0.1 + 1e-9);
     steer(b, 0, 0, 300, DT);
-    expect(b.vx).toBeGreaterThan(200);
+    expect(b.vx).toBeGreaterThan(100); // not a dead stop
+    let stop = DT;
+    while (b.vx > 0 && stop < 1) {
+      steer(b, 0, 0, 300, DT);
+      stop += DT;
+    }
+    expect(stop).toBeLessThan(0.15); // but no long glide
     expect(FEEL.turnDecel).toBeGreaterThan(FEEL.accel);
   });
 

@@ -1098,6 +1098,11 @@ export class FolkModel {
   private hop = 0;
   private hopV = 0;
   private exprT = 0;
+  // animation layer: eased speed, idle look-around, and which cheer this character does
+  private spd = 0;
+  private lookT = 1 + Math.random() * 3;
+  private lookYaw = 0;
+  private seed = Math.random() * 10;
   private pendingHat: THREE.Group | null = null;
   private headCube!: THREE.Object3D;
   /** Body parts that outfits restyle or hide (see cosmetics.ts). */
@@ -1384,8 +1389,12 @@ export class FolkModel {
     this.faceMat.needsUpdate = true;
   }
 
-  /** `speed` is ground speed in world units/s (0 when standing). */
-  update(dt: number, t: number, motion: { speed?: number; cheer?: boolean } = {}): void {
+  /**
+   * `speed` is ground speed in world units/s (0 when standing). `cheer` throws the arms up, `down` is the
+   * dazed/knocked-out slump. The walk blends into a run as speed rises (longer stride, pumping arms, bigger
+   * bounce); standing still they breathe, shift their weight and look around now and then.
+   */
+  update(dt: number, t: number, motion: { speed?: number; cheer?: boolean; down?: boolean; air?: boolean } = {}): void {
     if (this.exprT > 0) {
       this.exprT -= dt;
       if (this.exprT <= 0) this.expr = 'idle';
@@ -1408,28 +1417,90 @@ export class FolkModel {
         this.hopV = 0;
       }
     }
-    const speed = motion.speed ?? 0;
-    const moving = speed > 0.2;
-    this.walk += dt * (moving ? 6 + speed * 1.5 : 0);
-    const swing = moving ? Math.sin(this.walk) * 0.7 : 0;
+    const k = 1 - Math.exp(-dt * 12);
+    const kSlow = 1 - Math.exp(-dt * 6);
+    // speed eases in and out so the stride never snaps between walking and standing
+    this.spd += ((motion.speed ?? 0) - this.spd) * (1 - Math.exp(-dt * 8));
+    const spd = this.spd;
+    const moving = spd > 0.2;
+    const run = THREE.MathUtils.smoothstep(spd, 2.5, 5);
+    const strideK = Math.min(1, spd / 1.6);
+    this.walk += dt * (5.2 + spd * 1.6);
+    const stride = strideK * (0.55 + 0.4 * run);
+    const swing = Math.sin(this.walk) * stride;
     const breathe = Math.sin(t * 2.4) * 0.015;
     const sq = THREE.MathUtils.clamp(this.sq + breathe, -0.35, 0.35);
     this.body.scale.set(1 - sq * 0.5, 1 + sq, 1 - sq * 0.5);
-    this.body.position.y = this.hop + (moving ? Math.abs(Math.sin(this.walk)) * 0.1 : 0);
+    const air = this.hop > 0.05 || !!motion.air;
+    this.body.position.y = this.hop + Math.abs(Math.sin(this.walk)) * (0.07 + 0.09 * run) * strideK;
+    // shoulders twist against the hips on each step; at rest a slow weight shift from foot to foot
+    const idleK = 1 - strideK;
+    this.body.rotation.y += (Math.sin(this.walk) * 0.14 * stride - this.body.rotation.y) * k;
+    this.body.rotation.z += ((Math.sin(t * 1.1 + this.seed) * 0.035 * idleK) - this.body.rotation.z) * kSlow;
 
-    this.legL.rotation.x = swing;
-    this.legR.rotation.x = -swing;
     const cheer = motion.cheer || this.expr === 'happy';
-    const k = 1 - Math.exp(-dt * 12);
-    const lz = cheer ? -2.6 + Math.sin(t * 10) * 0.2 : 0.1 + Math.sin(t * 2.4) * 0.03;
-    const rz = cheer ? 2.6 - Math.sin(t * 10) * 0.2 : -0.1 - Math.sin(t * 2.4) * 0.03;
-    this.armL.rotation.z += (lz - this.armL.rotation.z) * k;
-    this.armR.rotation.z += (rz - this.armR.rotation.z) * k;
-    this.armL.rotation.x += ((cheer ? 0 : -swing) - this.armL.rotation.x) * k;
-    this.armR.rotation.x += ((cheer ? 0 : swing) - this.armR.rotation.x) * k;
-    // the head bobs on a slight delay, and wobbles when hurt
-    const hurt = this.expr === 'hurt' ? Math.sin(t * 30) * 0.12 : 0;
-    this.head.rotation.set(Math.sin(t * 1.3) * 0.03 + (moving ? 0.06 : 0), Math.sin(t * 0.7) * 0.08, Math.sin(t * 0.9) * 0.03 + hurt);
+    const hurt = this.expr === 'hurt';
+    const down = !!motion.down && !cheer;
+    // legs: stride, or tucked up in the air
+    const legL = air ? -0.55 : swing;
+    const legR = air ? -0.25 : -swing;
+    this.legL.rotation.x += (legL - this.legL.rotation.x) * (air ? k : 1);
+    this.legR.rotation.x += (legR - this.legR.rotation.x) * (air ? k : 1);
+
+    // arms: raise = how far up from hanging (0 down, ~2.6 straight up), fwd = swing (negative = forward)
+    let raiseL = -0.1 + Math.sin(t * 2.4) * 0.03 + run * 0.22;
+    let raiseR = raiseL;
+    let fwdL = -swing * (1 + 0.5 * run);
+    let fwdR = swing * (1 + 0.5 * run);
+    if (cheer) {
+      const pump = Math.sin(t * 10 + this.seed);
+      switch ((this.spec.id.charCodeAt(0) + this.spec.id.length) % 3) {
+        case 0: // both arms up, pumping
+          raiseL = raiseR = 2.5 + pump * 0.22;
+          fwdL = fwdR = 0;
+          break;
+        case 1: // alternate fist pumps
+          raiseL = 1.6 + Math.max(0, pump) * 1.0;
+          raiseR = 1.6 + Math.max(0, -pump) * 1.0;
+          fwdL = fwdR = -0.2;
+          break;
+        default: // one big wave
+          raiseL = 0.3;
+          raiseR = 2.4 + Math.sin(t * 7 + this.seed) * 0.4;
+          fwdL = 0.1;
+          fwdR = 0;
+      }
+    } else if (hurt) {
+      // flailing
+      raiseL = 1.3 + Math.sin(t * 24) * 0.5;
+      raiseR = 1.3 + Math.cos(t * 22) * 0.5;
+      fwdL = fwdR = -0.3;
+    } else if (down) {
+      raiseL = raiseR = 0.05;
+      fwdL = -0.25 + Math.sin(t * 4.2 + this.seed) * 0.15;
+      fwdR = -0.25 - Math.sin(t * 4.2 + this.seed) * 0.15;
+    } else if (air) {
+      raiseL = raiseR = 1.2;
+      fwdL = fwdR = -0.2;
+    }
+    this.armL.rotation.z += (-raiseL - this.armL.rotation.z) * k;
+    this.armR.rotation.z += (raiseR - this.armR.rotation.z) * k;
+    this.armL.rotation.x += (fwdL - this.armL.rotation.x) * k;
+    this.armR.rotation.x += (fwdR - this.armR.rotation.x) * k;
+
+    // the head: a look around every few seconds when idle, down when dazed, a wobble when hurt
+    this.lookT -= dt;
+    if (this.lookT <= 0) {
+      this.lookT = 2 + Math.random() * 3.5;
+      this.lookYaw = moving || Math.random() < 0.35 ? 0 : (Math.random() * 2 - 1) * 0.6;
+    }
+    const wob = hurt ? Math.sin(t * 30) * 0.12 : 0;
+    const hx = down ? 0.35 : Math.sin(t * 1.3) * 0.03 + (moving ? 0.05 + run * 0.05 : 0) - (cheer ? 0.15 : 0);
+    const hy = (moving ? 0 : this.lookYaw) + Math.sin(t * 0.7) * 0.06;
+    const hz = Math.sin(t * 0.9) * 0.03 + wob + (down ? Math.sin(t * 4.2 + this.seed) * 0.15 : 0);
+    this.head.rotation.x += (hx - this.head.rotation.x) * k;
+    this.head.rotation.y += (hy - this.head.rotation.y) * kSlow;
+    this.head.rotation.z += (hz - this.head.rotation.z) * (hurt ? 1 : k);
   }
 }
 

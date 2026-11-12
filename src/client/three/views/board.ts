@@ -29,6 +29,7 @@ import { grassDetail, roadTexture, roadUVs } from '../surfaces';
 import { sfx } from '../../sfx';
 import { postPulse } from '../look/post';
 import { courtDecor, setCourtNames } from '../stewCourtDecor';
+import { BoardAnims } from '../anim/boardReveal';
 
 /** A soft ring of light: clear in the middle (under the tile), bright at the tile's edge, fading out. */
 let glowTex: THREE.Texture | null = null;
@@ -1427,6 +1428,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const lastCoins = new Map<string, number>();
   const lastCrowns = new Map<string, number>();
   const fx = new Fx(scene);
+  // animation overhaul: per-space landing shows, coins that rain in and spill out, flinches and cheers
+  const anims = new BoardAnims(scene, fx);
   const weather = buildWeather(scene, def, fx);
   const kick = (nodeId: string, v: number) => {
     const sp = springs.get(nodeId);
@@ -1669,6 +1672,11 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         const n = def.nodes[e.node];
         if (!n) continue;
         const at = new THREE.Vector3(n.x, n.y + 1.4, n.z);
+        if (e.id) {
+          const who = models.get(e.id);
+          if (['hit', 'spikes', 'arrow', 'ko', 'meteor', 'boom', 'cannon', 'bomb', 'slash', 'pine', 'boulder', 'vent', 'laser'].includes(e.kind)) who?.flinch(e.kind === 'ko' || e.kind === 'bomb' ? 1.4 : 1);
+          else if (['heal', 'crown', 'claim', 'crate', 'item', 'dig'].includes(e.kind)) who?.celebrate();
+        }
         if (weather.onFx(e.kind, at, b, e.amount)) continue;
         switch (e.kind) {
           case 'hit':
@@ -1743,6 +1751,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         }
         lastNode.set(id, pl.node);
         const pc = lastCoins.get(id);
+        if (pc !== undefined && pl.keys !== pc) anims.coins(models.get(id)?.group.position ?? at, pl.keys - pc, top + TILE_H);
         if (pc !== undefined && pl.keys > pc) fx.sparkle(at.clone().setY(top + 1.6), '#ffd23f', 6 + Math.min(14, pl.keys - pc));
         if (pc !== undefined && pl.keys < pc) fx.emit(at.clone().setY(top + 1.4), { tex: 'puff', color: '#ff7a7a', n: 6, speed: [1, 2], up: 1, life: [0.3, 0.5], size: [0.4, 0.8] });
         lastCoins.set(id, pl.keys);
@@ -1767,6 +1776,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       }
 
       fx.update(dt);
+      anims.update(dt);
       for (const [id, m] of models) {
         if (!b.players[id]) continue;
         const target = spotFor(b, id);
@@ -1957,6 +1967,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
           const n = def.nodes[b.players[cur]?.node];
           if (n) {
             fx.sparkle(new THREE.Vector3(n.x, n.y + 1.2, n.z), SPACE_COLORS[n.type] ?? '#ffffff', 16);
+            anims.land(n.type, new THREE.Vector3(n.x, n.y + TILE_H, n.z), SPACE_COLORS[n.type] ?? '#ffffff', models.get(cur), models.get(cur)?.group.position);
             waveT = 0;
             wave.position.set(n.x, n.y + 0.4, n.z);
             (wave.material as THREE.MeshBasicMaterial).color.set(SPACE_COLORS[n.type] ?? '#ffffff');

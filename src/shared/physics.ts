@@ -1,26 +1,26 @@
 /**
  * Shared "party feel" movement, in arena pixels and seconds.
  *
- * What makes party-game movement feel good, and what we copy:
- * - Snappy start, soft stop: full speed in ~0.12 s, but a little glide when you let go (~0.2 s).
- * - Turning around is quick (extra decel when reversing), so dodging feels responsive.
- * - Floaty jumps: a strong instant kick up, low gravity near the top of the arc (hang time),
- *   slightly heavier on the way down, and a small bounce on landing.
- * - Bumps are springy: players bounce off each other with extra pop instead of stopping dead.
+ * Tuned to feel like the Mario Party minigames (2026-11-12 animation/physics pass, Michael's reference):
+ * - Tight, responsive running: full speed in well under a tenth of a second and a short, crisp stop
+ *   (one or two frames of slide, not a glide), with an even faster turnaround so dodges snap.
+ * - Short, punchy jumps: a quick rise, a brief hang at the top, then a heavier fall, about 0.6 s in the
+ *   air in all. Landings stick (only a tiny hop on a hard landing); the squash is done by the animation.
+ * - Bumps knock you back clearly but don't ping you across the arena.
  * - Every impact is shown with squash and stretch (done in the 3D views).
  */
 export const FEEL = {
-  accel: 2600,
-  decel: 1500,
-  turnDecel: 3800,
-  airControl: 0.65,
-  gravity: 2300,
+  accel: 4200,
+  decel: 3400,
+  turnDecel: 6200,
+  airControl: 0.8,
+  gravity: 2900,
   apexBand: 160, // |vz| below this counts as "near the top"
-  apexGravity: 0.45, // gravity multiplier near the top: hang time
-  fallGravity: 1.15,
-  jumpSpeed: 760, // ~ 100 px high with ~0.45 s to the top
-  landBounce: 0.32, // fraction of fall speed kept as a little hop
-  minBounce: 220, // only bounce when landing faster than this
+  apexGravity: 0.6, // gravity multiplier near the top: a brief hang
+  fallGravity: 1.35,
+  jumpSpeed: 820, // ~ 120 px high, ~0.32 s to the top, ~0.6 s in the air
+  landBounce: 0.12, // fraction of fall speed kept as a little hop
+  minBounce: 500, // only bounce when landing faster than this
 };
 
 export interface Body {
@@ -84,8 +84,8 @@ export function bump(
   a: { x: number; y: number } & Body,
   b: { x: number; y: number } & Body,
   radius: number,
-  springiness = 2.4, // 2 = perfectly elastic, above 2 = extra boing
-  pop = 0.35,
+  springiness = 2.2, // 2 = perfectly elastic, above 2 = extra knock
+  pop = 0.28,
 ): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;

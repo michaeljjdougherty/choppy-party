@@ -12,6 +12,8 @@ import { CHARACTERS } from '../../shared/players';
 const MODEL_SUFFIX: string = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_MODEL_SUFFIX ?? '';
 
 export const PROPS = [
+  // board residents (Kenney mini characters, animated)
+  'chars/character-male-b', 'chars/character-male-e', 'chars/character-female-a', 'chars/character-female-c', 'chars/character-knight', 'chars/character-robot', 'chars/character-zombie',
   // pirate kit
   'pirate/palm-detailed-straight', 'pirate/palm-detailed-bend', 'pirate/palm-bend', 'pirate/ship-pirate-large', 'pirate/ship-pirate-medium',
   'pirate/ship-small', 'pirate/ship-wreck', 'pirate/chest', 'pirate/barrel', 'pirate/crate', 'pirate/crate-bottles', 'pirate/bottle-large',

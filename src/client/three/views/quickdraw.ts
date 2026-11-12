@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import type { QuickDrawState } from '../../../shared/games/quickDrawCactus';
 import { ChoppyModel } from '../choppy';
@@ -49,9 +50,16 @@ export function quickDrawView(env: THREE.Texture, state: QuickDrawState, players
   place(scene, 'pirate/rocks-sand-b', 3, 0, -9, { s: 1.4, ry: 2 });
   place(scene, 'forest/fence', -13, 0, -4, { s: 2.2, ry: 0.2 });
   place(scene, 'forest/fence', 13, 0, -3.5, { s: 2.2, ry: -0.2 });
-  const sunBall = new THREE.Mesh(new THREE.SphereGeometry(5, 32, 16), new THREE.MeshBasicMaterial({ color: '#fff1c4', fog: false }));
+  // a blazing desert sun: a white-hot disc inside a wide heat glow (not a grey ball)
+  const sunBall = new THREE.Mesh(new THREE.SphereGeometry(5, 32, 16), new THREE.MeshBasicMaterial({ color: '#fffbe8', fog: false, toneMapped: false }));
   sunBall.position.set(22, 18, -70);
   scene.add(sunBall);
+  const sunGlow = glowSprite('#ffd27a', 34, 0.9);
+  sunGlow.position.copy(sunBall.position).add(new THREE.Vector3(0, 0, 2));
+  scene.add(sunGlow);
+  const sunHaze = glowSprite('#ff9a4a', 90, 0.35);
+  sunHaze.position.copy(sunBall.position).add(new THREE.Vector3(0, 0, -2));
+  scene.add(sunHaze);
 
   // the cactus
   const green = toy('#3fae55', 0.45);

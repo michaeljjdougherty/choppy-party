@@ -1,3 +1,4 @@
+import { buildResidents } from '../life/residents';
 import { buildSetPieces } from '../life/setPieces';
 import { buzzPlayer } from '../../rumble';
 import { STORES } from '../../../shared/board/items';
@@ -1439,6 +1440,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const anims = new BoardAnims(scene, fx);
   const weather = buildWeather(scene, def, fx);
   const pieces = buildSetPieces(scene, def, fx, gy);
+  const residents = buildResidents(scene, def, gy);
   const kick = (nodeId: string, v: number) => {
     const sp = springs.get(nodeId);
     if (sp) sp.v -= v;
@@ -1610,6 +1612,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       crownPool.forEach((c) => (c.visible = false));
       weather.update(b, t, dt);
       pieces.update(b, t, dt);
+      residents.update(b, t, dt);
       // sandblind players can't see the chests on their own turn
       const blind = weather.chestsHidden(b, currentPlayer(b));
       const quiet = b.sub === 'tour' || b.sub === 'orderRoll' || b.sub === 'orderShow' || b.sub === 'done';

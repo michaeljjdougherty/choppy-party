@@ -17,9 +17,11 @@ export const STEW_GAMES = ['rope-pull', 'crate-grab', 'cannon-fort', 'stew-relay
 const AUTO_ROLL = 8; // seconds before the game rolls for an idle player
 const AUTO_CHOICE = 7;
 const BANNER = 2;
+/** The pause on a space before it pays out (tests turn it off to check landings in one step). */
+export const timing = { settle: 0.9 };
 /** The die spins this long before the number shows, then the number stays up for ROLL_SHOW. */
 export const ROLL_SPIN = 1.3;
-export const ROLL_SHOW = 1.7;
+export const ROLL_SHOW = 2.0;
 /** How long a single die stays up before the next one can be rolled. */
 export const DIE_SHOW = 0.9;
 /** Extra beat on the total when it's doubles. */
@@ -39,6 +41,7 @@ function finishRoll(s: BoardState, def: BoardDef, me: BoardPlayer): void {
   s.doubles = s.rolls.length >= 2 && new Set(s.rolls).size < s.rolls.length;
   if (s.doubles) {
     me.keys += DOUBLES_KEYS;
+    fx(s, 'keys', me.node, Object.keys(s.players).find((k) => s.players[k] === me), DOUBLES_KEYS);
     me.stats.doubles = (me.stats.doubles ?? 0) + 1;
   }
   s.roll = Math.max(1, sum + me.rollBonus);
@@ -453,7 +456,7 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         }
         break;
       }
-      if (s.t > (s.cur === 0 ? 3 : 2.1)) set(s, 'roll');
+      if (s.t > (s.cur === 0 ? 3.6 : 2.8)) set(s, 'roll');
       break;
 
     case 'roll': {
@@ -519,8 +522,11 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
         break;
       }
       if (s.stepsLeft <= 0 || me.ko) {
-        set(s, 'land');
-        if (!me.ko) onLand(s, def, id);
+        // stop, a beat of suspense, then the space does its thing
+        if (me.ko || timing.settle <= 0) {
+          set(s, 'land');
+          if (!me.ko) onLand(s, def, id);
+        } else set(s, 'settle');
         break;
       }
       const ex = exits(def, s, me.node);
@@ -615,8 +621,16 @@ export function stepBoard(s: BoardState, inputs: Inputs, dt: number): void {
       }
       break;
 
+    case 'settle':
+      if (s.t > timing.settle) {
+        set(s, 'land');
+        onLand(s, def, id);
+      }
+      break;
+
     case 'land':
-      if (s.t > BANNER + 0.6) endTurn(s, def);
+      // long enough to watch the reward land (coins fly into your total)
+      if (s.t > BANNER + 1.5) endTurn(s, def);
       break;
   }
 }

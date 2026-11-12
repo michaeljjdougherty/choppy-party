@@ -1899,16 +1899,25 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         cineSub = b.sub;
         cineCur = cur;
         cineT = 0;
-        if (b.sub === 'land') {
-          // the landing lands: a shockwave in the space's colour, a puff of dust and a thump
+        if (b.sub === 'settle') {
+          // the stop: a thump and a puff of dust, then a beat of suspense while the space charges up
           const n = def.nodes[b.players[cur]?.node];
           if (n) {
+            fx.dust(new THREE.Vector3(n.x, n.y + 0.3, n.z), 0.8);
+            kick(b.players[cur].node, 4);
+            sfx.land();
+          }
+        }
+        if (b.sub === 'land') {
+          // the reveal: a shockwave in the space's colour and a pop of sparkles
+          const n = def.nodes[b.players[cur]?.node];
+          if (n) {
+            fx.sparkle(new THREE.Vector3(n.x, n.y + 1.2, n.z), SPACE_COLORS[n.type] ?? '#ffffff', 16);
             waveT = 0;
             wave.position.set(n.x, n.y + 0.4, n.z);
             (wave.material as THREE.MeshBasicMaterial).color.set(SPACE_COLORS[n.type] ?? '#ffffff');
-            fx.dust(new THREE.Vector3(n.x, n.y + 0.3, n.z), 1.1);
-            shake(0.22);
-            sfx.land();
+            shake(0.18);
+            sfx.gem();
             postPulse('impact', 0.5);
           }
         }
@@ -1921,7 +1930,7 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         wave.scale.setScalar(0.6 + k * 2.6);
         (wave.material as THREE.MeshBasicMaterial).opacity = k >= 1 ? 0 : 0.85 * (1 - k);
       }
-      const lit = !b.tour && ['turnIntro', 'roll', 'rolling', 'rolled', 'land', 'prompt', 'branch', 'itemSpin', 'gamble', 'chunk'].includes(b.sub);
+      const lit = !b.tour && ['turnIntro', 'roll', 'rolling', 'rolled', 'settle', 'land', 'prompt', 'branch', 'itemSpin', 'gamble', 'chunk'].includes(b.sub);
       const sp = pos.get(cur);
       if (sp) {
         const want = lit ? (b.sub === 'turnIntro' ? 90 * Math.min(1, cineT / 0.35) : 45) : 0;
@@ -2008,11 +2017,12 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         swing = (1 - e) * 0.7;
       } else if (b.sub === 'rolled' && b.rolls.length >= b.diceN && b.rolls.length > 0) {
         zoom = 1 - 0.16 * Math.exp(-cineT * 3) * Math.min(1, cineT / 0.08);
-      } else if (b.sub === 'land') zoom = 1 - 0.22 * Math.min(1, cineT / 0.25) * Math.max(0, 1 - Math.max(0, cineT - 0.9) / 0.6);
+      } else if (b.sub === 'settle') zoom = 1 - 0.22 * Math.min(1, cineT / 0.8);
+      else if (b.sub === 'land') zoom = 1 - 0.22 * Math.min(1, cineT / 0.25) * Math.max(0, 1 - Math.max(0, cineT - 0.9) / 0.6);
       const off = new THREE.Vector3(Math.sin(swing) * 13 * zoom, 14.5 * zoom, Math.cos(swing) * 13 * zoom);
       let goalPos = wantOverview ? overview : new THREE.Vector3(cp.x + off.x, cp.y + off.y, cp.z + off.z);
       let goalLook = wantOverview ? new THREE.Vector3(0, 0, midZ + 1) : new THREE.Vector3(cp.x, cp.y + 0.6, cp.z);
-      let follow = !b.tour && b.sub === 'turnIntro' ? 3.2 : b.sub === 'rolled' || b.sub === 'land' ? 5 : 2.2;
+      let follow = !b.tour && b.sub === 'turnIntro' ? 3.2 : b.sub === 'rolled' || b.sub === 'land' || b.sub === 'settle' ? 5 : 2.2;
       // board tour: fly to the feature Brian is talking about and light it up
       tourLights.forEach((l) => (l.visible = false));
       if (step?.node) {

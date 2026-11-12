@@ -1,3 +1,4 @@
+import { coinSlots, shownCoins } from './coinFly';
 import { A, B, STICK, X } from './prompts';
 import { slam, sunburst, vignette } from './showtime';
 import { sfx } from './sfx';
@@ -151,8 +152,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
   } else if (b.sub === 'orderRoll' || b.sub === 'orderShow') {
     drawOrderRoll(ctx, s, t);
   } else if (b.sub === 'turnIntro') {
-    turnSweep(ctx, me?.color ?? '#ffd23f', b.t);
-    startBanner(ctx, `${name} start turn!`, b.t);
+    turnCard(ctx, name, me?.color ?? '#ffd23f', b.t, b.cur === 0 ? 3.6 : 2.8);
     if (b.cur === 0) text(ctx, `Turn ${b.turn}`, 640, 168, 30, { color: '#ffffff' });
     if (b.cur === 0 && b.wonFirst.includes(cur)) text(ctx, 'Turn order follows the last minigame\'s finish!', 640, 204, 22, { color: '#ffd23f' });
   } else if (b.sub === 'roll') {
@@ -475,7 +475,8 @@ function drawStandings(ctx: CanvasRenderingContext2D, s: PartyState, cur: string
     crownIcon(ctx, 16, ly, 0.75);
     popText(ctx, `crowns:${id}`, bp.crowns, 30, ly + 1, big ? 17 : 14, { align: 'left', color: '#ffd23f' });
     keyIcon(ctx, 62, ly);
-    popText(ctx, `keys:${id}`, bp.keys, 76, ly + 1, big ? 17 : 14, { align: 'left', color: '#ffffff' });
+    coinSlots.set(id, { x: 62, y: ly });
+    popText(ctx, `keys:${id}`, shownCoins(id, bp.keys), 76, ly + 1, big ? 17 : 14, { align: 'left', color: '#ffffff' });
     const hx = 120, hw = W - hx - 8, hh = Math.min(20, rowH * 0.32);
     ctx.fillStyle = 'rgba(255,255,255,0.18)';
     ctx.fillRect(hx, ly - hh / 2, hw, hh);
@@ -573,64 +574,72 @@ function bagHint(ctx: CanvasRenderingContext2D, count: number, canOpen: boolean)
   text(ctx, label, 640, 688, 18, { color: count ? '#7dff6a' : '#d8d2ee', weight: 800 });
 }
 
-/** The big "<name> start turn!" banner that slams in at the top of each turn. */
-/** A new turn: the edges darken and a band in the player's colour sweeps across behind the banner. */
-function turnSweep(ctx: CanvasRenderingContext2D, color: string, age: number): void {
-  const fade = Math.min(1, age / 0.2) * Math.max(0, Math.min(1, (2.1 - age) / 0.4));
-  vignette(ctx, 0.55 * fade);
+/**
+ * The turn card: the screen dims, a band in the player's colour sweeps across the middle, their name slams in
+ * huge and flashes, with IT'S YOUR TURN! under it; then it all slides up and away while the camera arrives.
+ */
+function turnCard(ctx: CanvasRenderingContext2D, name: string, color: string, age: number, len: number): void {
+  const out = Math.max(0, Math.min(1, (age - (len - 0.75)) / 0.55)); // 0 → 1 as it leaves
+  const fade = Math.min(1, age / 0.2) * (1 - out);
+  vignette(ctx, 0.6 * fade);
+  const y = 330 - out * out * 260;
   const k = Math.min(1, age / 0.35);
   const w = 1500 * (1 - Math.pow(1 - k, 3));
   ctx.save();
-  ctx.globalAlpha = 0.85 * fade;
-  ctx.translate(640, 112);
-  ctx.transform(1, 0, -0.35, 1, 0, 0);
+  ctx.globalAlpha = 0.88 * fade;
+  ctx.translate(640, y);
+  ctx.transform(1, 0, -0.3, 1, 0, 0);
   ctx.fillStyle = color;
-  ctx.fillRect(-w / 2, -46, w, 92);
+  ctx.fillRect(-w / 2, -92, w, 184);
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.fillRect(-w / 2, -46, w, 8);
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.fillRect(-w / 2, 38, w, 8);
-  // a glint that runs along the band
+  ctx.fillRect(-w / 2, -92, w, 10);
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(-w / 2, 82, w, 10);
   const gx = -750 + ((age * 1400) % 1800);
-  const g = ctx.createLinearGradient(gx - 80, 0, gx + 80, 0);
+  const g = ctx.createLinearGradient(gx - 90, 0, gx + 90, 0);
   g.addColorStop(0, 'rgba(255,255,255,0)');
-  g.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.5)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
-  ctx.fillRect(Math.max(-w / 2, gx - 80), -46, Math.min(160, w), 92);
+  ctx.fillRect(Math.max(-w / 2, gx - 90), -92, Math.min(180, w), 184);
   ctx.restore();
-}
-
-function startBanner(ctx: CanvasRenderingContext2D, msg: string, age: number): void {
-  const k = Math.min(1, age / 0.25);
-  const s = k < 1 ? 1.6 - 0.6 * k : 1 + Math.sin(Math.min(1, (age - 0.25) / 0.3) * Math.PI) * 0.06;
+  // the name: slams in big, then flashes white a few times
+  const nk = Math.min(1, Math.max(0, age - 0.12) / 0.22);
+  if (nk <= 0 || fade <= 0) return;
+  const pop = nk < 1 ? 2.1 - 1.1 * nk : 1 + Math.sin(Math.min(1, (age - 0.34) / 0.3) * Math.PI) * 0.08;
+  const flash = age > 0.34 && age < 1.5 && Math.floor((age - 0.34) / 0.14) % 2 === 0;
   ctx.save();
-  ctx.translate(640, 110);
+  ctx.globalAlpha = fade * nk;
+  ctx.translate(640, y - 18);
   ctx.transform(1, 0, -0.12, 1, 0, 0);
-  ctx.scale(s, s);
-  ctx.globalAlpha = k;
-  ctx.font = `56px 'Kenney Future Narrow', system-ui, sans-serif`;
-  const label = msg.toUpperCase();
-  let size = 56;
-  while (size > 30 && ctx.measureText(label).width > 900) {
-    size -= 2;
+  ctx.scale(pop, pop);
+  const label = name.toUpperCase();
+  let size = 104;
+  ctx.font = `${size}px 'Kenney Future Narrow', system-ui, sans-serif`;
+  while (size > 40 && ctx.measureText(label).width > 1000) {
+    size -= 4;
     ctx.font = `${size}px 'Kenney Future Narrow', system-ui, sans-serif`;
   }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
-  ctx.lineWidth = 12;
-  ctx.strokeStyle = '#123d12';
-  ctx.strokeText(label, 0, 4);
-  ctx.lineWidth = 8;
+  ctx.lineWidth = 16;
+  ctx.strokeStyle = '#1a0f2e';
+  ctx.strokeText(label, 0, 5);
+  ctx.lineWidth = 10;
   ctx.strokeText(label, 0, 0);
-  const g = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
-  g.addColorStop(0, '#c8ff7a');
-  g.addColorStop(1, '#3fd94a');
-  ctx.fillStyle = g;
+  ctx.fillStyle = flash ? '#ffffff' : '#ffe14d';
   ctx.fillText(label, 0, 0);
   ctx.restore();
+  const sk = Math.min(1, Math.max(0, age - 0.45) / 0.25);
+  if (sk > 0) {
+    ctx.save();
+    ctx.globalAlpha = fade * sk;
+    text(ctx, "IT'S YOUR TURN!", 640, y + 58 + (1 - sk) * 14, 34, { color: '#ffffff' });
+    ctx.restore();
+  }
 }
+
 
 /** A one-line instruction in a dark pill, sized to fit between the standings and the top-right panel. */
 function promptPill(ctx: CanvasRenderingContext2D, msg: string, y: number): void {

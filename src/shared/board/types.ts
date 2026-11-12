@@ -234,6 +234,7 @@ export type BoardSub =
   | 'move'
   | 'branch'
   | 'prompt'
+  | 'settle' // just stopped on a space: a beat of suspense before it does its thing
   | 'land'
   | 'wheel'
   | 'itemSpin' // an Item Crate spins a reel of items before giving one
@@ -329,4 +330,4 @@ export interface BoardState {
 export const WISP_PRICE = 10;
 export const TRAIN_PRICE = 5;
 export const COUNTER_START = 8;
-export const HOP_TIME = 0.42;
+export const HOP_TIME = 0.5;

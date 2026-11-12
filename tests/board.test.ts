@@ -233,3 +233,33 @@ describe('item crate reel', () => {
     expect(s.players[me].items).toEqual([pick]);
   });
 });
+
+describe('landing pause', () => {
+  it('stops on a space for a beat before it pays out', async () => {
+    const { timing } = await import('../src/shared/board/engine');
+    timing.settle = 0.9;
+    try {
+      const s = createBoard('lantern-hollow', ['a', 'b'], 5, 3);
+      const def = BOARDS.find((d) => d.id === s.boardId)!;
+      const coin = Object.values(def.nodes).find((n) => n.type === 'key')!;
+      const me = s.order[0];
+      s.cur = 0;
+      s.players[me].node = coin.id;
+      s.stepsLeft = 0;
+      s.hop = null;
+      s.sub = 'move';
+      s.t = 0;
+      const before = s.players[me].keys;
+      const none: Inputs = { a: { ...NO_INPUT }, b: { ...NO_INPUT } };
+      stepBoard(s, none, DT);
+      expect(s.sub).toBe('settle');
+      for (let t = 0; t < 0.6; t += DT) stepBoard(s, none, DT);
+      expect(s.players[me].keys).toBe(before);
+      for (let i = 0; i < 200 && (s.sub as string) === 'settle'; i++) stepBoard(s, none, DT);
+      expect(s.sub).toBe('land');
+      expect(s.players[me].keys).toBeGreaterThan(before);
+    } finally {
+      timing.settle = 0;
+    }
+  });
+});

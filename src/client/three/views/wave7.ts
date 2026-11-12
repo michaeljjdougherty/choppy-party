@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { flame, onTop } from '../look/fxKit';
+import { snowMaterial } from '../look/snow';
 import type { PlayerInfo } from '../../../shared/types';
 import { GAP_LEN, TRACK, TURN, segAt, type CartState } from '../../../shared/games/mineCart';
 import { ROW, ROWS, P_H, type TideState } from '../../../shared/games/risingTide';
@@ -382,7 +383,7 @@ export function sledView(env: THREE.Texture, state: SledState, players: PlayerIn
   const camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 240);
   const W = state.w * PX;
   const L = (COURSE + 1600) * PX;
-  const snow = new THREE.MeshStandardMaterial({ color: '#f4f8ff', roughness: 0.85 });
+  const snow = snowMaterial((W + 60) / 9, (L + 60) / 9);
   const slope = mesh(new THREE.PlaneGeometry(W + 60, L + 60), snow, { cast: false, receive: true });
   slope.rotation.x = -Math.PI / 2;
   slope.position.set(0, 0, -L / 2 + 10);

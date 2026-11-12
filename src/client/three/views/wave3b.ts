@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { snowMaterial } from '../look/snow';
 import type { PlayerInfo } from '../../../shared/types';
 import { BEAM_HALF, BEAM_LEN, CRYPT_Y, KEEPER, LX0, LX1, LY0, LY1, STONES, type LanternState } from '../../../shared/games/lanternHunt';
 import { STONE_COLORS, lit, type MemoryState } from '../../../shared/games/hauntedMemory';
@@ -243,7 +244,7 @@ export function snowView(env: THREE.Texture, state: SnowState, players: PlayerIn
   const fd = (SY1 - SY0) * PX;
   const cx = wx((SX0 + SX1) / 2);
   const cz = wz((SY0 + SY1) / 2);
-  const snow = mesh(new THREE.CircleGeometry(90, 48), toy('#f4f8ff', 0.9), { cast: false, receive: true });
+  const snow = mesh(new THREE.CircleGeometry(90, 48), snowMaterial(30), { cast: false, receive: true });
   snow.rotation.x = -Math.PI / 2;
   scene.add(snow);
   const square = mesh(new THREE.PlaneGeometry(fw, fd), new THREE.MeshStandardMaterial({ map: texture('floor_stone_pattern_small', fw / 2, fd / 2), color: '#dfe8ff', roughness: 0.8 }), {

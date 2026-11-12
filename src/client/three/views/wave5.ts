@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { flame, glowSprite, groundFog, lampGlow, onTop } from '../look/fxKit';
+import { flame, glowSprite, glowTex, groundFog, lampGlow, onTop } from '../look/fxKit';
 import { snowMaterial } from '../look/snow';
 import { moonMaterial } from '../look/moon';
 import type { PlayerInfo } from '../../../shared/types';
@@ -655,6 +655,31 @@ export function seatView(env: THREE.Texture, state: SeatState, players: PlayerIn
   const lamp = new THREE.PointLight('#ffcf8a', 40, 30);
   lamp.position.set(0, 7, wz(400));
   scene.add(lamp);
+  // a mirror ball over the rug: it turns and scatters light specks while the music plays, and
+  // freezes the instant it stops (so you can SEE the music cut, not just hear it)
+  const ball = mesh(new THREE.IcosahedronGeometry(0.75, 2), new THREE.MeshStandardMaterial({ color: '#e8eef8', metalness: 1, roughness: 0.12, flatShading: true, envMapIntensity: 1.6 }), { cast: false });
+  ball.position.set(0, 6.2, wz(400));
+  scene.add(ball);
+  const cord = mesh(new THREE.CylinderGeometry(0.02, 0.02, 4, 4), toy('#222', 0.5), { cast: false });
+  cord.position.set(0, 8.6, wz(400));
+  scene.add(cord);
+  const ballGlow = glowSprite('#ffffff', 2.4, 0.5);
+  ballGlow.position.copy(ball.position);
+  scene.add(ballGlow);
+  const SPECKS = 70;
+  const specks = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(0.32, 0.32).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: glowTex(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+    SPECKS,
+  );
+  const speckAt = Array.from({ length: SPECKS }, (_, i) => [((i * 2.39996) % (Math.PI * 2)), 1.2 + ((i * 7) % 23) * 0.45]);
+  const speckCol = ['#ffffff', '#ffd6f0', '#d6f0ff', '#fff2c0'].map((c) => new THREE.Color(c));
+  for (let i = 0; i < SPECKS; i++) specks.setColorAt(i, speckCol[i % 4]);
+  specks.position.set(0, 0.05, wz(400));
+  specks.renderOrder = 4;
+  scene.add(specks);
+  let spin = 0;
+  const sm = new THREE.Matrix4();
   const chairs = pool(scene, () => fitProp('furniture/chair', 1.25, 'y'));
   const fx = new Fx(scene);
   const team = crew(scene, players, state.sitters, fx);
@@ -674,6 +699,17 @@ export function seatView(env: THREE.Texture, state: SeatState, players: PlayerIn
         o.rotation.y = yaw(Math.atan2(sy - 400, sx - 640));
       }
       lamp.intensity = s.phase === 'scramble' ? 60 + Math.sin(t * 20) * 15 : 40;
+      if (s.phase === 'hum') spin += dt * 0.6;
+      ball.rotation.y = spin;
+      const glowOn = s.phase === 'hum' ? 1 : 0.35;
+      (specks.material as THREE.MeshBasicMaterial).opacity = glowOn;
+      for (let i = 0; i < SPECKS; i++) {
+        const [a, r] = speckAt[i];
+        const aa = a + spin;
+        sm.makeTranslation(Math.cos(aa) * r * 1.4, 0, Math.sin(aa) * r * 0.9);
+        specks.setMatrixAt(i, sm);
+      }
+      specks.instanceMatrix.needsUpdate = true;
       for (const id of s.outNow)
         if (!wasOut.has(id)) {
           wasOut.add(id);

@@ -1,5 +1,6 @@
 import { AWARD_SPIN, FINISH_T, type PartyState } from '../shared/party';
 import { sfx } from './sfx';
+import { buzzPlayer, rumbleEveryone } from './rumble';
 
 /**
  * Feedback layer: watches the party state from frame to frame and plays sounds, and draws
@@ -139,6 +140,7 @@ export function watch(s: PartyState): void {
     const [stage, , spun, paid] = now.end.split(':');
     const [wStage, , wSpun, wPaid] = was.end.split(':');
     if (stage === 'champ' && wStage !== 'champ') {
+      rumbleEveryone(0.6, 0.9, 600);
       sfx.victory();
       sfx.cheer();
       burst(260);
@@ -186,15 +188,22 @@ export function watch(s: PartyState): void {
     for (const id of Object.keys(now.nodes)) {
       if (was.nodes[id] !== undefined && was.nodes[id] !== now.nodes[id]) sfx.step();
       if ((now.crowns[id] ?? 0) > (was.crowns[id] ?? 0)) {
+        buzzPlayer(id, 'win');
         sfx.bell();
         sfx.fanfare();
         burst(60);
-      } else if ((now.coins[id] ?? 0) > (was.coins[id] ?? 0)) sfx.coin();
-      else if ((now.coins[id] ?? 0) < (was.coins[id] ?? 0)) sfx.lose();
+      } else if ((now.coins[id] ?? 0) > (was.coins[id] ?? 0)) {
+        sfx.coin();
+        buzzPlayer(id, 'coin');
+      } else if ((now.coins[id] ?? 0) < (was.coins[id] ?? 0)) {
+        sfx.lose();
+        buzzPlayer(id, 'bump');
+      }
     }
   }
   for (const id of Object.keys(now.gameCoins)) {
     const gain = now.gameCoins[id] - (was.gameCoins[id] ?? 0);
+    if (gain > 0) buzzPlayer(id, 'coin');
     if (gain >= 5) sfx.gem();
     else if (gain > 0) sfx.coin();
     if (now.stuns[id] && !was.stuns[id]) sfx.boing();
@@ -209,6 +218,7 @@ export function watch(s: PartyState): void {
     else if (k === 'trains') sfx.horn();
     else if (k.startsWith('hurt:') || k.startsWith('scared:')) sfx.boing();
     else if (k.startsWith('out:')) {
+      buzzPlayer(k.slice(4), 'ko');
       sfx.boing();
       sfx.lose();
     } else if (k.startsWith('candles:') || k.startsWith('coins:')) sfx.coin();

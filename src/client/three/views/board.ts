@@ -1,3 +1,4 @@
+import { buzzPlayer } from '../../rumble';
 import { STORES } from '../../../shared/board/items';
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
@@ -1883,6 +1884,8 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         postPulse('impact', 0.5);
         sfx.diceHit();
         sfx.bump();
+        // the punch lands in your hands too; the die that makes doubles hits harder
+        buzzPlayer(cur, b.sub === 'rolled' && b.doubles && b.rolls.length >= b.diceN ? 'ko' : 'hit');
       }
       const landed = b.sub === 'rolled' && b.rolls.length !== wasRolls;
       if (landed && final) {

@@ -45,7 +45,26 @@ export function drawChestMarkers(ctx: CanvasRenderingContext2D, s: PartyState, t
       const dx = x - cx, dy = y - cy;
       const k = Math.min((640 - M) / Math.max(1e-3, Math.abs(dx)), (360 - M) / Math.max(1e-3, Math.abs(dy)));
       // keep clear of the roll prompt at the top and the standings in the corner
-      const ex = Math.max(M + (cy + dy * k < 280 ? 230 : 0), Math.min(1280 - M, cx + dx * k)), ey = Math.max(250, cy + dy * k);
+      let ex = Math.max(M, Math.min(1280 - M, cx + dx * k)), ey = Math.max(M + 30, cy + dy * k);
+      // then nudge it out of the HUD: standings down the left, board info + weather top right, prompt pill top centre
+      const n = b.order.length;
+      const keep = [
+        { x: 0, y: 0, w: 262, h: 10 + Math.min(62, 600 / Math.max(1, n)) * n },
+        { x: 960, y: 0, w: 320, h: 156 + ((def.weather?.length ?? 0) ? 30 + (def.weather?.length ?? 0) * 46 : 0) },
+        { x: 300, y: 0, w: 680, h: 130 },
+      ];
+      for (const r of keep) {
+        const pad = 40;
+        if (ex > r.x - pad && ex < r.x + r.w + pad && ey > r.y - pad && ey < r.y + r.h + pad) {
+          const opts = [
+            { x: ex, y: r.y + r.h + pad },
+            { x: r.x - pad, y: ey },
+            { x: r.x + r.w + pad, y: ey },
+          ].filter((o) => o.x >= M && o.x <= 1280 - M && o.y <= 720 - M);
+          opts.sort((a, c) => Math.hypot(a.x - ex, a.y - ey) - Math.hypot(c.x - ex, c.y - ey));
+          if (opts[0]) ({ x: ex, y: ey } = opts[0]);
+        }
+      }
       ctx.translate(ex, ey);
       ctx.fillStyle = 'rgba(20,10,50,0.8)';
       ctx.beginPath();

@@ -311,9 +311,13 @@ export function bubble(ctx: CanvasRenderingContext2D, line: HostLine, x: number,
 }
 
 /** Brian's head and shoulders in a corner, with his bubble beside him. */
-export function hostCorner(ctx: CanvasRenderingContext2D, line: HostLine, t: number, corner: 'bl' | 'br' | 'tl' | 'tr' = 'bl', w = 420, lift = 0): void {
+export function hostCorner(ctx: CanvasRenderingContext2D, line: HostLine, t: number, corner: 'bl' | 'br' | 'tl' | 'tr' = 'bl', w = 420, lift = 0, linger = Infinity): void {
   if (!line.text) return;
-  const enter = easeOut(line.age / 0.35);
+  // with `linger`, Brian ducks back out of the way that many seconds after he finishes talking
+  const doneAt = line.text.length / 42 + linger;
+  const leave = clamp01((line.age - doneAt) / 0.4);
+  if (leave >= 1) return;
+  const enter = easeOut(line.age / 0.35) * (1 - leave * leave);
   const left = corner === 'bl' || corner === 'tl';
   const top = corner === 'tl' || corner === 'tr';
   const hx = left ? 70 - (1 - enter) * 160 : 1210 + (1 - enter) * 160;

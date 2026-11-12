@@ -1,3 +1,4 @@
+import { setRumbleOwners } from './rumble';
 import { lookAtPointer, stepLook } from './uiDepth';
 import { drawCoinFly } from './coinFly';
 import { drawChestMarkers } from './chestMarker';
@@ -737,6 +738,7 @@ function renderScreens(wallT: number, dt: number) {
   if (s) {
     setCharacters(s.players);
     setOutlined(s.players, session.localIds());
+    setRumbleOwners(s.players, session.localIds(), s.phase !== 'lobby' && s.phase !== 'intro');
   }
   statusEl.textContent = session.status();
   if (!s) {
@@ -836,7 +838,7 @@ function renderScreens(wallT: number, dt: number) {
       drawBoardHud(ctx, s, wallT, mapCam.on);
       drawChestMarkers(ctx, s, wallT, (v) => stage.project(v), mapCam.on);
       drawCoinFly(ctx, s, dt, (v) => stage.project(v));
-      hostCorner(ctx, hostLine, wallT, 'br', 340, 70);
+      hostCorner(ctx, hostLine, wallT, 'br', 340, 70, s.board?.sub === 'tour' ? Infinity : 4);
       // mouse / touch: clickable board menus, path markers and tour buttons
       boardPointer(ctx, s, input, session.localIds(), (v) => stage.project(v), mapCam.on);
       break;
@@ -1034,10 +1036,10 @@ function hostFor(s: PartyState, view: View, t: number, dt: number) {
       const def = getBoard(bd.boardId);
       if (bd.sub === 'tour' && bd.tour) hostLine.say(bd.tour.steps[bd.tour.i]?.text ?? '', bd.tour.i === 0 ? 'proud' : 'pout');
       // (with no tour, an all-CPU game, he just gives the summary)
-      else if (bd.turn === 1 && bd.cur === 0 && bd.sub !== 'move' && s.players.every((p) => p.bot)) hostLine.say(`Welcome to ${def.name}. ${def.gimmick}`);
-      else if (bd.turn === bd.maxTurns - bd.preset.doubleTurns + 1 && bd.cur === 0 && bd.sub !== 'move' && bd.turn > 1)
+      else if (bd.turn === 1 && bd.cur === 0 && s.players.every((p) => p.bot)) hostLine.say(`Welcome to ${def.name}. ${def.gimmick}`);
+      else if (bd.turn === bd.maxTurns - bd.preset.doubleTurns + 1 && bd.cur === 0 && bd.turn > 1)
         hostLine.say('The final turns are upon us. Coin and Heart Spaces now pay double.', 'wow');
-      else if (bd.turn === bd.maxTurns && bd.cur === 0 && bd.sub !== 'move') hostLine.say('The last turn. Make it a good one.', 'smug');
+      else if (bd.turn === bd.maxTurns && bd.cur === 0) hostLine.say('The last turn. Make it a good one.', 'smug');
       else hostLine.say('');
       break;
     }

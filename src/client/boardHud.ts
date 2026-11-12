@@ -165,7 +165,7 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     if (first) {
       const bonus = [mine.dice > 2 && !mine.rollCap ? '3 dice!' : '', mine.rollBonus ? `+${mine.rollBonus}` : '', mine.rollCap ? `snared: 1 die, max ${mine.rollCap}` : '', mine.rollMin ? `High Roller: ${mine.rollMin} to 6` : '', mine.slowRoll ? `Slow Roller: ${A()} stops the die` : ''].filter(Boolean).join('  ');
       text(ctx, bonus || `Doubles pay +${DOUBLES_KEYS} Pit Coin`, 640, 146, 22, { color: '#ffd23f' });
-    } else text(ctx, `${b.rolls.map((r, i) => `Die ${i + 1}: ${fog ? '?' : r}`).join('   ')}`, 640, 146, 22, { color: '#ffd23f' });
+    } else text(ctx, `${b.rolls.map((r, i) => `Die ${i + 1}: ${fog ? '?' : r}`).join('   ')}`, 640, 150, 22, { color: '#ffd23f' });
   } else if (b.sub === 'rolling') {
     promptPill(ctx, `${name} is rolling...`, 104);
   } else if (b.sub === 'rolled') {
@@ -180,19 +180,20 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     slam(ctx, String(big), 640, 190, final ? 170 : 120, b.t, col);
     ctx.restore();
     if (final) {
-      if (fog && b.t > 0.2) text(ctx, 'Hidden in the Fog Marsh!', 640, 290, 26, { color: '#c9d6e8' });
-      else if (b.rolls.length > 1 && b.t > 0.2) text(ctx, b.rolls.join('  +  ') + (b.roll !== b.rolls.reduce((x, y) => x + y, 0) ? '  + bonus' : ''), 640, 290, 26, { color: '#ffffff' });
+      // the sum sits in the top pill, clear of the dice hanging over the player's head
+      if (fog && b.t > 0.2) promptPill(ctx, 'Hidden in the Fog Marsh!', 70);
+      else if (b.rolls.length > 1 && b.t > 0.2) promptPill(ctx, b.rolls.join('  +  ') + (b.roll !== b.rolls.reduce((x, y) => x + y, 0) ? '  + bonus' : ''), 70);
       if (b.doubles && !fog && b.t > 0.35) {
         const p = Math.min(1, (b.t - 0.35) / 0.25);
         ctx.save();
-        ctx.translate(640, 350);
+        ctx.translate(640, 300);
         ctx.rotate(-0.06);
         ctx.scale(0.6 + p * 0.4 + Math.sin(t * 8) * 0.03, 0.6 + p * 0.4 + Math.sin(t * 8) * 0.03);
         text(ctx, `DOUBLES!  +${DOUBLES_KEYS} Pit Coin`, 0, 0, 44, { color: '#7cf3ff' });
         ctx.restore();
       }
-      if (b.t > 0.35) text(ctx, fog ? `${name} moves ? spaces...` : `${name} moves ${b.roll} space${b.roll === 1 ? '' : 's'}!`, 640, b.doubles && !fog ? 404 : 330, 28, { color: me?.color ?? '#fff' });
-    } else if (b.t > 0.25) text(ctx, `Die ${b.rolls.length}: ${big}`, 640, 290, 26, { color: '#ffffff' });
+      if (b.t > 0.35) text(ctx, fog ? `${name} moves ? spaces...` : `${name} moves ${b.roll} space${b.roll === 1 ? '' : 's'}!`, 640, 600, 30, { color: me?.color ?? '#fff' });
+    } else if (b.t > 0.25) promptPill(ctx, `Die ${b.rolls.length}: ${big}`, 70);
   } else if (b.sub === 'branch') {
     promptPill(ctx, `Pick a path: ${STICK()} to aim, ${A()} to go`, 104);
   } else if (b.sub === 'wheel' && b.event?.wheel) {
@@ -244,8 +245,8 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     } else if (pm.kind === 'target') {
       const tp = playerById(s.players, pm.options[pm.sel]);
       const what = pm.purpose === 'duel' ? 'Pick your duel rival' : pm.purpose === 'cannon' ? 'Aim the cannon' : `${ITEMS[pm.item!].name}: pick a target`;
-      box(what, `${STICK()} choose   ${A()} confirm` + (pm.purpose === 'item' ? `   ${B()} back` : ''), 180);
-      text(ctx, tp?.name ?? '', 640, 226, 48, { color: tp?.color ?? '#000', outline: false });
+      box(what, `${STICK()} choose   ${A()} confirm` + (pm.purpose === 'item' ? `   ${B()} back` : ''), 200);
+      text(ctx, tp?.name ?? '', 640, 230, 44, { color: tp?.color ?? '#000', outline: false });
     }
   } else if (b.sub === 'itemSpin' && b.spin) {
     drawItemReel(ctx, b.spin, b.t, t);
@@ -1019,14 +1020,17 @@ export function roundWarningLines(s: PartyState): { text: string; color: string 
 
 function roundWarnings(ctx: CanvasRenderingContext2D, s: PartyState, age: number): void {
   const lines = roundWarningLines(s);
-  if (!lines.length || age < 0.5) return;
-  const a = Math.min(1, (age - 0.5) / 0.3) * Math.max(0, Math.min(1, (3.6 - age) / 0.4));
+  if (!lines.length || age < 1.1) return;
+  const k = Math.min(1, (age - 1.1) / 0.3);
+  const a = k * Math.max(0, Math.min(1, (3.6 - age) / 0.4));
   const h = 40 + lines.length * 32;
-  const y0 = 470;
+  const y0 = 452 + (1 - k) * 16;
+  ctx.font = '800 22px system-ui, sans-serif';
+  const w = Math.min(820, Math.max(420, ...lines.map((l) => ctx.measureText(l.text).width + 60)));
   ctx.save();
   ctx.globalAlpha = a;
   ctx.fillStyle = 'rgba(20,10,50,0.82)';
-  roundRect(ctx, 400, y0, 480, h, 18);
+  roundRect(ctx, 640 - w / 2, y0, w, h, 18);
   ctx.fill();
   ctx.lineWidth = 3;
   ctx.strokeStyle = '#ff9f1c';

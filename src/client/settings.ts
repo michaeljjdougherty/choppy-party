@@ -6,6 +6,8 @@ import { QUALITY_NAMES, brightness, gfx, isCustom, qualityName, setBrightness, s
 import { music } from './soundtrack';
 import { setSfxVolume, sfx, sfxVolume } from './sfx';
 import { setShakeEnabled, shakeEnabled } from './three/fx';
+import { rumbleOn, setRumble } from './rumble';
+import { backOut } from './uiDepth';
 
 /**
  * Settings: a panel over whatever is on screen (opened from the main menu's corner button or the
@@ -13,8 +15,8 @@ import { setShakeEnabled, shakeEnabled } from './three/fx';
  * While it is open it takes every controller, keyboard and touch button (input.grab), so the game
  * underneath hears nothing. Mouse and touch click the controls directly.
  */
-type Row = 'graphics' | 'advanced' | 'music' | 'sfx' | 'aim' | 'shake' | 'fullscreen' | 'dev' | 'done';
-const ROWS: Row[] = ['graphics', 'advanced', 'music', 'sfx', 'aim', 'shake', 'fullscreen', 'dev', 'done'];
+type Row = 'graphics' | 'advanced' | 'music' | 'sfx' | 'aim' | 'shake' | 'rumble' | 'fullscreen' | 'dev' | 'done';
+const ROWS: Row[] = ['graphics', 'advanced', 'music', 'sfx', 'aim', 'shake', 'rumble', 'fullscreen', 'dev', 'done'];
 const LABEL: Record<Row, string> = {
   graphics: 'Graphics',
   advanced: 'Graphics options',
@@ -22,6 +24,7 @@ const LABEL: Record<Row, string> = {
   sfx: 'Sound effects',
   aim: 'Aim sensitivity',
   shake: 'Screen shake',
+  rumble: 'Controller rumble',
   fullscreen: 'Full screen',
   dev: 'Developer mode',
   done: 'Done',
@@ -70,13 +73,13 @@ const GFX_OPTS: GfxOpt[] = [
   { label: 'Grass and clutter', help: 'Grass tufts and small props on the ground.', names: ['Off', 'Low', 'High', 'Ultra'], ...pick('clutter', [0, 0.45, 1, 1.4]) },
   { label: 'Particles', help: 'Dust, sparkles and snow in the air.', names: ['Low', 'Medium', 'High', 'Ultra'], ...pick('particles', [0.4, 0.7, 1, 1.3]) },
 ];
-const G_ROW_Y0 = 56 + 140; // P.y + 140
+const G_ROW_Y0 = 40 + 140; // P.y + 140
 /* rows end at about P.y + 560; Back sits under them */
 const G_ROW_H = 27;
 
-const P = { x: 300, y: 56, w: 680, h: 608 };
+const P = { x: 300, y: 40, w: 680, h: 660 };
 const ROW_Y0 = P.y + 128;
-const ROW_H = 52;
+const ROW_H = 48;
 /** Where a row's value control sits. */
 const CTRL = { x: P.x + 270, w: 370 };
 
@@ -190,6 +193,7 @@ export class Settings {
       n = Math.max(row === 'aim' ? 1 : 0, Math.min(10, n));
       this.setLevel(row, n);
     } else if (row === 'shake') setShakeEnabled(!shakeEnabled());
+    else if (row === 'rumble') setRumble(!rumbleOn());
     else if (row === 'fullscreen') toggleFullscreen();
     else if (row === 'dev') {
       // only a press opens it (not left / right)
@@ -202,9 +206,22 @@ export class Settings {
   /** Draw the panel and handle mouse / touch. Call last, so it sits over everything. */
   draw(ctx: CanvasRenderingContext2D, t: number): void {
     if (!this.open) return;
-    this.bump = Math.max(0, this.bump - 0.08);
+    // the panel springs up out of the screen rather than just appearing
+    const age = (performance.now() - this.openedAt) / 1000;
+    const k = backOut(age / 0.32, 1.6);
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, age / 0.12);
     ctx.fillStyle = 'rgba(14,8,32,0.66)';
     ctx.fillRect(0, 0, 1280, 720);
+    ctx.translate(640, 380 + (1 - k) * 60);
+    ctx.scale(0.86 + 0.14 * k, 0.86 + 0.14 * k);
+    ctx.translate(-640, -380);
+    this.drawPanel(ctx, t);
+    ctx.restore();
+  }
+
+  private drawPanel(ctx: CanvasRenderingContext2D, t: number): void {
+    this.bump = Math.max(0, this.bump - 0.08);
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     roundRect(ctx, P.x + 4, P.y + 10, P.w, P.h, 30);
     ctx.fill();
@@ -225,13 +242,13 @@ export class Settings {
       const y = ROW_Y0 + i * ROW_H;
       const on = i === this.sel;
       // hovering a row with the mouse moves the highlight there
-      if (!fresh && inside(ptr, P.x + 30, y - 24, P.w - 60, 48) && promptKind() === 'mouse' && !isTouch() && this.sel !== i) this.sel = i;
+      if (!fresh && inside(ptr, P.x + 30, y - 22, P.w - 60, 44) && promptKind() === 'mouse' && !isTouch() && this.sel !== i) this.sel = i;
       if (row === 'done') {
         if (button(ctx, 'Done', P.x + P.w / 2 - 110, y - 22, 220, 50, { color: '#21c45a', size: 22, selected: on, sound: 'none' })) this.close();
         return;
       }
       ctx.fillStyle = on ? '#fff3b8' : '#f3f0ff';
-      roundRect(ctx, P.x + 30, y - 24, P.w - 60, 48, 16);
+      roundRect(ctx, P.x + 30, y - 22, P.w - 60, 44, 16);
       ctx.fill();
       if (on) {
         ctx.strokeStyle = '#ffd23f';
@@ -249,7 +266,7 @@ export class Settings {
       }
       else if (row === 'graphics') this.segments(ctx, y);
       else if (row === 'music' || row === 'sfx' || row === 'aim') this.meter(ctx, row, y);
-      else this.toggle(ctx, row as 'shake' | 'fullscreen', y);
+      else this.toggle(ctx, row as 'shake' | 'rumble' | 'fullscreen', y);
     });
 
     const k = promptKind();
@@ -379,8 +396,8 @@ export class Settings {
     text(ctx, row === 'aim' ? `${(v / 4).toFixed(2).replace(/0$/, '')}x` : v === 0 ? 'Off' : `${v * 10}%`, x0 + span + 26, y + 1, 16, { color: '#2a1b5e', outline: false, weight: 800 });
   }
 
-  private toggle(ctx: CanvasRenderingContext2D, row: 'shake' | 'fullscreen', y: number): void {
-    const on = row === 'shake' ? shakeEnabled() : isFullscreen();
+  private toggle(ctx: CanvasRenderingContext2D, row: 'shake' | 'rumble' | 'fullscreen', y: number): void {
+    const on = row === 'shake' ? shakeEnabled() : row === 'rumble' ? rumbleOn() : isFullscreen();
     const w = 150;
     const x = CTRL.x + CTRL.w - w;
     ctx.fillStyle = '#e2ddf5';

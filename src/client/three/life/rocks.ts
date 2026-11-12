@@ -84,7 +84,7 @@ export function craterGeometry(radius: number, height: number, seed = 1): THREE.
     const k = i / N; // 0 centre -> 1 outer edge
     const r = k * radius;
     // bowl dips below ground, rim peaks at ~70%, then falls away outside
-    const y = k < 0.7 ? -height * 0.35 * Math.cos((k / 0.7) * Math.PI * 0.5) + height * Math.pow(k / 0.7, 3) : height * Math.pow(1 - (k - 0.7) / 0.3, 1.6);
+    const y = k < 0.7 ? 0.015 + height * Math.pow(k / 0.7, 3) : height * Math.pow(1 - (k - 0.7) / 0.3, 1.6);
     pts.push(new THREE.Vector2(r, y));
   }
   const g = new THREE.LatheGeometry(pts, 64);

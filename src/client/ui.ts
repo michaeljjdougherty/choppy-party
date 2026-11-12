@@ -1,3 +1,4 @@
+import { Spring, card3d, sheen } from './uiDepth';
 import { roundRect, text } from '../shared/draw';
 
 /**
@@ -78,12 +79,19 @@ export interface ButtonOpts {
   sound?: 'select' | 'back' | 'none';
 }
 
-/** Chunky toy-style pill button. Returns true when clicked. */
+const feel = new Map<string, { lift: Spring; tx: Spring; press: Spring; seen: number }>();
+function shadeUi(hex: string, amt: number): string {
+  if (!hex.startsWith('#') || hex.length !== 7) return 'rgba(0,0,0,0.35)';
+  const n = parseInt(hex.slice(1), 16);
+  const f = (v: number) => Math.max(0, Math.min(255, v + 255 * amt)) | 0;
+  return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+
+/** Chunky toy-style pill button with depth. Returns true when clicked. */
 export function button(ctx: CanvasRenderingContext2D, label: string, x: number, y: number, w: number, h: number, o: ButtonOpts = {}): boolean {
   const over = !o.disabled && inside(pointer, x, y, w, h);
   const hit = !o.disabled && clicked(x, y, w, h);
   const color = o.color ?? '#2f8cff';
-  const lift = over ? -3 : 0;
   if (over) {
     const key = `${label}@${x},${y}`;
     hoverSeen = true;
@@ -93,22 +101,48 @@ export function button(ctx: CanvasRenderingContext2D, label: string, x: number, 
     }
   }
   if (hit && o.sound !== 'none') uiSound.press(o.sound ?? (/back|close|cancel|resume|leave|remove/i.test(label) ? 'back' : 'select'));
+  // each button keeps its own springs, so it rises toward the pointer, leans after it and squashes when hit
+  const key = `${label}@${x | 0},${y | 0}`;
+  let st = feel.get(key);
+  const now = performance.now() / 1000;
+  if (!st) feel.set(key, (st = { lift: new Spring(0, 300, 18), tx: new Spring(0, 160, 16), press: new Spring(0, 600, 22), seen: now }));
+  const dt = Math.min(0.05, Math.max(0, now - st.seen));
+  st.seen = now;
+  st.lift.target = over || o.selected ? 1 : 0;
+  st.tx.target = over && pointer ? ((pointer.x - (x + w / 2)) / (w / 2)) * 0.6 : 0;
+  if (hit) st.press.kick(-10);
+  st.lift.step(dt);
+  st.tx.step(dt);
+  st.press.step(dt);
+  if (feel.size > 300) for (const [k, v] of feel) if (now - v.seen > 2) feel.delete(k);
   ctx.save();
   ctx.globalAlpha = o.disabled ? 0.45 : 1;
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  roundRect(ctx, x + 2, y + 6, w, h, h / 2);
-  ctx.fill();
-  ctx.fillStyle = color;
-  roundRect(ctx, x, y + lift, w, h, h / 2);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
-  roundRect(ctx, x + 8, y + lift + 4, w - 16, h * 0.38, h / 3);
-  ctx.fill();
-  ctx.lineWidth = over || o.selected ? 5 : 3;
-  ctx.strokeStyle = over || o.selected ? '#ffe14d' : 'rgba(255,255,255,0.85)';
-  roundRect(ctx, x, y + lift, w, h, h / 2);
-  ctx.stroke();
-  text(ctx, label, x + w / 2, y + lift + h / 2 + 1, o.size ?? Math.round(h * 0.42), { color: '#fff', weight: 800 });
+  const r = h / 2;
+  const lit = over || o.selected;
+  card3d(
+    ctx,
+    { cx: x + w / 2, cy: y + h / 2, w, h, lift: st.lift.v * 0.5, tiltX: st.tx.v, tiltY: 0, scale: 1 + st.lift.v * 0.03 + st.press.v * 0.012, radius: r, depth: Math.min(7, h * 0.14) },
+    shadeUi(color, -0.3),
+    (pop) => {
+      ctx.fillStyle = color;
+      roundRect(ctx, -w / 2, -h / 2, w, h, r);
+      ctx.fill();
+      ctx.save();
+      roundRect(ctx, -w / 2, -h / 2, w, h, r);
+      ctx.clip();
+      sheen(ctx, w, h, st!.tx.v, 0, lit ? 0.3 : 0.12);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      roundRect(ctx, -w / 2 + 8, -h / 2 + 4, w - 16, h * 0.38, h / 3);
+      ctx.fill();
+      ctx.lineWidth = lit ? 5 : 3;
+      ctx.strokeStyle = lit ? '#ffe14d' : 'rgba(255,255,255,0.85)';
+      roundRect(ctx, -w / 2, -h / 2, w, h, r);
+      ctx.stroke();
+      const q = pop(1);
+      text(ctx, label, q.x, q.y + 1, o.size ?? Math.round(h * 0.42), { color: '#fff', weight: 800 });
+    },
+  );
   ctx.restore();
   return hit;
 }

@@ -1,3 +1,4 @@
+import { lookAtPointer, stepLook } from './uiDepth';
 import { drawCoinFly } from './coinFly';
 import { drawChestMarkers } from './chestMarker';
 import { BOARDS } from '../shared/board/boards';
@@ -510,8 +511,8 @@ function frame(now: number) {
     const before = `${menu.screen}:${menu.sel}`;
     if (joinBox.classList.contains('hidden') && !netDialogOpen() && !splashActive()) act(menu.update(dt));
     const after = `${menu.screen}:${menu.sel}`;
-    if (session) sfx.select();
-    else if (before !== after) {
+    // picks play their own select sound the moment they're pressed (MainMenu.pick)
+    if (!session && before !== after) {
       const [from, to] = [before.split(':')[0], after.split(':')[0]];
       const depth = { title: 0, main: 1, online: 2 } as Record<string, number>;
       if (from === to) sfx.move();
@@ -530,6 +531,12 @@ function frame(now: number) {
 
 function render(wallT: number, dt: number) {
   beginUi();
+  const lp = pointerAt();
+  if (lp && input.kind === 'mouse' && (lp.x !== lastLook.x || lp.y !== lastLook.y)) {
+    lookAtPointer(lp.x, lp.y);
+    lastLook = lp;
+  }
+  stepLook(dt, wallT);
   // developer mode's panel gets the click, not the buttons drawn under it
   const held = devMode.busy ? takeStrayClick() : null;
   renderScreens(wallT, dt);
@@ -542,6 +549,8 @@ function render(wallT: number, dt: number) {
   endUi();
 }
 
+let lastLook = { x: -1, y: -1 };
+
 /** A click that no button used acts like A for the right local player (roll, ready, continue). */
 function mouseFallback() {
   const c = takeStrayClick();
@@ -551,7 +560,7 @@ function mouseFallback() {
     if (joinBox.classList.contains('hidden') && !netDialogOpen()) {
       const before = menu.screen;
       act(menu.click(c.x, c.y));
-      if (session || menu.screen !== before) sfx.select();
+      if (menu.screen !== before) sfx.select();
     }
     return;
   }

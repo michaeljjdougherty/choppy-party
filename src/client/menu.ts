@@ -2,6 +2,8 @@ import type { InputManager } from './input';
 import { roundRect, text } from '../shared/draw';
 import { sunburst } from './showtime';
 import { A, B, STICK, Y, promptKind, tapWord } from './prompts';
+import { Spring, backOut, card3d, lookAt, lookX, lookY, parallax, sheen } from './uiDepth';
+import { sfx } from './sfx';
 
 export type MenuAction = 'boards' | 'mix' | 'free' | 'host' | 'join' | 'netcfg' | 'customize' | 'settings' | 'ost' | null;
 
@@ -37,8 +39,22 @@ export class MainMenu {
   private bump = 0;
   private prev = new Map<string, { a: number; b: number; y: number; opt: number }>();
   private navCd = 0;
+  /** A pick waits a beat so the button can visibly squash before the next screen takes over. */
+  private pending: { act: MenuAction; t: number } | null = null;
+  /** Per-button springs: lift toward the viewer, tilt, press squash. */
+  private cards: { lift: Spring; tx: Spring; ty: Spring; press: Spring }[] = [];
+  /** When the current list appeared (for the staggered fly-in). */
+  private enterT = -1;
+  private shownScreen = '';
+  private clock = 0;
 
   constructor(private input: InputManager) {}
+
+  private pick(act: MenuAction): void {
+    this.pending = { act, t: 0.14 };
+    this.cards[this.sel]?.press.kick(-9);
+    sfx.select();
+  }
 
   private items(): Item[] {
     return this.screen === 'online' ? ONLINE : MAIN;
@@ -46,6 +62,13 @@ export class MainMenu {
 
   /** Returns an action when the player picks something. */
   update(dt: number): MenuAction {
+    if (this.pending) {
+      this.pending.t -= dt;
+      if (this.pending.t > 0) return null;
+      const act = this.pending.act;
+      this.pending = null;
+      return act;
+    }
     this.navCd = Math.max(0, this.navCd - dt);
     this.bump = Math.max(0, this.bump - dt * 4);
     let a = false;
@@ -65,6 +88,8 @@ export class MainMenu {
         if (d.raw.bCount > p.b) b = true;
       }
       if (Math.abs(d.raw.y) > 0.6 && (!p || Math.abs(p.y) <= 0.6 || this.navCd === 0)) dy = Math.sign(d.raw.y);
+      // a pad's right stick (or left, while idle) leans the whole menu a little
+      if (d.key.startsWith('pad') && Math.abs(d.raw.x) > 0.25) lookAt(d.raw.x * 0.6, d.raw.y * 0.4);
       this.prev.set(d.key, { a: d.raw.aCount, b: d.raw.bCount, y: d.raw.y, opt: optN });
     }
     if (opt) return 'settings';
@@ -100,7 +125,8 @@ export class MainMenu {
         this.sel = 3;
         return null;
       }
-      return it.key;
+      this.pick(it.key);
+      return null;
     }
     return null;
   }
@@ -156,7 +182,8 @@ export class MainMenu {
           this.sel = 3;
           return null;
         }
-        return it.key;
+        if (!this.pending) this.pick(it.key);
+        return null;
       }
     }
     // a click on empty space while the main list is up goes back to the title only via Esc/B
@@ -167,95 +194,138 @@ export class MainMenu {
     const h = n > 5 ? 84 : n > 4 ? 96 : n > 3 ? 112 : 120;
     const gap = n > 5 ? 12 : n > 4 ? 14 : 18;
     const total = n * h + (n - 1) * gap;
-    return { x: 700, y: 360 - total / 2 + i * (h + gap) + 30, w: 520, h };
+    return { x: 684, y: 360 - total / 2 + i * (h + gap) + 30, w: 520, h };
   }
 
   draw(ctx: CanvasRenderingContext2D, t: number): void {
+    const dt = this.clock ? Math.min(0.05, Math.max(0, t - this.clock)) : 0;
+    this.clock = t;
+    if (this.shownScreen !== this.screen) {
+      this.shownScreen = this.screen;
+      this.enterT = t;
+      this.cards = [];
+    }
     if (this.screen === 'title') {
-      sunburst(ctx, 640, 255, 560, t, '#ffd23f', 0.32, 20);
-      sparkles(ctx, 640, 255, 300, t);
-      logo(ctx, 640, 255, 1.45, t);
-      const pulse = 1 + Math.sin(t * 5) * 0.04;
-      ctx.save();
-      ctx.translate(640, 620);
-      ctx.scale(pulse, pulse);
-      ctx.fillStyle = 'rgba(42,27,94,0.55)';
-      roundRect(ctx, -230, -34, 460, 68, 34);
-      ctx.fill();
+      const bg = parallax(0.25, 16), fg = parallax(0.7, 16);
+      sunburst(ctx, 640 + bg.x, 255 + bg.y, 560, t, '#ffd23f', 0.32, 20);
+      sparkles(ctx, 640 + bg.x, 255 + bg.y, 300, t);
+      logo(ctx, 640 + fg.x, 255 + fg.y, 1.45, t);
+      const pulse = 1 + Math.sin(t * 5) * 0.035;
       const k = promptKind();
-      text(ctx, k === 'mouse' ? `${tapWord()} to start` : `Press ${A()} to start`, 0, 0, 40, { color: '#ffe14d' });
-      ctx.restore();
+      const label = k === 'mouse' ? `${tapWord()} to start` : `Press ${A()} to start`;
+      const pp = parallax(1, 12);
+      card3d(ctx, { cx: 640 + pp.x, cy: 620 + pp.y + Math.sin(t * 2) * 3, w: 470, h: 70, lift: 0.4 + Math.sin(t * 5) * 0.3, tiltX: lookX() * 0.6, tiltY: lookY() * 0.6, scale: pulse, radius: 35, depth: 7 }, '#1a0f3e', (pop) => {
+        ctx.fillStyle = 'rgba(42,27,94,0.82)';
+        roundRect(ctx, -235, -35, 470, 70, 35);
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(255,225,77,0.6)';
+        ctx.stroke();
+        const q = pop(1);
+        text(ctx, label, q.x, q.y, 40, { color: '#ffe14d' });
+      });
       text(ctx, 'Controller: A   ·   Keyboard: Space or Enter   ·   Mouse: click', 640, 690, 18, { weight: 600 });
       return;
     }
-    sunburst(ctx, 330, 160, 300, t, '#ffd23f', 0.28, 16);
-    logo(ctx, 330, 160, 0.95, t);
+    const lb = parallax(0.3, 14), lf = parallax(0.6, 14);
+    sunburst(ctx, 330 + lb.x, 160 + lb.y, 300, t, '#ffd23f', 0.28, 16);
+    logo(ctx, 330 + lf.x, 160 + lf.y, 0.95, t);
     const items = this.items();
+    while (this.cards.length < items.length) this.cards.push({ lift: new Spring(0, 260, 16), tx: new Spring(0, 120, 14), ty: new Spring(0, 120, 14), press: new Spring(0, 520, 20) });
+    items.forEach((_, i) => {
+      const c = this.cards[i];
+      const on = i === this.sel;
+      c.lift.target = on ? 1 : 0;
+      // cards lean toward where you're looking from, and the chosen one leans in hardest
+      c.tx.target = lookX() * 0.9 + (on ? 0.25 : 0);
+      c.ty.target = lookY() * 0.9 + (i - this.sel) * 0.12;
+      c.press.target = 0;
+      c.lift.step(dt);
+      c.tx.step(dt);
+      c.ty.step(dt);
+      c.press.step(dt);
+    });
     if (this.screen === 'online') text(ctx, 'Play Online', 960, 70, 36, { color: '#fff' });
     items.forEach((it, i) => {
       const r = this.rect(i, items.length);
       const on = i === this.sel;
-      const grow = on ? 1 + 0.03 + this.bump * 0.02 : 1;
-      ctx.save();
-      ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
-      ctx.scale(grow, grow);
-      ctx.translate(-(r.x + r.w / 2), -(r.y + r.h / 2));
-      // tile with a chunky drop shadow, like a toy button
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      roundRect(ctx, r.x + 4, r.y + 10, r.w, r.h, 30);
-      ctx.fill();
-      const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
-      g.addColorStop(0, shade(it.color, 0.25));
-      g.addColorStop(1, it.color);
-      ctx.fillStyle = g;
-      roundRect(ctx, r.x, r.y, r.w, r.h, 30);
-      ctx.fill();
-      ctx.lineWidth = on ? 7 : 4;
-      ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.85)';
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
-      roundRect(ctx, r.x + 14, r.y + 8, r.w - 28, r.h * 0.36, 20);
-      ctx.fill();
+      const c = this.cards[i];
+      // fly in from the right one after another, with a little overshoot
+      const k = backOut((t - this.enterT - 0.04 - i * 0.055) / 0.42, 1.4);
+      if (k <= 0) return;
+      const tilt = on ? 1 : 0.35;
+      const bob = Math.sin(t * 1.7 + i * 0.9) * (on ? 3 : 2);
+      const px = parallax(on ? 1 : 0.6, 10);
+      const cx = r.x + r.w / 2 + (1 - k) * 420 + px.x;
+      const cy = r.y + r.h / 2 + bob + px.y;
+      const scale = (on ? 1.045 : 1) * (1 + c.press.v * 0.012);
+      card3d(
+        ctx,
+        { cx, cy, w: r.w, h: r.h, lift: c.lift.v, tiltX: c.tx.v * tilt + (1 - k) * -1.2, tiltY: c.ty.v * tilt, scale, radius: 30, depth: 8, alpha: Math.min(1, k * 2) },
+        shade(it.color, -0.32),
+        (pop) => {
+          const w = r.w, h = r.h;
+          const g = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
+          g.addColorStop(0, shade(it.color, 0.25));
+          g.addColorStop(1, it.color);
+          ctx.fillStyle = g;
+          roundRect(ctx, -w / 2, -h / 2, w, h, 30);
+          ctx.fill();
+          ctx.save();
+          roundRect(ctx, -w / 2, -h / 2, w, h, 30);
+          ctx.clip();
+          sheen(ctx, w, h, c.tx.v * tilt, c.ty.v * tilt, on ? 0.42 : 0.22);
+          // top gloss band, like moulded plastic
+          ctx.fillStyle = 'rgba(255,255,255,0.22)';
+          roundRect(ctx, -w / 2 + 14, -h / 2 + 7, w - 28, h * 0.34, 20);
+          ctx.fill();
+          if (on) {
+            // a glint sweeps across the selected button
+            const sx = -w / 2 - 200 + ((t * 420) % (w + 500));
+            const sg = ctx.createLinearGradient(sx, 0, sx + 120, 0);
+            sg.addColorStop(0, 'rgba(255,255,255,0)');
+            sg.addColorStop(0.5, 'rgba(255,255,255,0.4)');
+            sg.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = sg;
+            ctx.transform(1, 0, -0.4, 1, 0, 0);
+            ctx.fillRect(sx - h * 0.2, -h / 2, 120, h);
+          }
+          ctx.restore();
+          ctx.lineWidth = on ? 7 : 4;
+          ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.85)';
+          roundRect(ctx, -w / 2, -h / 2, w, h, 30);
+          ctx.stroke();
+          // icon sits closest to the viewer, the words a little behind it
+          const ip = pop(1.6);
+          ctx.save();
+          ctx.translate(-w / 2 + 66 + ip.x, ip.y);
+          if (on) {
+            const b = 1 + Math.abs(Math.sin(t * 6)) * 0.12;
+            ctx.scale(b, 2 - b);
+          }
+          ctx.shadowColor = 'rgba(0,0,0,0.3)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetY = 3 + c.lift.v * 3;
+          icon(ctx, it.icon, 0, 0, t);
+          ctx.restore();
+          const tp = pop(0.8);
+          const fit = Math.min(1, 12.5 / it.title.length);
+          ctx.save();
+          ctx.translate(-w / 2 + 128 + tp.x, (it.sub ? -14 : 0) + tp.y);
+          ctx.scale(fit, fit);
+          text(ctx, it.title, 0, 0, 38, { align: 'left' });
+          ctx.restore();
+          if (it.sub) text(ctx, it.sub, -w / 2 + 130 + tp.x, 26 + tp.y, 19, { align: 'left', weight: 600 });
+        },
+      );
       if (on) {
-        // a glint sweeps across the selected button
-        ctx.save();
-        roundRect(ctx, r.x, r.y, r.w, r.h, 30);
-        ctx.clip();
-        const sx = r.x - 200 + ((t * 420) % (r.w + 500));
-        const sg = ctx.createLinearGradient(sx, 0, sx + 120, 0);
-        sg.addColorStop(0, 'rgba(255,255,255,0)');
-        sg.addColorStop(0.5, 'rgba(255,255,255,0.45)');
-        sg.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = sg;
-        ctx.transform(1, 0, -0.4, 1, 0, 0);
-        ctx.fillRect(sx + r.y * 0.4, r.y, 120, r.h);
-        ctx.restore();
-      }
-      ctx.save();
-      if (on) {
-        ctx.translate(r.x + 66, r.y + r.h / 2);
-        const b = 1 + Math.abs(Math.sin(t * 6)) * 0.12;
-        ctx.scale(b, 2 - b);
-        ctx.translate(-(r.x + 66), -(r.y + r.h / 2));
-      }
-      icon(ctx, it.icon, r.x + 66, r.y + r.h / 2, t);
-      ctx.restore();
-      // long titles (Choppy Party - OST) are drawn smaller so they fit, in the same chunky font
-      const k = Math.min(1, 12.5 / it.title.length);
-      ctx.save();
-      ctx.translate(r.x + 128, r.y + (it.sub ? r.h / 2 - 14 : r.h / 2));
-      ctx.scale(k, k);
-      text(ctx, it.title, 0, 0, 38, { align: 'left' });
-      ctx.restore();
-      if (it.sub) text(ctx, it.sub, r.x + 130, r.y + r.h / 2 + 26, 19, { align: 'left', weight: 600 });
-      ctx.restore();
-      if (on) {
-        const bob = Math.sin(t * 8) * 6;
+        const bob2 = Math.sin(t * 8) * 6;
+        const ay = cy - c.lift.v * 12;
         ctx.fillStyle = '#ffe14d';
         ctx.beginPath();
-        ctx.moveTo(r.x - 40 + bob, r.y + r.h / 2 - 18);
-        ctx.lineTo(r.x - 12 + bob, r.y + r.h / 2);
-        ctx.lineTo(r.x - 40 + bob, r.y + r.h / 2 + 18);
+        ctx.moveTo(r.x - 46 + bob2 + px.x, ay - 18);
+        ctx.lineTo(r.x - 18 + bob2 + px.x, ay);
+        ctx.lineTo(r.x - 46 + bob2 + px.x, ay + 18);
         ctx.closePath();
         ctx.fill();
         ctx.strokeStyle = 'rgba(0,0,0,0.4)';
@@ -270,7 +340,7 @@ export class MainMenu {
         : k === 'mouse'
           ? `${tapWord()} to choose`
           : `W/S or Arrows: move   ·   ${A()} or Enter: choose   ·   Esc: back   ·   O: settings`;
-    text(ctx, hint, 960, 694, 18, { weight: 600 });
+    text(ctx, hint, 944, 694, k === "mouse" ? 18 : 16, { weight: 600 });
   }
 }
 

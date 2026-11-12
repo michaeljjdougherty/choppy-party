@@ -142,3 +142,96 @@ export function trail(mat: THREE.ShaderMaterial, radius: number, len: number): T
   t.renderOrder = 6;
   return t;
 }
+
+/** A teardrop flame texture: white-hot core, orange body, transparent edges. */
+function flameTex(): THREE.Texture {
+  return canvasTex('flame', 128, (g, s) => {
+    const grd = g.createRadialGradient(s / 2, s * 0.72, 0, s / 2, s * 0.62, s * 0.5);
+    grd.addColorStop(0, 'rgba(255,255,230,1)');
+    grd.addColorStop(0.25, 'rgba(255,214,110,0.95)');
+    grd.addColorStop(0.55, 'rgba(255,120,30,0.6)');
+    grd.addColorStop(1, 'rgba(255,60,0,0)');
+    g.fillStyle = grd;
+    g.beginPath();
+    // a teardrop: round at the bottom, licking up to a point
+    g.moveTo(s / 2, s * 0.04);
+    g.bezierCurveTo(s * 0.62, s * 0.3, s * 0.9, s * 0.55, s * 0.82, s * 0.78);
+    g.arc(s / 2, s * 0.72, s * 0.33, 0.2, Math.PI - 0.2);
+    g.bezierCurveTo(s * 0.1, s * 0.55, s * 0.38, s * 0.3, s / 2, s * 0.04);
+    g.fill();
+  });
+}
+
+const clock = () => performance.now() / 1000;
+
+/**
+ * A living flame (for braziers, torches, candles, fire baskets): a few flickering, swaying flame cards
+ * around a hot glow, with an optional real point light that flickers with it. Animates itself, so a
+ * view can just add it and forget it. `size` is roughly the flame's height in world units.
+ */
+export function flame(size = 1, opts: { light?: number; color?: THREE.ColorRepresentation } = {}): THREE.Group {
+  const g = new THREE.Group();
+  const tex = flameTex();
+  const seed = Math.random() * 100;
+  const cards: THREE.Sprite[] = [];
+  for (let i = 0; i < 3; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: opts.color ?? '#ffffff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: i === 0 ? 1 : 0.7 }));
+    sp.center.set(0.5, 0.2);
+    cards.push(sp);
+    g.add(sp);
+  }
+  const glow = glowSprite('#ff9a3a', size * 2.6, 0.55);
+  glow.position.y = size * 0.25;
+  g.add(glow);
+  let light: THREE.PointLight | null = null;
+  if (opts.light) {
+    light = new THREE.PointLight('#ff9a46', opts.light, size * 9, 2);
+    light.position.y = size * 0.5;
+    g.add(light);
+  }
+  cards[0].onBeforeRender = () => {
+    const t = clock() + seed;
+    cards.forEach((c, i) => {
+      const f = 1 + Math.sin(t * (13 + i * 4)) * 0.08 + Math.sin(t * (7.3 + i)) * 0.1;
+      const w = size * (i === 0 ? 0.62 : 0.5);
+      c.scale.set(w * (2 - f) * 0.9, size * f * (i === 0 ? 1 : 0.8), 1);
+      c.position.set(Math.sin(t * (3 + i)) * size * 0.05 + (i - 1) * size * 0.1, 0, (i - 1) * size * 0.05);
+      c.material.rotation = Math.sin(t * (2.3 + i * 0.7)) * 0.12;
+    });
+    glow.material.opacity = 0.5 + Math.sin(t * 11) * 0.06;
+    if (light) light.intensity = (opts.light ?? 0) * (0.85 + Math.sin(t * 13) * 0.08 + Math.sin(t * 29) * 0.07);
+  };
+  return g;
+}
+
+/** A soft lamp glow (halo at a lamp head), gently breathing. */
+export function lampGlow(color: THREE.ColorRepresentation = '#ffc070', size = 1.6): THREE.Sprite {
+  const s = glowSprite(color, size, 0.8);
+  const seed = Math.random() * 10;
+  s.onBeforeRender = () => {
+    s.material.opacity = 0.75 + Math.sin(clock() * 2.1 + seed) * 0.06;
+  };
+  return s;
+}
+
+/** A soft glowing floor disc (auras, magic circles), feathered instead of a hard circle. */
+export function glowDisc(color: THREE.ColorRepresentation, radius: number, opacity = 0.6): THREE.Mesh {
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(radius * 2.4, radius * 2.4).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: glowTex(), color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
+  );
+  m.renderOrder = 2;
+  return m;
+}
+
+/** Sit `child` on top of a placed prop (at `frac` of its height), in the prop's parent's space. */
+export function onTop(o: THREE.Object3D, child: THREE.Object3D, frac = 1, dy = 0): THREE.Object3D {
+  o.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(o);
+  const c = box.getCenter(new THREE.Vector3());
+  const p = new THREE.Vector3(c.x, box.min.y + (box.max.y - box.min.y) * frac + dy, c.z);
+  const parent = o.parent!;
+  parent.add(child);
+  child.position.copy(parent.worldToLocal(p));
+  return child;
+}

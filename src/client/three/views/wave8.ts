@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { flame } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { CELL as HCELL, COLS, FX0, FY0, ROWS as HROWS, laneKind, type HopState } from '../../../shared/games/roadHopper';
 import { CH, CW, craneX, sway, type StackState } from '../../../shared/games/crateStacker';
@@ -567,6 +568,12 @@ export function stewRelayView(env: THREE.Texture, state: RelayState, players: Pl
     const stew = mesh(new THREE.CircleGeometry(1.1, 24), new THREE.MeshStandardMaterial({ color: '#d86a2a', emissive: '#8a3a10', emissiveIntensity: 0.4, roughness: 0.5 }), { cast: false });
     stew.rotation.x = -Math.PI / 2;
     place(g, 'graveyard/fire-basket', 0, -0.1, 0, { s: 1.3, shadow: false });
+    // flames licking up round the pot
+    for (const a of [0, 2.1, 4.2]) {
+      const f = flame(0.7);
+      f.position.set(Math.cos(a) * 0.55, 0.15, Math.sin(a) * 0.55);
+      g.add(f);
+    }
     const light = new THREE.PointLight('#ff9a3c', 10, 6);
     light.position.y = 0.4;
     g.add(pot, bottom, rim, stew, light);

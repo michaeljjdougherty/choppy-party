@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { flame, onTop } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { GAP_LEN, TRACK, TURN, segAt, type CartState } from '../../../shared/games/mineCart';
 import { ROW, ROWS, P_H, type TideState } from '../../../shared/games/risingTide';
@@ -651,7 +652,7 @@ export function mimicView(env: THREE.Texture, state: MimicState, players: Player
   }
   const torches: THREE.PointLight[] = [];
   for (const x of [-9, -3.5, 3.5, 9]) {
-    place(scene, 'graveyard/fire-basket', x, 0, -5, { s: 1.6 });
+    onTop(place(scene, 'graveyard/fire-basket', x, 0, -5, { s: 1.6 }), flame(0.9), 0.85);
     const l = new THREE.PointLight('#ff9a3c', 22, 14);
     l.position.set(x, 1.6, -4.6);
     scene.add(l);

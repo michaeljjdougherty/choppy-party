@@ -372,7 +372,10 @@ export function hostCorner(ctx: CanvasRenderingContext2D, line: HostLine, t: num
   ctx.save();
   ctx.globalAlpha = enter;
   const bx = left ? 128 : 1152 - w;
-  bubble(ctx, line, bx, top ? 24 : hy - 70, w, { x: left ? hx + 40 : hx - 40, y: hy - 10 }, 20);
+  // long lines grow the bubble upward so it never runs off the bottom of the screen
+  ctx.font = '700 20px system-ui, sans-serif';
+  const bh = wrap(ctx, line.text, w - 44).length * 26 + 46;
+  bubble(ctx, line, bx, top ? 24 : Math.min(hy - 70, 704 - bh), w, { x: left ? hx + 40 : hx - 40, y: hy - 10 }, 20);
   ctx.restore();
 }
 

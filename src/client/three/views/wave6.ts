@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { softShadowMat } from '../look/fxKit';
+import { glowDisc, lampGlow, onTop, softShadowMat } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { yardSize, type ZombieState } from '../../../shared/games/zombieTag';
 import { BURST, type ChiliState, type Pepper } from '../../../shared/games/chiliChallenge';
@@ -63,7 +63,7 @@ export function zombieView(env: THREE.Texture, state: ZombieState, players: Play
       scene.add(f);
     }
   }
-  for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) place(scene, 'graveyard/lightpost-single', wx(x), 0, wz(y), { s: 2.2 });
+  for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) onTop(place(scene, 'graveyard/lightpost-single', wx(x), 0, wz(y), { s: 2.2 }), lampGlow('#ffb35c', 1.6), 0.88);
   const lights: THREE.PointLight[] = [];
   for (const [x, y] of [[x0, y0], [x1, y1]]) {
     const l = new THREE.PointLight('#ffb35c', 30, 20);
@@ -85,12 +85,7 @@ export function zombieView(env: THREE.Texture, state: ZombieState, players: Play
   const fx = new Fx(scene);
   const team = crew(scene, players, state.walkers, fx);
   // a green glow under every zombie
-  const auraMat = new THREE.MeshBasicMaterial({ color: '#6aff5a', transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending });
-  const auras = pool(scene, () => {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(0.85, 24), auraMat);
-    m.rotation.x = -Math.PI / 2;
-    return m;
-  });
+  const auras = pool(scene, () => glowDisc('#6aff5a', 0.95, 0.7));
   let last = state;
   return {
     scene,

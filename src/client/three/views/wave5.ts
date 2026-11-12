@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { tileCentre, type PlazaState } from '../../../shared/games/paintPlaza';
 import type { CountState } from '../../../shared/games/alienCount';
@@ -232,17 +233,36 @@ export function lightsView(env: THREE.Texture, state: LightsState, players: Play
   place(scene, 'holiday/present-b-round', L + 1.4, 0, -2.4, { s: 1.4 });
   // pines, snowmen and lamp posts along both sides, and a string of bulbs on each edge
   const bulbs: THREE.Mesh[] = [];
+  const halos: THREE.Sprite[] = [];
+  const wireMat = new THREE.MeshStandardMaterial({ color: '#2a2f3a', roughness: 0.6 });
+  const bulbGeo = new THREE.SphereGeometry(0.13, 14, 10);
+  const postGeo = new THREE.CylinderGeometry(0.04, 0.05, 1.5, 6);
   const bulbCols = ['#ff4040', '#ffd23f', '#3fa9f5', '#4cd97b', '#ff7bd5'];
   for (let x = -6; x < L + 8; x += 5) {
     for (const side of [-1, 1]) {
       const z = side * (hw + 2.2 + ((x * 7) % 3));
       place(scene, (x / 5) % 2 ? 'holiday/tree-snow-a' : 'holiday/tree-snow-b', x, 0, z + side * 1.6, { s: 3 + ((x * 13) % 4) * 0.4 });
       if (((x / 5) | 0) % 4 === 1) place(scene, 'holiday/snowman', x + 2, 0, side * (hw + 1.4), { s: 1.2, ry: side > 0 ? Math.PI : 0 });
+      // a sagging wire between little posts, with bulbs hanging off it that really glow
+      const wz0 = side * (hw + 0.6);
+      const sag = (u: number) => 1.45 - Math.sin(u * Math.PI) * 0.4;
+      const wire = new THREE.CatmullRomCurve3(Array.from({ length: 9 }, (_, j) => new THREE.Vector3(x + (j / 8) * 5, sag(j / 8), wz0)));
+      scene.add(mesh(new THREE.TubeGeometry(wire, 16, 0.025, 5), wireMat, { cast: false }));
+      const post = mesh(postGeo, wireMat, { cast: true });
+      post.position.set(x, 0.75, wz0);
+      scene.add(post);
       for (let k = 0; k < 4; k++) {
-        const b = mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshStandardMaterial({ color: bulbCols[(k + x) % 5 | 0] ?? '#fff', emissive: bulbCols[(k + x) % 5 | 0] ?? '#fff', emissiveIntensity: 2 }), { cast: false });
-        b.position.set(x + k * 1.25, 1.2 + Math.sin((k / 4) * Math.PI) * -0.35, side * (hw + 0.6));
+        const col = bulbCols[(k + x) % 5 | 0] ?? '#fff';
+        const b = mesh(bulbGeo, new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 2, roughness: 0.25 }), { cast: false });
+        const u = (k + 0.6) / 4.4;
+        b.position.set(x + u * 5, sag(u) - 0.16, wz0);
+        b.scale.set(1, 1.35, 1);
+        const halo = glowSprite(col, 1.3, 0.85);
+        b.add(halo);
+        halo.scale.set(1.3, 1.3 / 1.35, 1);
         scene.add(b);
         bulbs.push(b);
+        halos.push(halo);
       }
     }
   }
@@ -268,7 +288,12 @@ export function lightsView(env: THREE.Texture, state: LightsState, players: Play
       last = s;
       // the lights: steady when on, stuttering during the flicker, black in the dark
       const flick = s.phase === 'warn' ? (Math.sin(t * 60) > 0 ? 1 : 0.15) : s.phase === 'dark' ? 0 : 1;
-      for (const b of bulbs) ((b.material as THREE.MeshStandardMaterial).emissiveIntensity = flick * 2.2);
+      bulbs.forEach((b, i) => {
+        // each bulb has its own faint shimmer, and they don't all die at exactly the same instant
+        const own = s.phase === 'warn' ? (Math.sin(t * 60 + i * 1.7) > -0.2 ? 1 : 0.1) : flick;
+        (b.material as THREE.MeshStandardMaterial).emissiveIntensity = own * (2 + Math.sin(t * 3 + i) * 0.2);
+        halos[i].material.opacity = own * (0.75 + Math.sin(t * 2.3 + i * 0.7) * 0.1);
+      });
       hemi.intensity = 0.25 + flick * 0.6;
       sun.intensity = 0.15 + flick * 1.05;
       glow.intensity = flick * 40;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { glowDisc, groundFog, lampGlow, onTop, softShadowMat } from '../look/fxKit';
+import { glowDisc, glowSprite, groundFog, lampGlow, onTop, softShadowMat } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { yardSize, type ZombieState } from '../../../shared/games/zombieTag';
 import { BURST, type ChiliState, type Pepper } from '../../../shared/games/chiliChallenge';
@@ -174,6 +174,7 @@ export function chiliView(env: THREE.Texture, state: ChiliState, players: Player
     meterMat: THREE.MeshStandardMaterial;
     chew: number;
     shown: number;
+    aura: THREE.Sprite;
   }
   const seats = new Map<string, Seat>();
   state.eaters.forEach((e, i) => {
@@ -203,7 +204,11 @@ export function chiliView(env: THREE.Texture, state: ChiliState, players: Player
     const meter = mesh(new THREE.CylinderGeometry(0.1, 0.1, 1, 12), meterMat);
     meter.position.set(x + gap * 0.36, 1.3, 0.9);
     scene.add(meter);
-    seats.set(e.id, { x, model, peppers, meter, meterMat, chew: 0, shown: e.bowl.length });
+    // their face goes red-hot: a glow round the head that swells with the heat
+    const aura = glowSprite('#ff3a10', 2.6, 0);
+    aura.position.set(x, 2.2, -0.4);
+    scene.add(aura);
+    seats.set(e.id, { x, model, peppers, meter, meterMat, chew: 0, shown: e.bowl.length, aura });
   });
   let last = state;
   return {
@@ -236,6 +241,9 @@ export function chiliView(env: THREE.Texture, state: ChiliState, players: Player
         st.meter.position.y = 1.35 + (k * 1.5) / 2;
         st.meterMat.color.setRGB(0.3 + k * 0.7, 0.8 - k * 0.65, 0.2 - k * 0.15);
         st.meterMat.emissive.setRGB(k * 0.5, k * 0.05, 0);
+        st.aura.material.opacity = e.burst ? 0 : k * k * (0.7 + Math.sin(t * (6 + k * 14)) * 0.2);
+        st.aura.scale.setScalar(1.8 + k * 1.4);
+        if (!e.burst && k > 0.8 && Math.random() < dt * 10) fx.emit(new THREE.Vector3(st.x + (Math.random() - 0.5) * 0.5, 2.5, -0.5), { tex: 'star', n: 1, color: ['#ffb040', '#ff5a1a'], speed: [0.2, 0.6], up: 2.5, life: [0.4, 0.8], size: [0.18, 0.02], additive: true });
         // steam off the hot heads
         if (!e.burst && k > 0.55 && Math.random() < dt * 14 * k) fx.emit(new THREE.Vector3(st.x + (Math.random() - 0.5) * 0.4, 2.7, -0.6), { n: 1, color: '#ffffff', speed: [0.5, 1.5], size: [0.35, 0.8], life: [0.6, 1], up: 2 });
         st.model.update(dt, { stunned: e.burst, happy: e.locked && !e.burst, jump: st.chew > 0 ? Math.sin((st.chew / 0.4) * Math.PI) * 0.15 : 0, t });

@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { flame, glowSprite, glowTex, groundFog, lampGlow, onTop } from '../look/fxKit';
+import { flame, glowDisc, glowSprite, glowTex, groundFog, lampGlow, onTop } from '../look/fxKit';
 import { snowMaterial } from '../look/snow';
 import { moonMaterial } from '../look/moon';
+import { rugTexture } from '../look/marble';
+import { rockGeometry, stoneMaterial } from '../life/rocks';
+import { treeStump } from '../look/wood';
 import type { PlayerInfo } from '../../../shared/types';
 import { tileCentre, type PlazaState } from '../../../shared/games/paintPlaza';
 import type { CountState } from '../../../shared/games/alienCount';
@@ -543,17 +546,57 @@ export function crownView(env: THREE.Texture, state: CrownState, players: Player
   const scene = makeScene(env, { sky: 'day', skyTop: '#7cc8ff', skyBottom: '#ffeacc', fog: ['#dff0d0', 45, 120], shadowSize: 26 });
   const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 220);
   fitCamera(camera, state.w + 80, state.h + 120, 410);
-  ground(scene, '#7fbf55');
+  ground(scene, '#7fbf55', 90, -0.02, new THREE.MeshStandardMaterial({ map: texture('floor_ground_grass', 40, 40), color: '#a6d488', roughness: 1 }));
   const fw = state.w * PX, fd = state.h * PX;
   const camp = mesh(new THREE.PlaneGeometry(fw, fd), new THREE.MeshStandardMaterial({ map: texture('floor_ground_grass', fw / 3, fd / 3), color: '#bfe8a0', roughness: 1 }), { cast: false, receive: true });
   camp.rotation.x = -Math.PI / 2;
   camp.position.set(0, 0, wz(410));
   scene.add(camp);
+  // a border of stones marks the camp's edge (instead of the lawn just ending)
+  {
+    const geo = rockGeometry(0.28, 4, 0.35);
+    const per = Math.round((fw + fd) * 2 / 0.62);
+    const stones = new THREE.InstancedMesh(geo, stoneMaterial('#b8b0a2'), per);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
+    let n = 0;
+    const edge = (x0: number, z0: number, x1: number, z1: number) => {
+      const L = Math.hypot(x1 - x0, z1 - z0), k = Math.floor(L / 0.62);
+      for (let i = 0; i < k && n < per; i++) {
+        const f = (i + 0.5) / k;
+        pos.set(x0 + (x1 - x0) * f, 0.04, z0 + (z1 - z0) * f);
+        q.setFromEuler(new THREE.Euler(Math.random() * 0.4, Math.random() * 6, Math.random() * 0.4));
+        const r = 0.75 + Math.random() * 0.55;
+        sc.set(r, r * 0.6, r);
+        stones.setMatrixAt(n++, m4.compose(pos, q, sc));
+      }
+    };
+    const cz = wz(410), hx = fw / 2 + 0.25, hz = fd / 2 + 0.25;
+    edge(-hx, cz - hz, hx, cz - hz);
+    edge(hx, cz - hz, hx, cz + hz);
+    edge(hx, cz + hz, -hx, cz + hz);
+    edge(-hx, cz + hz, -hx, cz - hz);
+    stones.count = n;
+    stones.castShadow = true;
+    stones.receiveShadow = true;
+    scene.add(stones);
+  }
   bases(state).forEach(([bx, by], team) => {
-    const pad = mesh(new THREE.CircleGeometry(70 * PX, 32), new THREE.MeshBasicMaterial({ color: TEAM_COLORS[team], transparent: true, opacity: 0.45, depthWrite: false }), { cast: false });
-    pad.rotation.x = -Math.PI / 2;
-    pad.position.set(wx(bx), 0.03, wz(by));
-    scene.add(pad);
+    // a woven camp rug in the team colour, a soft glow and two torches
+    const rug = mesh(new THREE.CircleGeometry(70 * PX, 48), new THREE.MeshStandardMaterial({ map: rugTexture(TEAM_COLORS[team]), roughness: 0.95 }), { cast: false, receive: true });
+    rug.rotation.x = -Math.PI / 2;
+    rug.position.set(wx(bx), 0.025, wz(by));
+    scene.add(rug);
+    const aura = glowDisc(TEAM_COLORS[team], 70 * PX, 0.35);
+    aura.position.set(wx(bx), 0.04, wz(by));
+    scene.add(aura);
+    for (const dz of [-1, 1]) {
+      const post = mesh(new THREE.CylinderGeometry(0.07, 0.1, 1.5, 8), toy('#6b4428', 0.8));
+      post.position.set(wx(bx) + (team ? 1 : -1) * 70 * PX * 0.9, 0.75, wz(by) + dz * 70 * PX * 0.75);
+      scene.add(post);
+      const f = flame(0.55);
+      f.position.set(post.position.x, 1.55, post.position.z);
+      scene.add(f);
+    }
     place(scene, 'forest/tent', wx(bx) + (team ? 1.2 : -1.2), 0, wz(by) - 2.4, { s: 2.6, ry: team ? -0.4 : 0.4 });
     place(scene, 'forest/flag', wx(bx) + (team ? -1.6 : 1.6), 0, wz(by) - 1.4, { s: 1.8 });
   });
@@ -567,8 +610,8 @@ export function crownView(env: THREE.Texture, state: CrownState, players: Player
   place(scene, 'forest/rocks-high', -fw / 2 - 1, 0, wz(410) + fd / 2, { s: 2 });
   place(scene, 'forest/rocks-low', fw / 2 + 1, 0, wz(410) + fd / 2, { s: 2 });
   // the stump in the middle, and the crown
-  const stump = mesh(new THREE.CylinderGeometry(0.7, 0.85, 0.5, 18), toy('#8a5a32', 0.8), { receive: true });
-  stump.position.set(0, 0.25, wz(410));
+  const stump = treeStump(0.75, 0.5);
+  stump.position.set(0, 0, wz(410));
   scene.add(stump);
   const crownM = makeCrown();
   crownM.scale.setScalar(0.8);

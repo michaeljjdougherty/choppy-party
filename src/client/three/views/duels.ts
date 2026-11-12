@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { softShadowMat } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import type { FuseState } from '../../../shared/games/fuseDraw';
 import { BALL_R, PADDLE_H, PX0, PX1, PY0, PY1, type PaddleState } from '../../../shared/games/paddleClash';
@@ -126,7 +127,7 @@ export function paddleView(env: THREE.Texture, state: PaddleState, players: Play
   });
   const ball = fitProp('pirate/cannon-ball', BALL_R * PX * 2.4);
   scene.add(ball);
-  const shadow = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * PX * 1.2, 16), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.25, depthWrite: false }));
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry((BALL_R * PX * 1.2) * 2.4, (BALL_R * PX * 1.2) * 2.4), softShadowMat(0.40));
   shadow.rotation.x = -Math.PI / 2;
   scene.add(shadow);
   const fx = new Fx(scene);

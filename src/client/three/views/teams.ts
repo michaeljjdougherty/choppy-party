@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { softShadowMat } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { LINE, type RopeState } from '../../../shared/games/ropePull';
 import { BASE_W, CX0, CX1, CY0, CY1, type CrateGrabState } from '../../../shared/games/crateGrab';
@@ -137,7 +138,7 @@ export function crateView(env: THREE.Texture, state: CrateGrabState, players: Pl
   const crates = pool(scene, () => fitProp('pirate/crate', 1));
   const carried = pool(scene, () => fitProp('pirate/crate', 0.8));
   const shadows = pool(scene, () => {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.25, depthWrite: false }));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry((0.5) * 2.4, (0.5) * 2.4), softShadowMat(0.40));
     m.rotation.x = -Math.PI / 2;
     return m;
   });

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { softShadowMat } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import { yardSize, type ZombieState } from '../../../shared/games/zombieTag';
 import { BURST, type ChiliState, type Pepper } from '../../../shared/games/chiliChallenge';
@@ -311,7 +312,7 @@ export function moonView(env: THREE.Texture, state: MoonState, players: PlayerIn
   const ballTex = checkerTexture('#ffffff', '#ff4fa3', 4, 128);
   const ball = mesh(new THREE.SphereGeometry(BALL_R * PX, 32, 24), new THREE.MeshStandardMaterial({ map: ballTex, roughness: 0.35 }));
   scene.add(ball);
-  const shadow = mesh(new THREE.CircleGeometry(BALL_R * PX, 24), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.3, depthWrite: false }), { cast: false });
+  const shadow = mesh(new THREE.PlaneGeometry((BALL_R * PX) * 2.4, (BALL_R * PX) * 2.4), softShadowMat(0.48), { cast: false });
   shadow.rotation.x = -Math.PI / 2;
   scene.add(shadow);
   const fx = new Fx(scene);
@@ -337,7 +338,7 @@ export function moonView(env: THREE.Texture, state: MoonState, players: PlayerIn
       ball.rotation.z -= (b.vx * PX * dt) / (BALL_R * PX);
       ball.rotation.x += (b.vy * PX * dt) / (BALL_R * PX);
       shadow.position.set(wx(b.x), 0.03, wz(b.y));
-      (shadow.material as THREE.MeshBasicMaterial).opacity = 0.35 / (1 + b.z / 120);
+      (shadow.material as THREE.MeshBasicMaterial).opacity = 0.55 / (1 + b.z / 120);
       for (const k of s.kicks) {
         const a = s.astros.find((q) => q.id === k.id);
         if (a) fx.dust(new THREE.Vector3(wx(a.x), 0.3, wz(a.y)), 1);

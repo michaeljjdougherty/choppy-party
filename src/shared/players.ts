@@ -16,6 +16,9 @@ const crew = (folk: string, name: string): Character => ({ name, folk, color: ''
 
 export const CHARACTERS: Character[] = [
   crew('rik', 'Rik'),
+  // two more Riks (Michael, 2026-11-12)
+  crew('rik-creamy', 'Creamy Rik'),
+  crew('rik-crispy', 'Crispy Rik'),
   crew('pete', 'Pete'),
   crew('fucci', 'Fucci'),
   crew('zach', 'Zach'),
@@ -35,6 +38,11 @@ export const CHARACTERS: Character[] = [
   crew('aids', 'Aids'),
   crew('fick', 'Fick'),
   crew('abi', 'Abi Buell'),
+  // new crew from Michael's photos (2026-11-12)
+  crew('kearns', 'Kearns'),
+  crew('luke', 'Luke'),
+  crew('ryan', 'Ryan Downling'),
+  crew('erin', 'Erin Bass'),
   { name: 'Oobi', color: '#b06cff', model: 'platformer/character-oobi.glb' },
   { name: 'Oodi', color: '#ff7bd5', model: 'platformer/character-oodi.glb' },
   { name: 'Ooli', color: '#ffd23f', model: 'platformer/character-ooli.glb' },

@@ -100,8 +100,8 @@ export function pumpPortraits(dt: number): void {
   const h = box.max.y - box.min.y;
   // frame the top of the character: the head and a bit of shoulder
   const top = box.max.y;
-  const focus = new THREE.Vector3((box.min.x + box.max.x) / 2, top - h * 0.3, (box.min.z + box.max.z) / 2);
-  const reach = h * 0.36;
+  const focus = new THREE.Vector3((box.min.x + box.max.x) / 2, top - h * 0.34, (box.min.z + box.max.z) / 2);
+  const reach = h * 0.4;
   const dist = reach / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
   cam.position.copy(focus).add(new THREE.Vector3(0, 0.18, 1).normalize().multiplyScalar(dist));
   cam.lookAt(focus);

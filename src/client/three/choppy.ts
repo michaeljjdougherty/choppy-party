@@ -6,6 +6,8 @@ import { mesh, toy } from './kit';
 import { FolkModel, folk } from './folks';
 import { applyLook } from './cosmetics';
 import { lookFor } from '../looks';
+import type { Fx } from './fx';
+import { fxFor } from './anim/sceneFx';
 
 /**
  * Which character each colour is wearing right now. Players pick their character and colour
@@ -85,13 +87,25 @@ function folkScale(): number {
   return folkK;
 }
 
+/** Wrap an angle to -PI..PI. */
+const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+const tmpV = new THREE.Vector3();
+const tmpS = new THREE.Vector3();
+
 /**
  * A playable character: an animated Kenney model plus a coloured ring at its feet so
  * every player can spot themselves. The constructor takes the player's colour (which maps to
  * their roster slot) and a scale, and `update` picks the right animation each frame.
+ *
+ * The animation layer (2026-11-12 overhaul) watches where the view actually puts the model, so every
+ * minigame gets it for free: the turn to a new facing is sprung instead of snapped, the body leans into
+ * speed and banks into turns, feet kick up dust, a hit knocks the body back with stars, a cheer is a hop
+ * and a spin with sparkles, and a knocked-out player sways dizzily. All of it is view-only (no game state).
  */
 export class ChoppyModel {
   readonly group = new THREE.Group();
+  /** Turn spring and lean live here (between the group the view moves and the squashing body). */
+  private lean = new THREE.Group();
   private body = new THREE.Group();
   private mixer: THREE.AnimationMixer | null = null;
   /** Our crew characters are built in code rather than loaded. */
@@ -110,6 +124,28 @@ export class ChoppyModel {
   private walkPhase = 0;
   // characters drop in from above and bounce when they first appear
   private spawn = { y: 3.2, vy: 0, done: false };
+  // ---- the animation layer: what the view did to us since last frame
+  private seen = false;
+  private lastPos = new THREE.Vector3();
+  private vel = new THREE.Vector3(); // world units/s, smoothed, divided by our scale
+  private acc = new THREE.Vector3();
+  private yawShown = 0;
+  private yawV = 0;
+  private pitch = 0;
+  private pitchV = 0;
+  private roll = 0;
+  private rollV = 0;
+  private wasStunned = false;
+  private wasHappy = false;
+  private cheerAt = -9;
+  private spin = 1; // 0..1 progress of a celebration spin (1 = not spinning)
+  private spinDir = 1;
+  private hop = 0; // own celebration hop for the Kenney models (folk hop themselves)
+  private hopV = 0;
+  private ringPop = 0;
+  private skidAt = -9;
+  private clock = 0;
+  private seed = Math.random() * 100;
 
   constructor(color: string, scale = 1) {
     // players keep their clean look (no surface texture from look/detail.ts)
@@ -133,7 +169,9 @@ export class ChoppyModel {
       for (const clip of animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
       this.play('idle');
     }
-    this.group.add(this.body);
+    this.lean.rotation.order = 'YXZ';
+    this.lean.add(this.body);
+    this.group.add(this.lean);
 
     const ringMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.45, roughness: 0.4 });
     this.ring = mesh(new THREE.TorusGeometry(0.62, 0.07, 8, 32), ringMat, { cast: false });
@@ -160,6 +198,57 @@ export class ChoppyModel {
     this.sqv -= amount;
   }
 
+  /** Particle layer of the scene we're in, unless we're hidden (an FPS player's own body, a hidden stand-in). */
+  private fx(): Fx | null {
+    if (this.group.layers.mask !== 1) return null;
+    for (let o: THREE.Object3D | null = this.group; o; o = o.parent) if (!o.visible) return null;
+    return fxFor(this.group);
+  }
+
+  private worldAt(y: number): THREE.Vector3 {
+    return this.group.localToWorld(tmpV.set(0, y, 0)).clone();
+  }
+
+  /** Knocked back: squash, a recoil tilt and twist, and stars over the head. Views can call it on any hit. */
+  flinch(power = 1): void {
+    this.sqv -= 7 * power;
+    this.pitchV -= 7 * power;
+    this.yawV += (Math.random() < 0.5 ? -1 : 1) * 9 * power;
+    this.folk?.react('hurt', 0.7);
+    const fx = this.fx();
+    if (fx) {
+      const s = this.group.getWorldScale(tmpS).x;
+      const at = this.worldAt(2.0);
+      fx.bonk(at);
+      fx.emit(at, { tex: 'soft', color: '#ffffff', n: 1, speed: [0, 0], life: [0.12, 0.12], size: [1.2 * s, 2.4 * s], additive: true });
+    }
+  }
+
+  /** Uppercut a dice block over their head: a quick crouch, then stretch up with the fist out. */
+  punch(): void {
+    this.sqv -= 4;
+    setTimeout(() => (this.sqv += 9), 60);
+    this.folk?.punch(0.38);
+  }
+
+  /** A cheer: hop, spin and sparkles in the player's colour. Views can call it whenever someone scores. */
+  celebrate(): void {
+    if (this.clock - this.cheerAt < 0.9) return;
+    this.cheerAt = this.clock;
+    this.spin = 0;
+    this.spinDir = Math.random() < 0.5 ? -1 : 1;
+    this.ringPop = 1;
+    if (this.folk) this.folk.jump();
+    else if (this.hop <= 0.01) this.hopV = 5.2;
+    this.sqv += 3; // stretch up out of the crouch
+    const fx = this.fx();
+    if (fx) {
+      const at = this.worldAt(1.6);
+      fx.sparkle(at, this.color, 10);
+      fx.emit(at, { tex: 'star', color: ['#ffffff', '#ffd23f', this.color], n: 8, speed: [2, 4], spread: 0.8, up: 3, life: [0.5, 0.8], size: [0.35, 0.1], gravity: 5, drag: 1.5, additive: true });
+    }
+  }
+
   private play(name: string, timeScale = 1): void {
     const a = this.actions.get(name);
     if (!a) return;
@@ -171,48 +260,141 @@ export class ChoppyModel {
       a.setLoop(THREE.LoopOnce, 1);
       a.clampWhenFinished = true;
     }
-    if (prev) a.crossFadeFrom(prev, 0.18, false);
+    if (prev) a.crossFadeFrom(prev, 0.22, true);
     this.current = name;
   }
 
-  /** speed: 0..1 how fast it is moving. jump: extra height in body units. */
+  /** speed: 0..1 how fast it is moving (left out = worked out from how the view moves us). jump: extra height in body units. */
   update(dt: number, o: { speed?: number; stunned?: boolean; jump?: number; happy?: boolean; t?: number } = {}): void {
-    const speed = o.speed ?? 0;
+    this.clock += dt;
     const jump = o.jump ?? 0;
+    const t = o.t ?? performance.now() / 1000;
+    const fx = this.fx();
+
+    // ---- where the view put us: velocity, acceleration and facing in world space
+    this.group.updateWorldMatrix(true, false);
+    const s = Math.max(1e-3, this.group.getWorldScale(tmpS).x);
+    const p = tmpV.setFromMatrixPosition(this.group.matrixWorld);
+    const e = this.group.matrixWorld.elements;
+    const yaw = Math.atan2(e[8], e[10]);
+    const moved = p.distanceTo(this.lastPos);
+    if (!this.seen || dt <= 0 || dt > 0.25 || moved > 4 * s + 2.5) {
+      // first frame or a teleport (respawn, new round): snap, don't streak
+      this.seen = true;
+      this.vel.set(0, 0, 0);
+      this.acc.set(0, 0, 0);
+      this.yawShown = yaw;
+      this.yawV = 0;
+    } else {
+      const k = 1 - Math.exp(-dt * 12);
+      const rx = (p.x - this.lastPos.x) / dt / s, rz = (p.z - this.lastPos.z) / dt / s;
+      const ax = (rx - this.vel.x) / Math.max(dt, 1 / 120), az = (rz - this.vel.z) / Math.max(dt, 1 / 120);
+      this.vel.x += (rx - this.vel.x) * k;
+      this.vel.z += (rz - this.vel.z) * k;
+      const ka = 1 - Math.exp(-dt * 8);
+      this.acc.x += (THREE.MathUtils.clamp(ax, -80, 80) - this.acc.x) * ka;
+      this.acc.z += (THREE.MathUtils.clamp(az, -80, 80) - this.acc.z) * ka;
+    }
+    this.lastPos.copy(p);
+    const hs = Math.hypot(this.vel.x, this.vel.z);
+    const speed = o.speed ?? (jump > 0.05 ? 0 : THREE.MathUtils.clamp(hs / 7, 0, 1));
+
+    // ---- reactions to the view's flags turning on
+    const stunned = !!o.stunned;
+    if (stunned && !this.wasStunned) this.flinch(1);
+    if (o.happy && !this.wasHappy) this.celebrate();
+    this.wasStunned = stunned;
+    this.wasHappy = !!o.happy;
+
     if (this.folk) {
       const f = this.folk;
-      const want = o.stunned ? 'hurt' : o.happy ? 'happy' : null;
-      if (want && f.expr !== want) f.react(want, 0.4);
-      else if (want) f.react(want, 0.4);
-      f.update(dt, o.t ?? performance.now() / 1000, { speed: speed * 6, cheer: !!o.happy });
-    } else if (o.stunned) this.play('emote-no');
+      const want = stunned ? 'hurt' : o.happy ? 'happy' : null;
+      if (want) f.react(want, 0.4);
+      f.update(dt, t, { speed: speed * 6, cheer: !!o.happy, down: stunned, air: jump > 0.08 });
+    } else if (stunned) this.play('emote-no');
     else if (o.happy) this.play('emote-yes');
-    else if (jump > 0.05) this.play('jump');
+    else if (jump > 0.05 || this.hop > 0.05) this.play('jump');
     else if (speed > 0.65) this.play('sprint', 0.8 + speed * 0.4);
     else if (speed > 0.05) this.play('walk', 0.6 + speed * 1.2);
     else this.play('idle');
     // vertical speed of the hop, from the height the sim gives us
     const vy = dt > 0 ? (jump - this.lastJump) / dt : 0;
     if (this.lastJump > 0.04 && jump <= 0.02 && this.riseV < -1) {
-      // landing: squash hard, then the spring wobbles it back
-      this.sqv -= Math.min(9, -this.riseV * 1.1);
+      // landing: squash hard, then the spring wobbles it back, and a puff of dust
+      const hit = Math.min(9, -this.riseV * 1.1);
+      this.sqv -= hit;
+      this.ringPop = Math.max(this.ringPop, 0.6);
+      fx?.dust(this.worldAt(0.15), Math.min(1.2, 0.35 + hit / 10) * s);
     }
     this.riseV = vy;
     this.lastJump = jump;
     // stretch while flying up, a little thinner while falling
     const target = jump > 0.02 ? THREE.MathUtils.clamp(vy * 0.035, -0.12, 0.22) : 0;
-    // under-damped spring so it overshoots: that's the bouncy look (fixed substeps keep it stable on slow frames)
+
+    // ---- springs (fixed substeps keep them stable on slow frames)
+    const cy = Math.cos(this.yawShown), sy = Math.sin(this.yawShown);
+    // velocity and acceleration in the body's own frame (z = forward, x = its left/right)
+    const fwd = this.vel.x * sy + this.vel.z * cy;
+    const side = this.vel.x * cy - this.vel.z * sy;
+    const fAcc = this.acc.x * sy + this.acc.z * cy;
+    const sAcc = this.acc.x * cy - this.acc.z * sy;
+    const grounded = jump <= 0.02 && this.hop <= 0.02;
+    const movingK = Math.min(1, hs / 2);
+    let pitchT = THREE.MathUtils.clamp(fwd * 0.032 + fAcc * 0.005 * movingK, -0.28, 0.32);
+    let rollT = THREE.MathUtils.clamp(-side * 0.025 - sAcc * 0.006 * movingK, -0.3, 0.3);
+    if (stunned) {
+      // dazed: a slow drunken circle
+      pitchT += Math.sin(t * 4.2 + this.seed) * 0.09;
+      rollT += Math.cos(t * 4.2 + this.seed) * 0.12;
+    }
+    const yawT = yaw;
     for (let left = Math.min(dt, 0.1); left > 1e-6; left -= 1 / 120) {
       const h = Math.min(left, 1 / 120);
       this.sqv += ((target - this.sq) * 220 - this.sqv * 11) * h;
       this.sq += this.sqv * h;
+      this.pitchV += ((pitchT - this.pitch) * 110 - this.pitchV * 13) * h;
+      this.pitch += this.pitchV * h;
+      this.rollV += ((rollT - this.roll) * 110 - this.rollV * 13) * h;
+      this.roll += this.rollV * h;
+      // turn: a quick spring with a hint of overshoot, so turning round reads as a turn and not a snap
+      const d = wrap(yawT - this.yawShown);
+      this.yawV += (d * 420 - this.yawV * 34) * h;
+      this.yawShown = wrap(this.yawShown + this.yawV * h);
+      this.hopV -= 16 * h;
+      this.hop = Math.max(0, this.hop + this.hopV * h);
+      if (this.hop === 0 && this.hopV < -2) {
+        this.sqv -= Math.min(6, -this.hopV);
+        this.hopV = 0;
+      }
     }
+    // never trail the real facing by more than about 100 degrees (aiming games need to read)
+    let off = wrap(this.yawShown - yaw);
+    if (Math.abs(off) > 1.8) {
+      off = Math.sign(off) * 1.8;
+      this.yawShown = wrap(yaw + off);
+    }
+    if (this.spin < 1) this.spin = Math.min(1, this.spin + dt / 0.55);
+    const spinA = this.spin < 1 ? (1 - Math.pow(1 - this.spin, 3)) * Math.PI * 2 * this.spinDir : 0;
+    this.lean.rotation.set(this.pitch, off + spinA, this.roll);
 
-    // bouncy walk: a tiny hop on every step
+    // bouncy walk: a tiny hop on every step, and a puff of dust off the heel when running
     let bob = 0;
-    if (jump <= 0.02 && !o.stunned && speed > 0.05) {
+    if (grounded && !stunned && speed > 0.05) {
+      const before = Math.floor(this.walkPhase / Math.PI);
       this.walkPhase += dt * (7 + speed * 7);
-      bob = Math.abs(Math.sin(this.walkPhase)) * 0.12 * Math.min(1, speed * 1.5);
+      if (!this.folk) bob = Math.abs(Math.sin(this.walkPhase)) * 0.12 * Math.min(1, speed * 1.5);
+      if (fx && speed > 0.45 && hs > 2.5 && Math.floor(this.walkPhase / Math.PI) !== before) {
+        const foot = (Math.floor(this.walkPhase / Math.PI) % 2 ? 0.22 : -0.22) * s;
+        const at = this.worldAt(0.08);
+        at.x += cy * foot - (this.vel.x / Math.max(hs, 1e-3)) * 0.3 * s;
+        at.z -= sy * foot + (this.vel.z / Math.max(hs, 1e-3)) * 0.3 * s;
+        fx.emit(at, { tex: 'puff', color: ['#ffffff', '#efe9df'], n: 1, speed: [0.3, 0.8], spread: 0.05, up: 0.5, life: [0.3, 0.45], size: [0.25 * s, 0.6 * s], drag: 4, jitter: 0.1 });
+      }
+    }
+    // a hard stop or a sharp cut: skid dust
+    if (fx && grounded && hs > 3 && fAcc < -30 && this.clock - this.skidAt > 0.35) {
+      this.skidAt = this.clock;
+      fx.dust(this.worldAt(0.1), 0.5 * s);
     }
 
     // spawn drop with two bounces
@@ -226,6 +408,7 @@ export class ChoppyModel {
         if (sp.y <= 0) {
           sp.y = 0;
           if (sp.vy < -3) {
+            if (sp.vy < -9) fx?.dust(this.worldAt(0.1), 0.6 * s);
             this.sqv -= Math.min(8, -sp.vy * 0.5);
             sp.vy = -sp.vy * 0.42;
           } else sp.done = true;
@@ -236,11 +419,16 @@ export class ChoppyModel {
 
     const sq = THREE.MathUtils.clamp(this.sq, -0.4, 0.4);
     this.body.scale.set(1 - sq * 0.55, 1 + sq, 1 - sq * 0.55);
-    this.body.position.y = jump + bob + drop;
+    this.body.position.y = jump + bob + drop + this.hop;
     this.mixer?.update(dt);
-    this.dizzy.visible = !!o.stunned;
-    if (o.stunned) this.dizzy.rotation.y += dt * 6;
-    (this.ring.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.35 + Math.sin((o.t ?? 0) * 4) * 0.1;
+    this.dizzy.visible = stunned;
+    if (stunned) {
+      this.dizzy.rotation.y += dt * 6;
+      this.dizzy.position.y = 2.3 + Math.sin(t * 5) * 0.06 + jump;
+    }
+    this.ringPop = Math.max(0, this.ringPop - dt * 2.5);
+    this.ring.scale.setScalar(1 + Math.sin(this.ringPop * Math.PI) * 0.35);
+    (this.ring.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.35 + Math.sin(t * 4) * 0.1 + this.ringPop * 1.2;
     this.setOutline(OUTLINED.has(this.color));
   }
 

@@ -1,6 +1,8 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow, TickInput } from '../types';
 import { NO_INPUT, clamp } from '../types';
 import { drawTimer, playerById, roundRect, text } from '../draw';
+import { TEAM_HEX, TEAM_NAME, teamScores } from './hud';
+import { teamResults, teamsOf } from './ropePull';
 import { rand, type Rng } from '../rng';
 import type { BotCtx } from '../botkit';
 
@@ -47,6 +49,8 @@ export interface Wall {
 
 export interface Sniper {
   id: string;
+  /** Team games: 0 or 1. Free-for-all: -1. */
+  team: number;
   x: number;
   z: number;
   /** Facing in the x-z plane: forward = (cos yaw, sin yaw). */
@@ -93,8 +97,17 @@ export interface Play {
   pts: number;
 }
 
+export interface SnapRules {
+  teams: boolean;
+  /** First to this many points (a player's own, or the team's) wins early. */
+  target: number | null;
+  limit: number;
+}
+
 export interface SnapState {
   t: number;
+  rules: SnapRules;
+  teamScore: [number, number];
   rng: Rng;
   walls: Wall[];
   spawns: [number, number][];
@@ -154,6 +167,8 @@ export function buildMap(n: number): { walls: Wall[]; spawns: [number, number][]
 }
 
 const fwd = (yaw: number) => ({ x: Math.cos(yaw), z: Math.sin(yaw) });
+/** Can a hurt b? Everyone in free-for-all; only the other team in team games. */
+export const rivals = (a: Sniper, b: Sniper) => a !== b && (a.team < 0 || a.team !== b.team);
 
 /** Distance along a ray to the first wall (or Infinity). */
 export function rayWall(walls: Wall[], x: number, z: number, dx: number, dz: number, max = RANGE): number {
@@ -220,9 +235,9 @@ function collide(s: SnapState, p: Sniper): void {
 /** The spawn point furthest from every living rival (same idea as the Chobglob chest). */
 function bestSpawn(s: SnapState, me: Sniper): [number, number] {
   let best = s.spawns[0], score = -1;
-  for (const sp of s.spawns) {
+  for (const sp of spawnsFor(s.spawns, me.team)) {
     let near = 99;
-    for (const q of s.players) if (q !== me && q.alive) near = Math.min(near, Math.hypot(q.x - sp[0], q.z - sp[1]));
+    for (const q of s.players) if (rivals(me, q) && q.alive) near = Math.min(near, Math.hypot(q.x - sp[0], q.z - sp[1]));
     const v = near + rand(s.rng) * 1.5;
     if (v > score) {
       score = v;
@@ -245,6 +260,13 @@ function faceOpen(walls: Wall[], x: number, z: number): number {
     }
   }
   return Math.atan2(Math.sin(best), Math.cos(best));
+}
+
+/** Team games spawn each team on its own half (red on the left, blue on the right). */
+function spawnsFor(spawns: [number, number][], team: number): [number, number][] {
+  if (team < 0) return spawns;
+  const side = spawns.filter(([x]) => (team === 0 ? x < 0 : x > 0));
+  return side.length ? side : spawns;
 }
 
 function pop(s: SnapState, victim: Sniper): void {
@@ -272,8 +294,8 @@ function shoot(s: SnapState, p: Sniper): void {
   let end = rayWall(s.walls, p.x, p.z, d.x, d.z);
   let victim: Sniper | null = null;
   for (const q of s.players) {
-    if (q === p || !q.alive || q.shield > 0) continue;
-    // ray against a circle
+    if (!rivals(p, q) || !q.alive || q.shield > 0) continue;
+    // ray against a circle (teammates' darts pass through)
     const ox = q.x - p.x, oz = q.z - p.z;
     const along = ox * d.x + oz * d.z;
     if (along <= 0 || along > end) continue;
@@ -291,6 +313,7 @@ function shoot(s: SnapState, p: Sniper): void {
     const kind: Play['kind'] = !scoped ? 'noscope' : p.scopeT <= QUICK ? 'quick' : 'scope';
     const pts = kind === 'noscope' ? 3 : kind === 'quick' ? 2 : 1;
     p.score += pts;
+    if (p.team >= 0) s.teamScore[p.team] += pts;
     p.pops++;
     p.streak++;
     pop(s, victim);
@@ -312,7 +335,7 @@ function knife(s: SnapState, p: Sniper): void {
   const f = fwd(p.yaw);
   let best: Sniper | null = null, bd = KNIFE_RANGE;
   for (const q of s.players) {
-    if (q === p || !q.alive || q.shield > 0) continue;
+    if (!rivals(p, q) || !q.alive || q.shield > 0) continue;
     const dx = q.x - p.x, dz = q.z - p.z;
     const d = Math.hypot(dx, dz);
     if (d > bd || d < 1e-6) continue;
@@ -323,33 +346,54 @@ function knife(s: SnapState, p: Sniper): void {
   }
   if (!best) return;
   best.score = Math.max(0, best.score - 1);
+  if (best.team >= 0) s.teamScore[best.team] = Math.max(0, s.teamScore[best.team] - 1);
   pop(s, best);
   addPlay(s, { t: s.t, kind: 'knife', by: p.id, victim: best.id, pts: -1 });
 }
 
-export const scopeSnap: Minigame<SnapState> = {
-  id: 'scope-snap',
-  name: 'Scope Snap',
-  mode: 'Free-for-all',
+const CONTROLS = 'Stick: move · Mouse / right stick / arrows: aim · Right click / LT / K: scope · Left click / RT / J: fire · B / F: knife · A: jump';
+
+interface SnapDef {
+  id: string;
+  name: string;
+  mode: Minigame['mode'];
+  blurb: string;
+  min: number;
+  max: number;
+  rules: SnapRules;
+}
+
+function makeSnap(def: SnapDef): Minigame<SnapState> {
+  return {
+  id: def.id,
+  name: def.name,
+  mode: def.mode,
   ready: READY,
   goWord: 'SNAP!',
-  blurb: 'First person! Foam-dart snipers, one hit pops you. Your scope only holds for 1 second, so snap in and fire fast. Scoped hit +1, quick scope +2, no scope +3. Knife someone up close to take a point off them. Highest score in 60 seconds wins!',
-  controls: 'Stick: move · Mouse / right stick / arrows: aim · Right click / LT / K: scope · Left click / RT / J: fire · B / F: knife · A: jump',
-  minPlayers: 2,
-  maxPlayers: 10,
+  blurb: def.blurb,
+  controls: CONTROLS,
+  minPlayers: def.min,
+  maxPlayers: def.max,
 
   setup(players: PlayerInfo[], seed: number): SnapState {
     const rng = { seed };
     const map = buildMap(players.length);
-    const s: SnapState = { t: 0, rng, ...map, players: [], tracers: [], feed: [], popsAt: [] };
-    // spread everyone over the spawn points, facing the middle
+    const s: SnapState = { t: 0, rng, rules: def.rules, teamScore: [0, 0], ...map, players: [], tracers: [], feed: [], popsAt: [] };
+    const teams = def.rules.teams ? teamsOf(players) : null;
+    // spread everyone over the spawn points (each team on its own half), facing open space
     const order = map.spawns.map((sp) => ({ sp, k: rand(rng) }));
     order.sort((a, b) => a.k - b.k);
+    const used = [0, 0, 0];
     players.forEach((p, i) => {
-      const [x, z] = order[i % order.length].sp;
-      const jitter = i >= order.length ? 1.2 : 0;
+      const team = teams ? teams[p.id] : -1;
+      const mine = teams ? order.filter((o) => (team === 0 ? o.sp[0] < 0 : o.sp[0] > 0)) : order;
+      const k = used[team + 1]++;
+      const [x, z] = mine[k % mine.length].sp;
+      const jitter = k >= mine.length ? 1.2 : 0;
+      void i;
       s.players.push({
         id: p.id,
+        team,
         x: x + jitter,
         z,
         yaw: faceOpen(map.walls, x, z),
@@ -451,12 +495,23 @@ export const scopeSnap: Minigame<SnapState> = {
       if (inp.bPressed && p.knifeCd <= 0) knife(s, p);
       else if (inp.firePressed && p.fireCd <= 0) shoot(s, p);
     }
-    if (live && s.t - READY >= LIMIT) s.endAt = s.t;
+    const r = s.rules;
+    const reached = r.target !== null && (r.teams ? s.teamScore.some((v) => v >= r.target!) : s.players.some((p) => p.score >= r.target!));
+    if (live && (s.t - READY >= r.limit || reached)) s.endAt = s.t;
   },
 
   isOver: (s) => s.endAt !== undefined && s.t - s.endAt > 2.5,
 
   results(s): ResultRow[] {
+    if (s.rules.teams) {
+      const [a, b] = s.teamScore;
+      const teams = Object.fromEntries(s.players.map((p) => [p.id, p.team]));
+      const label = (id: string) => {
+        const p = s.players.find((q) => q.id === id)!;
+        return `${TEAM_NAME[p.team]} ${s.teamScore[p.team]} · ${p.pops} ${p.pops === 1 ? 'pop' : 'pops'}`;
+      };
+      return teamResults(s.players.map((p) => p.id), teams, a === b ? 2 : a > b ? 0 : 1, (id) => s.players.find((p) => p.id === id)!.score, label);
+    }
     return s.players
       .map((p) => ({ id: p.id, value: p.score * 10000 + p.pops * 100 - p.deaths, label: `${p.score} ${p.score === 1 ? 'point' : 'points'} · ${p.pops} ${p.pops === 1 ? 'pop' : 'pops'}` }))
       .sort((a, b) => b.value - a.value);
@@ -465,15 +520,51 @@ export const scopeSnap: Minigame<SnapState> = {
   draw(ctx, s, players) {
     const views = SNAP_HUD.views;
     for (const v of views) drawViewHud(ctx, s, players, v);
-    if (s.t >= READY && s.endAt === undefined) drawTimer(ctx, READY + LIMIT - s.t);
+    if (s.t >= READY && s.endAt === undefined) drawTimer(ctx, READY + s.rules.limit - s.t);
+    if (s.rules.teams) teamScores(ctx, String(s.teamScore[0]), String(s.teamScore[1]), 100);
+    else if (s.rules.target !== null && s.t < READY + 4) text(ctx, `First to ${s.rules.target}!`, 640, 100, 26, { color: '#ffd23f' });
     drawBoard(ctx, s, players, views.length > 1);
     drawFeed(ctx, s, players);
     if (s.t < READY && views.length) text(ctx, 'Look around! Scope in, then fire fast.', 640, 690, 24, { color: '#ffd23f' });
-    if (s.endAt !== undefined) text(ctx, 'TIME!', 640, 330, 90, { color: '#ffd23f' });
+    if (s.endAt !== undefined) {
+      const won = s.rules.teams ? (s.teamScore[0] === s.teamScore[1] ? -1 : s.teamScore[0] > s.teamScore[1] ? 0 : 1) : null;
+      text(ctx, won === null ? 'TIME!' : won < 0 ? 'DRAW!' : `${TEAM_NAME[won].toUpperCase()} WINS!`, 640, 330, 84, { color: won === null || won < 0 ? '#ffd23f' : TEAM_HEX[won] });
+    }
   },
 
   bot: snapBot,
-};
+  };
+}
+
+export const scopeSnap = makeSnap({
+  id: 'scope-snap',
+  name: 'Scope Snap',
+  mode: 'Free-for-all',
+  min: 2,
+  max: 10,
+  rules: { teams: false, target: null, limit: LIMIT },
+  blurb: 'First person! Foam-dart snipers, one hit pops you. Your scope only holds for 1 second, so snap in and fire fast. Scoped hit +1, quick scope +2, no scope +3. Knife someone up close to take a point off them. Highest score in 60 seconds wins!',
+});
+
+export const scopeSquad = makeSnap({
+  id: 'scope-squad',
+  name: 'Scope Squad',
+  mode: 'Team',
+  min: 2,
+  max: 10,
+  rules: { teams: true, target: 15, limit: 75 },
+  blurb: 'Team Scope Snap! Red vs Blue foam-dart snipers, and your darts pass through teammates. Every pop scores for your team (quick scope +2, no scope +3); a knife takes a point off theirs. First team to 15, or the higher score after 75 seconds, wins!',
+});
+
+export const dartDuel = makeSnap({
+  id: 'dart-duel',
+  name: 'Dart Duel',
+  mode: 'Duel',
+  min: 2,
+  max: 2,
+  rules: { teams: false, target: 5, limit: 60 },
+  blurb: 'One-on-one Scope Snap on a tight deck. 1-second scope, one hit pops. Scoped +1, quick scope +2, no scope +3, and a knife takes a point off them. First to 5 points wins!',
+});
 
 const PLAY_WORD: Record<Play['kind'], string> = { scope: 'POP!', quick: 'QUICK SCOPE!', noscope: 'NO SCOPE!', knife: 'KNIFED!' };
 const PLAY_COLOR: Record<Play['kind'], string> = { scope: '#ffffff', quick: '#7cf0ff', noscope: '#ffd23f', knife: '#ff7a7a' };
@@ -652,7 +743,7 @@ function snapBot(s: SnapState, id: string, k: BotCtx): TickInput {
   // pick a target: the nearest rival in sight
   let tgt: Sniper | null = null, td = L.see;
   for (const q of s.players) {
-    if (q === me || !q.alive) continue;
+    if (!rivals(me, q) || !q.alive) continue;
     const d = Math.hypot(q.x - me.x, q.z - me.z);
     if (d < td && canSee(s, me.x, me.z, q.x, q.z)) {
       tgt = q;
@@ -688,7 +779,7 @@ function snapBot(s: SnapState, id: string, k: BotCtx): TickInput {
   }
   let gx = s.spawns[mem.early][0], gz = s.spawns[mem.early][1];
   // hunting: some waypoints are where a rival was last heard
-  const prey = s.players.filter((q) => q !== me && q.alive);
+  const prey = s.players.filter((q) => rivals(me, q) && q.alive);
   if (!tgt && prey.length && mem.early % 3 !== 0) {
     const q = prey[mem.early % prey.length];
     gx = q.x;

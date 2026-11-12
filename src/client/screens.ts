@@ -94,7 +94,7 @@ function gameCard(ctx: CanvasRenderingContext2D, s: PartyState, id: string): voi
   ribbon(ctx, x + w / 2, y + 2, Math.min(w - 120, 110 + g.name.length * 16), 42, MODE_COLOR[g.mode] ?? '#9a5bff', g.name, 22);
   fitLine(ctx, g.blurb, x + w / 2, y + h + STRIP / 2 + 1, 17, w - 40);
   const fits = s.players.length >= g.minPlayers && s.players.length <= g.maxPlayers;
-  cornerChip(ctx, `${g.mode}  ·  ${g.minPlayers === g.maxPlayers ? g.minPlayers : `${g.minPlayers}-${g.maxPlayers}`} players`, fits);
+  cornerChip(ctx, `${MODE_NAME[g.mode] ?? g.mode}  ·  ${g.minPlayers === g.maxPlayers ? g.minPlayers : `${g.minPlayers}-${g.maxPlayers}`} players`, fits);
 }
 
 function peopleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color: string): void {
@@ -393,9 +393,31 @@ function freeGrid(ctx: CanvasRenderingContext2D, s: PartyState, t: number): void
     ctx.strokeStyle = on ? '#ffe14d' : 'rgba(255,255,255,0.7)';
     ctx.stroke();
     ctx.restore();
+    // the type, in a tab on the tile's top edge
+    const tag = MODE_TAG[g.mode] ?? '';
+    ctx.save();
+    ctx.font = '900 9px system-ui, sans-serif';
+    const tw = ctx.measureText(tag).width + 12;
+    ctx.fillStyle = shadeHex(col, -0.35);
+    roundRect(ctx, tile.x + tile.w / 2 - tw / 2, tile.y - 6, tw, 13, 6);
+    ctx.fill();
+    ctx.restore();
+    text(ctx, tag, tile.x + tile.w / 2, tile.y + 0.5, 9, { color: '#fff', weight: 900, outline: false });
     // names wrap onto two lines so nothing is cut off
     const lines = twoLines(ctx, g.name, tile.w - 10, 13);
-    lines.forEach((l, i) => text(ctx, l, tile.x + tile.w / 2, tile.y + tile.h / 2 + 1 + (i - (lines.length - 1) / 2) * 15, 13, { color: '#fff', weight: 800 }));
+    lines.forEach((l, i) => text(ctx, l, tile.x + tile.w / 2, tile.y + tile.h / 2 + 4 + (i - (lines.length - 1) / 2) * 15, 13, { color: '#fff', weight: 800 }));
+  }
+  // legend: what each colour means
+  const ly = GRID.y + 2 * GRID.tileH + GRID.gap + 22;
+  let lx = PREVIEW.x + 14;
+  for (const [mode, label] of [['Free-for-all', 'Free-for-all'], ['1-vs-many', '1 vs all'], ['Team', 'Team / Stew Battle'], ['Duel', '1v1 Duel']] as const) {
+    ctx.fillStyle = MODE_COLOR[mode];
+    roundRect(ctx, lx, ly - 8, 16, 16, 5);
+    ctx.fill();
+    ctx.font = '800 13px system-ui, sans-serif';
+    const w = ctx.measureText(label).width;
+    text(ctx, label, lx + 21, ly, 13, { align: 'left', color: '#fff', weight: 800 });
+    lx += 21 + w + 16;
   }
   // scroll pips down the side
   const row = Math.floor(Math.max(0, pos) / GRID_COLS);
@@ -437,7 +459,9 @@ function shadeHex(hex: string, amt: number): string {
 const MIX_COLOR = ['#2f8cff', '#ff4d5a', '#ff9f1c'];
 /** Where the Mix mode tabs sit, right under the preview (main.ts makes them clickable). */
 export const MIX_TABS = [0, 1, 2].map((i) => ({ x: PREVIEW.x + i * ((PREVIEW.w + 12) / 3), y: PICK.y, w: (PREVIEW.w - 24) / 3, h: PICK.h - 4 }));
-const MODE_COLOR: Record<string, string> = { 'Free-for-all': '#ff8a1f', Team: '#3fa9f5', '1-vs-many': '#b06cff', Duel: '#ff4d5a' };
+const MODE_COLOR: Record<string, string> = { 'Free-for-all': '#ff8a1f', Team: '#2f7df5', '1-vs-many': '#b06cff', Duel: '#ff3d5a' };
+const MODE_NAME: Record<string, string> = { Team: 'Team (Stew Battle)', Duel: '1v1 Duel', '1-vs-many': '1 vs all' };
+const MODE_TAG: Record<string, string> = { 'Free-for-all': 'FREE-FOR-ALL', Team: 'TEAM', '1-vs-many': '1 VS ALL', Duel: '1V1' };
 
 /** Where the minigame intro's live preview is drawn (HUD coordinates): big, on the right. */
 export const INTRO_PREVIEW = { x: 548, y: 158, w: 716, h: 402 };

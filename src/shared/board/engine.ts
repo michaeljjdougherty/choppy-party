@@ -11,8 +11,9 @@ import { COUNTER_START, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
 /** Keys for minigame placings on a board night (the spec says minigames pay 3 to 10 keys). */
 export const MINIGAME_KEYS = [10, 7, 5, 3];
 /** Duel and Stew Battle games the board can start mid-turn. */
-export const DUEL_GAMES = ['fuse-draw', 'paddle-clash', 'road-hopper', 'crate-stacker'];
-export const STEW_GAMES = ['rope-pull', 'crate-grab', 'cannon-fort', 'stew-relay'];
+export const DUEL_GAMES = ['fuse-draw', 'paddle-clash', 'road-hopper', 'crate-stacker', 'dart-duel'];
+/** Team rounds: every team minigame comes up only here, never as a regular everyone-for-themselves round. */
+export const STEW_GAMES = ['rope-pull', 'crate-grab', 'cannon-fort', 'stew-relay', 'scope-squad', 'burger-builder', 'capture-the-crown', 'moonball', 'moving-day', 'raft-rowing', 'station-repair'];
 
 const AUTO_ROLL = 15; // seconds before the game rolls the turn-order die for an idle player
 /** Seconds each player gets for their turn's decisions (rolling, forks, prompts). The clock shows at 10. */

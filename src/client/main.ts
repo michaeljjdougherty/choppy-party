@@ -4,7 +4,7 @@ import { BOARDS } from '../shared/board/boards';
 import { VIEW_H, VIEW_W } from '../shared/types';
 import { getGame } from '../shared/games';
 import { CHARACTERS, DEFAULT_NAMES, PLAYER_COLORS } from '../shared/players';
-import { addBot, AWARD_SPIN, FINISH_T, FIRST_GAME, PAUSE_OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
+import { SPLIT_SCREEN_GAMES, addBot, AWARD_SPIN, FINISH_T, FIRST_GAME, PAUSE_OPTIONS, ROUND_OPTIONS, TURN_OPTIONS, countTotal, FIRST_MIX, GRID_COLS, MAX_PLAYERS, OPTIONS, optionsOfKind, addPlayer, hostId, inGame, standings, startParty, type PartyState } from '../shared/party';
 import { devEndBoard } from '../shared/dev';
 import { InputManager } from './input';
 import { LocalSession, OnlineSession, type Session } from './session';
@@ -422,7 +422,7 @@ function hasLocal(dev: string): boolean {
  */
 function fpsMode(s: PartyState): void {
   const local = session?.localIds() ?? new Set<string>();
-  const on = s.phase === 'play' && s.gameId === 'scope-snap' && !s.pause && !settings.open && !ost.open && !devMode.busy && (s.gamePlayers ?? s.players).some((p) => !p.bot && local.has(p.id));
+  const on = s.phase === 'play' && SPLIT_SCREEN_GAMES.includes(s.gameId ?? '') && !s.pause && !settings.open && !ost.open && !devMode.busy && (s.gamePlayers ?? s.players).some((p) => !p.bot && local.has(p.id));
   input.fps = on;
   FPS_LOOK.online = () => session?.kind === 'online';
   FPS_LOOK.total = (id) => {
@@ -551,6 +551,8 @@ function mouseFallback() {
   if (!s || s.phase === 'lobby') return;
   // dragging the map around, or a click on the pause screen, is not a press of A
   if (mapCam.on || s.pause) return;
+  // first person: the mouse button fires (input.ts), it isn't a press of A (jump)
+  if (s.phase === 'play' && SPLIT_SCREEN_GAMES.includes(s.gameId ?? '')) return;
   const mine = [...session.localIds()];
   if (!mine.length) return;
   let who: string[] = [mine[0]];

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
+import { TEAM_HEX } from '../../../shared/games/hud';
 import { EYE, SNAP_HUD, ZOOM_IN, type SnapState, type Wall } from '../../../shared/games/scopeSnap';
 import { place, texture } from '../assets';
 import { ChoppyModel, LOCAL } from '../choppy';
@@ -145,9 +146,18 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
   const shieldMat = new THREE.MeshBasicMaterial({ color: '#7cf0ff', transparent: true, opacity: 0.22, depthWrite: false });
   for (const p of players) {
     const m = new ChoppyModel(p.color, scale);
-    const gun = snapRifle(p.color);
+    const sn = state.players.find((q) => q.id === p.id);
+    const team = sn && sn.team >= 0 ? sn.team : -1;
+    const gun = snapRifle(team >= 0 ? TEAM_HEX[team] : p.color);
     gun.position.set(0.32, 1.05, 0.25);
     m.group.add(gun);
+    if (team >= 0) {
+      // team games: a glowing team-coloured halo over each player's head, seen from across the deck
+      const halo = mesh(new THREE.TorusGeometry(0.32, 0.06, 8, 24), new THREE.MeshBasicMaterial({ color: TEAM_HEX[team] }), { cast: false });
+      halo.rotation.x = Math.PI / 2;
+      halo.position.y = 2.05 / scale;
+      m.group.add(halo);
+    }
     const shield = mesh(new THREE.SphereGeometry(1.1, 18, 12), shieldMat, { cast: false });
     shield.position.y = 0.95;
     m.group.add(shield);
@@ -168,6 +178,10 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
     gun.position.set(0.26, -0.24, -0.5);
     gun.rotation.y = Math.PI;
     gun.scale.setScalar(0.8);
+    const flash = mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: '#fff3a0', transparent: true, depthWrite: false }), { cast: false });
+    flash.position.z = 0.84;
+    flash.name = 'flash';
+    gun.add(flash);
     setLayer(gun, 11 + i);
     cam.add(gun);
     scene.add(cam);
@@ -179,8 +193,9 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
   if (eyes.length) eyes[0].cam.add(handLight);
   // spectators (and the lobby preview) watch from above
   const over = new THREE.PerspectiveCamera(44, 16 / 9, 0.1, 300);
-  over.position.set(0, W > 12 ? 34 : 26, D + 14);
-  over.lookAt(0, 0, 1);
+  // spectators get a top-down view of the whole deck
+  over.position.set(0, W > 12 ? 44 : 34, 6);
+  over.lookAt(0, 0, 0.6);
   for (let j = 1; j <= 4; j++) over.layers.enable(j);
   scene.add(over);
   const split = eyes.length > 1 ? eyes.map((e) => ({ camera: e.cam, ...e.rect })) : undefined;
@@ -203,6 +218,8 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
   const seenShot = new Set(state.tracers.map((tr) => `${tr.by}:${tr.t.toFixed(3)}`));
   let last = state;
   const tmp = new THREE.Vector3();
+  const tmpEnd = new THREE.Vector3();
+  const starts = new Map<string, THREE.Vector3>();
 
   return {
     scene,
@@ -245,6 +262,16 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
         if (!seenShot.has(sk)) {
           seenShot.add(sk);
           const e = eyes.find((q) => q.id === tr.by);
+          // the trail starts at the gun's muzzle: the one in your hands, or the one the shooter holds
+          const shooter = models.get(tr.by);
+          const muzzleOf = e && e.gun.visible ? e.gun : shooter?.gun;
+          const start = new THREE.Vector3(tr.x0, EYE - 0.25, tr.z0);
+          if (muzzleOf) {
+            muzzleOf.updateWorldMatrix(true, false);
+            muzzleOf.localToWorld(start.set(0, 0, 0.8));
+          }
+          starts.set(sk, start);
+          if (!e && shooter) fx.sparkle(start, '#ffe066', 4);
           if (e) {
             e.kick = 1;
             sfx.bump();
@@ -260,16 +287,19 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
         }
         if (age > 0.28 || age < 0) continue;
         const m = tracerAt(n++);
-        const len = Math.hypot(tr.x1 - tr.x0, tr.z1 - tr.z0);
+        const a = starts.get(sk) ?? tmp.set(tr.x0, EYE - 0.25, tr.z0);
+        // it ends where the crosshair was: eye height, or the middle of whoever it popped
+        const end = tmpEnd.set(tr.x1, tr.hit ? 1.1 : EYE - 0.1, tr.z1);
         m.visible = true;
-        m.position.set((tr.x0 + tr.x1) / 2, EYE - 0.2, (tr.z0 + tr.z1) / 2);
-        m.scale.set(0.05, 0.05, len);
-        m.rotation.set(0, -Math.atan2(tr.z1 - tr.z0, tr.x1 - tr.x0) + Math.PI / 2, 0);
+        m.position.copy(a).add(end).multiplyScalar(0.5);
+        m.scale.set(0.045, 0.045, a.distanceTo(end));
+        m.lookAt(end);
         const mat = m.material as THREE.MeshBasicMaterial;
         mat.color.set(ps.find((q) => q.id === tr.by)?.color ?? '#ffffff').lerp(new THREE.Color('#ffffff'), 0.4);
         mat.opacity = 1 - age / 0.28;
       }
       for (let i = n; i < tracers.length; i++) tracers[i].visible = false;
+      if (starts.size > 40) for (const k of [...starts.keys()].slice(0, starts.size - 40)) starts.delete(k);
       fx.update(dt);
       // first-person cameras
       for (const e of eyes) {
@@ -296,11 +326,19 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
         e.gun.visible = p.alive && zoom < 0.5;
         e.gun.position.set(0.28 + Math.sin(p.moving * 5.5) * 0.015 * moving, -0.25 + bob * 0.5 + e.kick * 0.03, -0.55 + e.kick * 0.09);
         e.gun.rotation.x = e.kick * 0.25;
+        const fl = e.gun.getObjectByName('flash');
+        if (fl) fl.visible = e.kick > 0.75;
       }
     },
     tags(): Tag[] {
-      if (eyes.length) return [];
-      return last.players.filter((p) => p.alive).map((p) => ({ id: p.id, pos: new THREE.Vector3(p.x, BODY_H + 0.5, p.z), text: players.find((q) => q.id === p.id)?.name ?? '', sub: String(p.score), subColor: '#ffd23f' }));
+      if (eyes.length > 1) return [];
+      if (eyes.length) {
+        // team games: name tags over your teammates, so you know who not to worry about
+        const me = last.players.find((p) => p.id === eyes[0].id);
+        if (!me || me.team < 0) return [];
+        return last.players.filter((p) => p.alive && p !== me && p.team === me.team).map((p) => ({ id: p.id, pos: new THREE.Vector3(p.x, p.y + BODY_H + 0.45, p.z), text: players.find((q) => q.id === p.id)?.name ?? '', color: TEAM_HEX[p.team] }));
+      }
+      return last.players.filter((p) => p.alive).map((p) => ({ id: p.id, pos: new THREE.Vector3(p.x, BODY_H + 0.5, p.z), text: players.find((q) => q.id === p.id)?.name ?? '', color: p.team >= 0 ? TEAM_HEX[p.team] : undefined, sub: String(p.score), subColor: '#ffd23f' }));
     },
   };
 }

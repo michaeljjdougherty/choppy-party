@@ -106,3 +106,37 @@ describe('Scope Snap', () => {
     for (const p of s.players) expect(Number.isFinite(p.x + p.z + p.yaw)).toBe(true);
   });
 });
+
+describe('Scope Squad and Dart Duel', () => {
+  it('team darts pass through teammates and score for the team', async () => {
+    const { scopeSquad } = await import('../src/shared/games/scopeSnap');
+    const ps = [
+      { id: 'a', name: 'A', color: '#f00', slot: 0, team: 0 },
+      { id: 'm', name: 'M', color: '#0f0', slot: 1, team: 0 },
+      { id: 'b', name: 'B', color: '#00f', slot: 2, team: 1 },
+    ];
+    const s = scopeSquad.setup(ps, 3);
+    s.walls = s.walls.filter((w) => Math.abs(w.x0) > 10 || Math.abs(w.z0) > 10.5);
+    const [a, m, b] = s.players;
+    Object.assign(a, { x: -4, z: 0, yaw: 0, shield: 0 });
+    Object.assign(m, { x: 0, z: 0, yaw: 0, shield: 0 });
+    Object.assign(b, { x: 4, z: 0, yaw: Math.PI, shield: 0 });
+    s.t = READY + 2.1;
+    const run = (inp: Partial<TickInput>) => scopeSquad.step(s, { a: { ...NO_INPUT, ...inp } }, DT);
+    for (let i = 0; i < 5; i++) run({ scope: true });
+    run({ scope: true, fire: true, firePressed: true });
+    expect(m.alive).toBe(true);
+    expect(b.alive).toBe(false);
+    expect(s.teamScore).toEqual([2, 0]);
+    expect(scopeSquad.results(s)[0].id).not.toBe('b');
+  });
+
+  it('a duel ends when someone reaches 5', async () => {
+    const { dartDuel } = await import('../src/shared/games/scopeSnap');
+    const s = dartDuel.setup(two(), 2);
+    s.t = READY + 1;
+    s.players[0].score = 5;
+    dartDuel.step(s, {}, DT);
+    expect(s.endAt).toBeDefined();
+  });
+});

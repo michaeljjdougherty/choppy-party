@@ -74,6 +74,8 @@ export const GAME_VIEWS: Record<string, Factory> = {
   'crate-cascade': crateCascadeView,
   'spark-trails': sparkTrailsView,
   'scope-snap': scopeSnapView,
+  'scope-squad': scopeSnapView,
+  'dart-duel': scopeSnapView,
 };
 
 export { menuView } from './menu';

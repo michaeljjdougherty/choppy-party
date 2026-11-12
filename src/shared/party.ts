@@ -20,12 +20,16 @@ export const ROUND_OPTIONS = [3, 5, 10];
 export const MIX_MODES = ['Classic', 'Duel', 'Stew Battle'] as const;
 export const TURN_OPTIONS = [5, 10, 15, 20];
 
+const MODE_RANK: Record<string, number> = { 'Free-for-all': 0, '1-vs-many': 1, Team: 2, Duel: 3 };
 /** Everything the host can pick in the lobby, in order. */
 export type PartyOption = { kind: 'board'; id: string } | { kind: 'mix' } | { kind: 'game'; id: string };
 export const OPTIONS: PartyOption[] = [
   ...BOARDS.map((b) => ({ kind: 'board' as const, id: b.id })),
   { kind: 'mix' },
-  ...GAMES.map((g) => ({ kind: 'game' as const, id: g.id })),
+  // grouped by type, so Free Play reads free-for-all, 1-vs-many, team, then 1v1 duels
+  ...GAMES.map((g, i) => ({ g, i }))
+    .sort((a, b) => MODE_RANK[a.g.mode] - MODE_RANK[b.g.mode] || a.i - b.i)
+    .map(({ g }) => ({ kind: 'game' as const, id: g.id })),
 ];
 export const FIRST_MIX = BOARDS.length;
 export const FIRST_GAME = BOARDS.length + 1;
@@ -387,11 +391,11 @@ export function selectionLabel(s: PartyState): string {
 
 function eligibleGames(n: number, players?: PlayerInfo[]): string[] {
   const crowded = !!players && crowdedScreen(players);
-  return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && g.mode !== 'Duel' && !STEW_GAMES.includes(g.id) && !(crowded && SPLIT_SCREEN_GAMES.includes(g.id))).map((g) => g.id);
+  return GAMES.filter((g) => n >= g.minPlayers && n <= g.maxPlayers && g.mode !== 'Duel' && g.mode !== 'Team' && !STEW_GAMES.includes(g.id) && !(crowded && SPLIT_SCREEN_GAMES.includes(g.id))).map((g) => g.id);
 }
 
 /** First-person games split one screen at most 4 ways, so random picks skip them when more share a screen. */
-export const SPLIT_SCREEN_GAMES = ['scope-snap'];
+export const SPLIT_SCREEN_GAMES = ['scope-snap', 'scope-squad', 'dart-duel'];
 export function crowdedScreen(players: PlayerInfo[]): boolean {
   const per = new Map<string, number>();
   for (const p of players) {
@@ -417,7 +421,7 @@ export function freshGames(pool: string[], played: string[]): string[] {
 /** The games a Minigame Mix deals, for its mode. */
 export function mixPool(mode: number, n: number, players?: PlayerInfo[]): string[] {
   if (mode === 1) return n >= 2 ? [...DUEL_GAMES] : [];
-  if (mode === 2) return n >= 2 ? [...STEW_GAMES] : [];
+  if (mode === 2) return n >= 2 ? STEW_GAMES.filter((g) => !(players && crowdedScreen(players) && SPLIT_SCREEN_GAMES.includes(g))) : [];
   return eligibleGames(n, players);
 }
 

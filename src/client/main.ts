@@ -1,4 +1,7 @@
 import { setRumbleOwners } from './rumble';
+import { drawPortrait, pumpPortraits } from './three/portraits';
+import { setPortraitDrawer } from '../shared/draw';
+setPortraitDrawer((c, color, x, y, r) => drawPortrait(c, color, x, y, r, 2.5));
 import { lookAtPointer, stepLook } from './uiDepth';
 import { drawCoinFly } from './coinFly';
 import { drawChestMarkers } from './chestMarker';
@@ -538,6 +541,7 @@ function render(wallT: number, dt: number) {
     lastLook = lp;
   }
   stepLook(dt, wallT);
+  pumpPortraits(dt);
   // developer mode's panel gets the click, not the buttons drawn under it
   const held = devMode.busy ? takeStrayClick() : null;
   renderScreens(wallT, dt);
@@ -1149,22 +1153,39 @@ function shade(hex: string, amt: number): string {
 }
 
 /** Name plates that follow characters around the 3D scene. */
+const localTagIds = new Set<string>();
 function drawTags(tags: Tag[]) {
+  localTagIds.clear();
+  for (const id of session?.localIds() ?? []) localTagIds.add(id);
   for (const tg of tags) {
     const p = stage.project(tg.pos);
     if (!p.visible) continue;
+    // an ink pill rimmed in the player's colour, with a little pointer down to them
+    const col = tg.color ?? '#ffffff';
+    const mine = !!tg.id && localTagIds.has(tg.id);
     ctx.save();
-    ctx.font = '700 17px system-ui, sans-serif';
-    const w = ctx.measureText(tg.text).width + 22;
-    ctx.fillStyle = 'rgba(20,12,40,0.62)';
+    ctx.font = '800 16px system-ui, sans-serif';
+    const w = ctx.measureText(tg.text).width + 24;
+    ctx.fillStyle = 'rgba(10,4,30,0.35)';
+    roundRect(ctx, p.x - w / 2 + 1, p.y - 11, w, 26, 13);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(26,12,52,0.86)';
     roundRect(ctx, p.x - w / 2, p.y - 13, w, 26, 13);
     ctx.fill();
-    ctx.fillStyle = tg.color ?? '#fff';
-    ctx.beginPath();
-    ctx.arc(p.x - w / 2 + 2, p.y, 6, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.lineWidth = mine ? 3 : 2;
+    ctx.strokeStyle = col;
+    ctx.stroke();
+    if (tg.bar === undefined) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(p.x - 6, p.y + 12);
+      ctx.lineTo(p.x + 6, p.y + 12);
+      ctx.lineTo(p.x, p.y + 19);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
-    text(ctx, tg.text, p.x + 3, p.y + 1, 16, { outline: false, weight: 700 });
+    text(ctx, tg.text, p.x, p.y + 1, 16, { outline: false, weight: 800, color: mine ? '#ffffff' : '#e9e2ff' });
     if (tg.badge) text(ctx, tg.badge, p.x, p.y - 24, 13, { color: '#ffd23f', weight: 800 });
     if (tg.bar !== undefined) {
       // hold-to-ready meter

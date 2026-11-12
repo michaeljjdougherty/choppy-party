@@ -1,5 +1,5 @@
 import type { PlayerInfo } from '../types';
-import { playerById, roundRect, text } from '../draw';
+import { faceBadge, playerById, roundRect, text } from '../draw';
 
 /** A row of player chips along the top edge: colour dot plus a short status (hearts, score...). */
 export function playerChips(
@@ -15,14 +15,18 @@ export function playerChips(
     const x = i < half ? 40 + i * (500 / half) : 740 + (i - half) * (500 / Math.max(1, n - half));
     ctx.save();
     ctx.globalAlpha = r.out ? 0.45 : 1;
-    ctx.fillStyle = r.hot ? 'rgba(220,40,40,0.75)' : 'rgba(0,0,0,0.42)';
-    roundRect(ctx, x - 18, 20, 100, 36, 18);
+    // a chunky chip: drop shadow, ink body rimmed in the player's colour, their face on the left
+    ctx.fillStyle = 'rgba(10,4,30,0.35)';
+    roundRect(ctx, x - 20, 21, 108, 40, 20);
     ctx.fill();
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(x, 38, 11, 0, Math.PI * 2);
+    ctx.fillStyle = r.hot ? 'rgba(200,30,50,0.9)' : 'rgba(26,12,52,0.84)';
+    roundRect(ctx, x - 20, 17, 108, 40, 20);
     ctx.fill();
-    text(ctx, r.label, x + 18, 39, 18, { align: 'left', weight: 800, color: '#fff', outline: false });
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = p.color;
+    ctx.stroke();
+    faceBadge(ctx, p.color, x, 37, 15);
+    text(ctx, r.label, x + 22, 38, 19, { align: 'left', weight: 900, color: '#fff', outline: false });
     ctx.restore();
   });
 }

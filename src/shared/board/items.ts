@@ -31,9 +31,13 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   'swap-pipe': { id: 'swap-pipe', name: 'Swap Pipe', desc: 'Swap places with a player. Your turn ends', target: true, model: 'platformer/pipe', color: '#2ecc71' },
   'slow-roller': { id: 'slow-roller', name: 'Slow Roller', desc: 'Your dice spin in slow motion: stop them on the number you want', target: false, model: 'proto/number-3', color: '#7cf3ff' },
   'high-roller': { id: 'high-roller', name: 'High Roller', desc: 'Your dice only show 4, 5 and 6 this turn', target: false, model: 'proto/number-6', color: '#ffd23f' },
+  'sticky-fingers': { id: 'sticky-fingers', name: 'Sticky Fingers', desc: 'Steal 5 to 15 Pit Coin from a player', target: true, model: 'platformer/key', color: '#ffb020' },
+  'glob-grabber': { id: 'glob-grabber', name: 'Glob Grabber', desc: 'Steal a Chobglob from a player', target: true, model: 'platformer/jewel', color: '#ff4dd2' },
   'sticky-cube': { id: 'sticky-cube', name: 'Sticky Cube', desc: "A player's next roll is 1 to 3", target: true, model: 'proto/figurine-cube-detailed', color: '#b06cff' },
 };
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
+/** Items that can turn up for free (crates, starting bags): the Glob Grabber is only ever bought from Mista Chunk. */
+export const FREE_ITEMS = ITEM_IDS.filter((i) => i !== 'glob-grabber');
 
 /** Shop prices in Pit Coin: small helpers are cheap, big swings cost more. */
 export const SHOP_PRICE: Record<ItemId, number> = {
@@ -51,7 +55,19 @@ export const SHOP_PRICE: Record<ItemId, number> = {
   'swap-pipe': 15,
   cutlass: 9,
   'fuse-bomb': 10,
+  'sticky-fingers': 10,
+  'glob-grabber': 45,
 };
+
+/** The two stores' names and looks (names still to be picked by Michael from the pitch). */
+export const STORES = {
+  brian: { name: 'The Square Deal', sign: 'SQUARE DEAL', by: "Square Brian's store: things that help you", color: '#9a5bff', accent: '#ffd23f' },
+  chunk: { name: "Chunk's Chop Shop", sign: 'CHOP SHOP', by: "Mista Chunk's store: pain for everyone else", color: '#c0283a', accent: '#1a1020' },
+} as const;
+
+/** Square Brian's store: things that help you. Mista Chunk's store: things that hurt (and rob) everyone else. */
+export const BRIAN_STOCK: ItemId[] = ['spring-boots', 'double-barrel', 'heart-snack', 'knight-shield', 'slow-roller', 'high-roller'];
+export const CHUNK_STOCK: ItemId[] = ['hunting-bow', 'pirate-cannon', 'cutlass', 'fuse-bomb', 'spike-trap', 'sticky-cube', 'swap-pipe', 'treasure-shovel', 'sticky-fingers', 'glob-grabber'];
 
 /**
  * Minigame prizes: 1st, 2nd and 3rd each get a random item from their tier (Michael's tier system).

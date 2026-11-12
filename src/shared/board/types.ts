@@ -38,6 +38,8 @@ export interface BoardNode {
   /** Height above the ground plane (hills, decks, bridges). */
   y: number;
   type: SpaceType;
+  /** Shops: who runs it. Square Brian sells things that help you; Mista Chunk sells things that hurt everyone else. */
+  keeper?: 'brian' | 'chunk';
   next: string[];
   /** Lantern Hollow: different exits by day and by night. */
   gate?: { day: string[]; night: string[] };
@@ -85,7 +87,7 @@ export const DEFAULT_PRESET: BoardPreset = {
   crownPrice: 40,
   chests: 1,
   chestMinDist: 6,
-  keySpace: 3,
+  keySpace: 0,
   heartSpace: 6,
   thornSpace: 3,
   doubleTurns: 5,
@@ -164,7 +166,9 @@ export type ItemId =
   | 'slow-roller'
   | 'high-roller'
   | 'cutlass'
-  | 'fuse-bomb';
+  | 'fuse-bomb'
+  | 'sticky-fingers'
+  | 'glob-grabber';
 
 export interface BoardPlayer {
   id: string;
@@ -208,7 +212,7 @@ export type Prompt =
   | { kind: 'claim'; node: string; sel?: number }
   | { kind: 'steal'; node: string; sel?: number }
   | { kind: 'items'; sel: number }
-  | { kind: 'shop'; node: string; stock: ItemId[]; sel: number }
+  | { kind: 'shop'; node: string; stock: ItemId[]; sel: number; keeper?: 'brian' | 'chunk' }
   | { kind: 'target'; purpose: 'item' | 'duel' | 'cannon'; item?: ItemId; options: string[]; sel: number };
 
 /** A minigame the board starts in the middle of a turn. */
@@ -324,7 +328,10 @@ export interface BoardState {
   /** The item (or Pit Coin, when the bag was full) the top 3 of the last minigame won. */
   prizes?: Record<string, ItemId | 'coins'>;
   /** Round end, played out one beat at a time. */
-  recap?: { steps: string[]; i: number; next: number; cur: RecapBeat | null } | null;
+  /** summary: when the standings card started (the last beat before the minigame). */
+  recap?: { steps: string[]; i: number; next: number; cur: RecapBeat | null; summary?: number } | null;
+  /** Chobglobs and Pit Coin at the last standings card, so the next one can show who gained what. */
+  standSnap?: Record<string, [number, number]>;
   clockFor?: string;
   bossLast?: string;
   /** Short-lived effects for the 3D view: hits, heals, knockouts, item use. */

@@ -571,6 +571,10 @@ function pickItem(b: BoardState, id: string, sk: Skill, r: Rng): number {
       case 'sticky-cube':
       case 'spike-trap':
         return others.length > 0;
+      case 'sticky-fingers':
+        return others.some((o) => o.keys >= 5);
+      case 'glob-grabber':
+        return others.some((o) => o.crowns > 0);
     }
     return false;
   };

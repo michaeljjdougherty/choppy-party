@@ -1,3 +1,4 @@
+import { STORES } from '../../../shared/board/items';
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import type { PartyState } from '../../../shared/party';
@@ -74,7 +75,7 @@ export const SPACE_COLORS: Record<SpaceType, string> = {
   shop: '#0ea5a4',
 };
 export const SPACE_ICON: Record<SpaceType, string> = {
-  key: '+',
+  key: '',
   heart: '♥',
   thorn: '−',
   chunk: '☠',
@@ -99,7 +100,6 @@ export const SPACE_ICON: Record<SpaceType, string> = {
 };
 /** Kenney models that float or stand on each kind of space. [model, size, floats] */
 const SPACE_PROP: Partial<Record<SpaceType, [string, number, boolean]>> = {
-  key: ['platformer/coin-gold', 0.6, true],
   heart: ['platformer/heart', 0.6, true],
   thorn: ['platformer/spike-block', 0.55, false],
   crate: ['platformer/crate-item', 0.7, false],
@@ -113,10 +113,13 @@ const SPACE_PROP: Partial<Record<SpaceType, [string, number, boolean]>> = {
 };
 
 /** A little market stall beside a shop space: striped awning, counter, stock and a SHOP sign. */
-function shopStall(def: BoardDef, n: { x: number; y: number; z: number }): THREE.Group {
+function shopStall(def: BoardDef, n: { x: number; y: number; z: number; keeper?: 'brian' | 'chunk' }): THREE.Group {
   const g = new THREE.Group();
-  const [a, b] = def.theme === 'cosmo' ? ['#45e3ff', '#ffffff'] : def.theme === 'gulch' ? ['#e04b3a', '#fff3d6'] : ['#9a5bff', '#ffe9a8'];
-  const wood = toy(def.theme === 'cosmo' ? '#7b86b8' : '#9a6a3c', 0.6);
+  const chunk = n.keeper === 'chunk';
+  const store = STORES[chunk ? 'chunk' : 'brian'];
+  // Brian's stall is bright and friendly; Chunk's is blood red and black
+  const [a, b] = chunk ? ['#c0283a', '#1a1020'] : ['#9a5bff', '#ffe9a8'];
+  const wood = toy(chunk ? '#3a2630' : def.theme === 'cosmo' ? '#7b86b8' : '#9a6a3c', 0.6);
   const counter = mesh(new THREE.BoxGeometry(1.7, 0.75, 0.7), wood);
   counter.position.set(0, 0.38, 0);
   g.add(counter);
@@ -145,20 +148,23 @@ function shopStall(def: BoardDef, n: { x: number; y: number; z: number }): THREE
   sc.width = 128;
   sc.height = 48;
   const sx2 = sc.getContext('2d')!;
-  sx2.fillStyle = '#2a1b5e';
+  sx2.fillStyle = chunk ? '#1a1020' : '#2a1b5e';
   sx2.fillRect(0, 0, 128, 48);
-  sx2.fillStyle = '#ffd23f';
-  sx2.font = '900 34px system-ui, sans-serif';
+  sx2.fillStyle = chunk ? '#ff4d5a' : '#ffd23f';
   sx2.textAlign = 'center';
   sx2.textBaseline = 'middle';
-  sx2.fillText('SHOP', 64, 26);
+  let fs = 34;
+  do sx2.font = `900 ${fs}px system-ui, sans-serif`;
+  while (sx2.measureText(store.sign).width > 118 && --fs > 12);
+  sx2.fillText(store.sign, 64, 26);
   const st = new THREE.CanvasTexture(sc);
   st.colorSpace = THREE.SRGBColorSpace;
-  const sign = mesh(new THREE.BoxGeometry(1.1, 0.42, 0.06), new THREE.MeshStandardMaterial({ map: st, roughness: 0.5 }));
+  const sign = mesh(new THREE.BoxGeometry(1.5, 0.42, 0.06), new THREE.MeshStandardMaterial({ map: st, roughness: 0.5 }));
   sign.position.set(0, 2.25, -0.2);
   g.add(sign);
   // goods on the counter
-  for (const [m, px] of [['platformer/crate-item', -0.5], ['platformer/heart', 0.05], ['platformer/coin-gold', 0.55]] as [string, number][]) {
+  const goods = chunk ? [['platformer/bomb', -0.5], ['proto/weapon-sword', 0.05], ['platformer/trap-spikes', 0.55]] : [['platformer/spring', -0.5], ['platformer/heart', 0.05], ['proto/number-6', 0.55]];
+  for (const [m, px] of goods as [string, number][]) {
     const o = fitProp(m, 0.38);
     o.position.set(px, 0.76, 0.05);
     g.add(o);

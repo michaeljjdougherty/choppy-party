@@ -241,7 +241,8 @@ describe('landing pause', () => {
     try {
       const s = createBoard('lantern-hollow', ['a', 'b'], 5, 3);
       const def = BOARDS.find((d) => d.id === s.boardId)!;
-      const coin = Object.values(def.nodes).find((n) => n.type === 'key')!;
+      // a heart space (plain spaces pay nothing now): it heals after the pause
+      const coin = Object.values(def.nodes).find((n) => n.type === 'heart')!;
       const me = s.order[0];
       s.cur = 0;
       s.players[me].node = coin.id;
@@ -249,15 +250,16 @@ describe('landing pause', () => {
       s.hop = null;
       s.sub = 'move';
       s.t = 0;
-      const before = s.players[me].keys;
+      s.players[me].hp = 5;
+      const before = s.players[me].hp;
       const none: Inputs = { a: { ...NO_INPUT }, b: { ...NO_INPUT } };
       stepBoard(s, none, DT);
       expect(s.sub).toBe('settle');
       for (let t = 0; t < 0.6; t += DT) stepBoard(s, none, DT);
-      expect(s.players[me].keys).toBe(before);
+      expect(s.players[me].hp).toBe(before);
       for (let i = 0; i < 200 && (s.sub as string) === 'settle'; i++) stepBoard(s, none, DT);
       expect(s.sub).toBe('land');
-      expect(s.players[me].keys).toBeGreaterThan(before);
+      expect(s.players[me].hp).toBeGreaterThan(before);
     } finally {
       timing.settle = 0;
     }

@@ -6,7 +6,7 @@ import type { PartyState } from '../shared/party';
 import { getBoard } from '../shared/board/boards';
 import { PROMPT_LOCK, SPIN_STOP, DIE_SHOW, DOUBLES_EXTRA, DOUBLES_KEYS, ROLL_SHOW, CHUNK_EVENTS, CHUNK_INTRO, BOSS_INTRO, bossIn, currentPlayer, TURN_TIME } from '../shared/board/engine';
 import { TRAIN_PRICE, WISP_PRICE, type ChunkKind } from '../shared/board/types';
-import { ITEMS, ITEM_COLS, ITEM_GRID, SHOP_PRICE } from '../shared/board/items';
+import { ITEMS, ITEM_COLS, ITEM_GRID, SHOP_PRICE, STORES } from '../shared/board/items';
 import { WEATHER, WEATHER_COLOR, forecast } from '../shared/board/weather';
 import { playerById, popText, richWidth, roundRect, text } from '../shared/draw';
 import { itemIcon } from './three/itemIcons';
@@ -323,7 +323,8 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
         text(ctx, beat.line, 640, 240, 30, { color: '#ffffff', weight: 800 });
         ctx.restore();
       }
-    } else text(ctx, 'End of round', 640, 220, 40, { color: '#ff9f1c' });
+    } else if (b.recap?.summary !== undefined) drawRoundSummary(ctx, s, b.t - b.recap.summary);
+    else text(ctx, 'End of round', 640, 220, 40, { color: '#ff9f1c' });
   } else if (b.sub === 'event' && b.event) {
     text(ctx, b.event.kind === 'duel' ? 'DUEL!' : 'STEW BATTLE!', 640, 260, 80, { color: '#ff9f1c' });
   }
@@ -335,6 +336,74 @@ export function drawBoardHud(ctx: CanvasRenderingContext2D, s: PartyState, t: nu
     ctx.restore();
   }
   void t;
+}
+
+/** End of a round: where everyone stands before the minigame (Chobglobs, Pit Coin, HP and what changed). */
+function drawRoundSummary(ctx: CanvasRenderingContext2D, s: PartyState, age: number): void {
+  const b = s.board!;
+  const rows = Object.values(b.players).sort((p, q) => q.crowns - p.crowns || q.keys - p.keys);
+  const n = rows.length;
+  const rh = Math.min(46, 400 / Math.max(1, n));
+  const w = 640, h = 112 + n * rh;
+  const x0 = 640 - w / 2, y0 = Math.max(70, 360 - h / 2);
+  const intro = Math.min(1, age / 0.35);
+  const out = Math.max(0, Math.min(1, (age - 3.8) / 0.4));
+  ctx.save();
+  ctx.globalAlpha = intro * (1 - out);
+  ctx.translate(0, (1 - intro) * 30);
+  ctx.fillStyle = 'rgba(12,8,36,0.82)';
+  roundRect(ctx, x0, y0, w, h, 24);
+  ctx.fill();
+  ctx.strokeStyle = '#ffd23f';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  const left = b.maxTurns - b.turn;
+  text(ctx, 'STANDINGS', 640, y0 + 36, 34, { color: '#ffd23f' });
+  text(ctx, left <= 0 ? 'Final round! One last minigame...' : `Round ${b.turn} of ${b.maxTurns}  ·  ${left} to go`, 640, y0 + 70, 17, { color: '#bfe0ff', weight: 800, outline: false });
+  const snap = b.standSnap;
+  let place = 0;
+  rows.forEach((p, i) => {
+    // ties share a place
+    if (i === 0 || p.crowns !== rows[i - 1].crowns || p.keys !== rows[i - 1].keys) place = i + 1;
+    const y = y0 + 102 + i * rh + rh / 2 - 6;
+    const k = Math.min(1, Math.max(0, (age - 0.25 - i * 0.08) / 0.25));
+    if (k <= 0) return;
+    ctx.save();
+    ctx.globalAlpha *= k;
+    const info = playerById(s.players, p.id);
+    if (i % 2 === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      roundRect(ctx, x0 + 14, y - rh / 2 + 3, w - 28, rh - 6, 10);
+      ctx.fill();
+    }
+    text(ctx, `${place}`, x0 + 40, y, 22, { color: place === 1 ? '#ffd23f' : '#ffffff' });
+    ctx.fillStyle = info?.color ?? '#fff';
+    ctx.beginPath();
+    ctx.arc(x0 + 74, y, 10, 0, Math.PI * 2);
+    ctx.fill();
+    text(ctx, (info?.name ?? '?').slice(0, 14), x0 + 94, y, 20, { align: 'left', weight: 800, outline: false });
+    // Chobglobs and Pit Coin, with what changed since the last card
+    crownIcon(ctx, x0 + 330, y, 0.8);
+    text(ctx, String(p.crowns), x0 + 352, y, 20, { align: 'left', color: '#ffd23f' });
+    keyIcon(ctx, x0 + 430, y);
+    text(ctx, String(p.keys), x0 + 446, y, 20, { align: 'left', color: '#ffe27a' });
+    const was = snap?.[p.id];
+    if (was) {
+      const dc = p.crowns - was[0], dk = p.keys - was[1];
+      if (dc) text(ctx, `${dc > 0 ? '+' : ''}${dc}`, x0 + 378, y - 9, 13, { align: 'left', color: dc > 0 ? '#9dff8a' : '#ff7a7a' });
+      if (dk) text(ctx, `${dk > 0 ? '+' : ''}${dk}`, x0 + 486, y - 9, 13, { align: 'left', color: dk > 0 ? '#9dff8a' : '#ff7a7a' });
+    }
+    // HP bar
+    const hp = Math.max(0, p.hp) / b.preset.maxHp;
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    roundRect(ctx, x0 + 530, y - 6, 80, 12, 6);
+    ctx.fill();
+    ctx.fillStyle = p.ko ? '#777' : hp > 0.5 ? '#4cd97b' : hp > 0.25 ? '#ffb020' : '#ff5a5f';
+    roundRect(ctx, x0 + 530, y - 6, Math.max(6, 80 * hp), 12, 6);
+    ctx.fill();
+    ctx.restore();
+  });
+  ctx.restore();
 }
 
 /** Pit Coin: a gold coin with a dimple pressed in the middle. */
@@ -834,19 +903,26 @@ function drawGambleReel(ctx: CanvasRenderingContext2D, g: { reel: number[]; at: 
 }
 
 /** Shop counter: the stock with prices, and a Leave row. */
-function drawShop(ctx: CanvasRenderingContext2D, pm: { stock: (keyof typeof ITEMS)[]; sel: number }, keys: number): void {
+function drawShop(ctx: CanvasRenderingContext2D, pm: { stock: (keyof typeof ITEMS)[]; sel: number; keeper?: 'brian' | 'chunk' }, keys: number): void {
   const rows = pm.stock.length + 1;
-  const h = 96 + rows * 58;
-  const x0 = 360, w = 560, y0 = 96;
+  const h = 134 + rows * 58;
+  const x0 = 360, w = 560;
+  let y0 = 84;
+  const store = STORES[pm.keeper === 'chunk' ? 'chunk' : 'brian'];
   ctx.fillStyle = 'rgba(255,255,255,0.97)';
   roundRect(ctx, x0, y0, w, h, 26);
   ctx.fill();
-  ctx.strokeStyle = '#0ea5a4';
+  ctx.strokeStyle = store.color;
   ctx.lineWidth = 6;
   ctx.stroke();
-  text(ctx, 'SHOP', 640, y0 + 34, 32, { color: '#0ea5a4' });
-  keyIcon(ctx, 640 + 120, y0 + 34);
-  text(ctx, `${keys}`, 640 + 134, y0 + 35, 20, { align: 'left', color: '#2a1b5e', outline: false });
+  ctx.fillStyle = store.color;
+  roundRect(ctx, x0, y0, w, 62, 26);
+  ctx.fill();
+  text(ctx, store.name.toUpperCase(), 640, y0 + 30, 30, { color: pm.keeper === 'chunk' ? '#ffffff' : store.accent });
+  text(ctx, store.by, 640, y0 + 82, 16, { color: store.color, outline: false, weight: 700 });
+  keyIcon(ctx, x0 + w - 70, y0 + 82);
+  text(ctx, `${keys}`, x0 + w - 28, y0 + 83, 20, { align: 'right', color: '#2a1b5e', outline: false });
+  y0 += 38;
   pm.stock.forEach((it, k) => {
     const y = y0 + 84 + k * 58;
     const sel = k === pm.sel;
@@ -874,7 +950,7 @@ function drawShop(ctx: CanvasRenderingContext2D, pm: { stock: (keyof typeof ITEM
     ctx.fill();
   }
   text(ctx, 'Leave the shop', 640, ly, 20, { color: '#2a1b5e', outline: false });
-  text(ctx, `${STICK()} choose   ${A()} buy   ${B()} leave`, 640, y0 + h - 22, 16, { color: '#ff4d5a', outline: false, weight: 700 });
+  text(ctx, `${STICK()} choose   ${A()} buy   ${B()} leave`, 640, y0 + h - 60, 16, { color: '#ff4d5a', outline: false, weight: 700 });
 }
 
 let lastClockSec = -1;

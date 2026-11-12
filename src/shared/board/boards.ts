@@ -78,16 +78,18 @@ function partyMix(b: Builder, chains: string[][], crownSpots: string[], keep: st
   const plain = new Set(['key', 'thorn', 'heart', 'crate', 'lucky', 'chunk']);
   const all = chains.flat();
   // shops first, on the main loop, never next to another special space
-  for (const f of shopsAt) {
+  shopsAt.forEach((f, si) => {
     const main = chains[0];
     for (let d = 0; d < main.length; d++) {
       const id = main[(Math.round(f * main.length) + d) % main.length];
       if (b.nodes[id].type === 'key' && !crownSpots.includes(id) && !keep.includes(id)) {
         b.set(id, 'shop');
+        // the first shop is Square Brian's, the second Mista Chunk's
+        b.nodes[id].keeper = si % 2 ? 'chunk' : 'brian';
         break;
       }
     }
-  }
+  });
   const free = all.filter((id) => plain.has(b.nodes[id].type) && !crownSpots.includes(id) && !keep.includes(id));
   for (const id of free) b.set(id, 'key');
   const total = all.length;

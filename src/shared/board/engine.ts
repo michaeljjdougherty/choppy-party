@@ -4,7 +4,7 @@ import { rand, randInt, shuffle } from '../rng';
 import { getBoard } from './boards';
 import { buildTour } from './tour';
 import { WEATHER, flareThisRound, inZone, newWeather, stormThisRound } from './weather';
-import { PRIZE_COINS, PRIZE_TIERS, ITEMS, ITEM_COLS, ITEM_GRID, ITEM_IDS, SHOP_PRICE, SHOP_STOCK } from './items';
+import { BRIAN_STOCK, CHUNK_STOCK, FREE_ITEMS, PRIZE_COINS, PRIZE_TIERS, ITEMS, ITEM_COLS, ITEM_GRID, SHOP_PRICE, SHOP_STOCK } from './items';
 import type { BoardDef, BoardEvent, BoardPlayer, BoardState, ItemId, Prompt, ChunkKind, RecapBeat } from './types';
 import { COUNTER_START, HOP_TIME, TRAIN_PRICE, WISP_PRICE } from './types';
 
@@ -167,7 +167,7 @@ export function createBoard(boardId: string, playerIds: string[], maxTurns: numb
       stats: { damageTaken: 0, damageDealt: 0, kos: 0, spaces: 0, sevens: 0, wins: 0 },
     };
     // everyone starts with an item so they can try the item menu on turn 1
-    for (let i = 0; i < pr.startItems; i++) s.players[id].items.push(ITEM_IDS[Math.floor(rand(rng) * ITEM_IDS.length)]);
+    for (let i = 0; i < pr.startItems; i++) s.players[id].items.push(FREE_ITEMS[Math.floor(rand(rng) * FREE_ITEMS.length)]);
   }
   while (s.crowns.length < pr.chests) placeChest(s, def);
   planHazards(s, def);
@@ -842,6 +842,13 @@ function useItem(s: BoardState, def: BoardDef, id: string, slot: number): void {
         return;
       }
     }
+    if (item === 'glob-grabber') {
+      options = options.filter((o) => s.players[o].crowns > 0);
+      if (!options.length) {
+        say(s, 'Nobody has a Chobglob to grab yet!', '#ff5a5f');
+        return;
+      }
+    }
     if (!options.length) {
       if (targetsFor(s, id).length) say(s, 'Everyone is hidden in the fog!', '#c9d6e8');
       return;
@@ -982,6 +989,26 @@ function resolveTarget(s: BoardState, def: BoardDef, id: string, p: Extract<Prom
     }
     fx(s, 'sticky', tp.node, target);
     set(s, 'roll');
+  } else if (item === 'sticky-fingers' || item === 'glob-grabber') {
+    if (tp.shield) {
+      tp.shield = false;
+      fx(s, 'block', tp.node, target);
+      say(s, 'Blocked by the Knight Shield!', '#3fa9f5');
+    } else if (item === 'sticky-fingers') {
+      const k = Math.min(tp.keys, randInt(s.rng, 5, 15));
+      tp.keys -= k;
+      me.keys += k;
+      fx(s, 'keys', tp.node, target, -k);
+      fx(s, 'keys', me.node, id, k);
+      say(s, k ? `Sticky Fingers! Pinched ${k} Pit Coin` : 'Their pockets were empty!', color);
+    } else {
+      const k = Math.min(1, tp.crowns);
+      tp.crowns -= k;
+      me.crowns += k;
+      fx(s, 'crown', me.node, id);
+      say(s, k ? 'GLOB GRABBED! A Chobglob changes hands!' : 'They had no Chobglob to grab!', color);
+    }
+    set(s, 'roll');
   } else if (item === 'swap-pipe') {
     if (tp.shield) {
       tp.shield = false;
@@ -1069,17 +1096,18 @@ function onPass(s: BoardState, def: BoardDef, id: string): void {
     }
   }
   if (node.type === 'shop' && passing) {
-    const cheapest = Math.min(...ITEM_IDS.map((i) => SHOP_PRICE[i]));
+    const shelf = node.keeper === 'chunk' ? CHUNK_STOCK : BRIAN_STOCK;
+    const cheapest = Math.min(...shelf.map((i) => SHOP_PRICE[i]));
     if (me.items.length >= s.preset.maxItems) say(s, 'Shop: your bag is full!', '#ffb347');
     else if (me.keys < cheapest) say(s, `Shop: items start at ${cheapest} Pit Coin`, '#ffb347');
     else {
       // a fresh counter every visit, cheapest first
-      const pool = [...ITEM_IDS];
+      const pool = [...shelf];
       const stock: ItemId[] = [];
       while (stock.length < SHOP_STOCK && pool.length) stock.push(pool.splice(Math.floor(rand(s.rng) * pool.length), 1)[0]);
       stock.sort((a, b) => SHOP_PRICE[a] - SHOP_PRICE[b]);
       // the cursor starts on "Leave", so walking past never buys anything by accident
-      ask(s, { kind: 'shop', node: me.node, stock, sel: stock.length });
+      ask(s, { kind: 'shop', node: me.node, stock, sel: stock.length, keeper: node.keeper ?? 'brian' });
     }
     return;
   }
@@ -1130,7 +1158,9 @@ export function onLand(s: BoardState, def: BoardDef, id: string): void {
     case 'station':
     case 'wisp':
     case 'camp': {
+      // plain spaces give nothing (Michael, 2026-11-12); a preset can still turn coins back on
       const k = pr.keySpace * dbl;
+      if (k <= 0) break;
       me.keys += k;
       fx(s, 'keys', me.node, id, k);
       say(s, `+${k} Pit Coin`, '#5fb8ff');
@@ -1163,9 +1193,9 @@ export function onLand(s: BoardState, def: BoardDef, id: string): void {
         break;
       }
       // the crate spins a reel of items and stops on the prize
-      const pick = ITEM_IDS[Math.floor(rand(s.rng) * ITEM_IDS.length)];
+      const pick = FREE_ITEMS[Math.floor(rand(s.rng) * FREE_ITEMS.length)];
       const reel: ItemId[] = [];
-      for (let i = 0; i < SPIN_LEN + 4; i++) reel.push(ITEM_IDS[(i * 7 + Math.floor(rand(s.rng) * ITEM_IDS.length)) % ITEM_IDS.length]);
+      for (let i = 0; i < SPIN_LEN + 4; i++) reel.push(FREE_ITEMS[(i * 7 + Math.floor(rand(s.rng) * FREE_ITEMS.length)) % FREE_ITEMS.length]);
       reel[SPIN_LEN] = pick;
       s.spin = { reel, at: SPIN_LEN, pick };
       set(s, 'itemSpin');
@@ -1286,7 +1316,7 @@ export function onLand(s: BoardState, def: BoardDef, id: string): void {
         me.rollCap = 3;
         fx(s, 'snare', me.node, id);
         say(s, 'Root Snare! Your next roll is capped at 3', '#8bc34a');
-      } else {
+      } else if (pr.keySpace > 0) {
         me.keys += pr.keySpace * dbl;
         say(s, `+${pr.keySpace * dbl} Pit Coin`, '#5fb8ff');
       }
@@ -1608,6 +1638,8 @@ export function roundEnd(s: BoardState, def: BoardDef): void {
 /** How long one round-end beat shows: the title, then a slide of 0.42s a space for anyone pushed. */
 export const RECAP_TITLE = 1.3;
 export const RECAP_HOP = 0.42;
+/** The standings card at the end of every round. */
+export const SUMMARY_T = 4.2;
 export const recapLen = (c: RecapBeat) => RECAP_TITLE + Math.max(0, ...c.slides.map((x) => x.path.length - 1)) * RECAP_HOP + 1.3;
 
 function stepRoundEnd(s: BoardState, def: BoardDef): void {
@@ -1627,6 +1659,13 @@ function stepRoundEnd(s: BoardState, def: BoardDef): void {
       r.next = s.t + (r.steps.length ? 0.6 : 1.0);
       return;
     }
+    if (r.summary === undefined) {
+      // a quick look at where everyone stands before the minigame
+      r.summary = s.t;
+      r.next = s.t + SUMMARY_T;
+      return;
+    }
+    s.standSnap = Object.fromEntries(s.order.map((o) => [o, [s.players[o].crowns, s.players[o].keys] as [number, number]]));
     s.recap = null;
     set(s, 'done');
     return;

@@ -37,7 +37,7 @@ function describe(type: SpaceType, s: PartyState): [string, string] {
   const theme = getBoard(b.boardId).theme;
   switch (type) {
     case 'key':
-      return ['Coin', `+${pr.keySpace} Pit Coin`];
+      return pr.keySpace > 0 ? ['Coin', `+${pr.keySpace} Pit Coin`] : ['Plain', 'Just a space to walk on'];
     case 'thorn':
       return ['Thorn', `-${pr.thornSpace} Pit Coin`];
     case 'heart':
@@ -61,7 +61,7 @@ function describe(type: SpaceType, s: PartyState): [string, string] {
     case 'stew':
       return ['Stew Battle', 'Team minigame for the pot'];
     case 'shop':
-      return ['Shop', 'Buy items as you pass (free step)'];
+      return ['Shops', 'The Square Deal sells boosts, the Chop Shop sells weapons'];
     case 'post':
       return ['Claim Post', 'Claim it; others pay you to pass'];
     case 'fountain':

@@ -1208,7 +1208,7 @@ let loadT = 0;
 const LOAD_TIPS = [
   'Roll doubles for +5 Pit Coin.',
   'A Chobglob costs 40 Pit Coin at the chest.',
-  'Win the minigame and you go first next round.',
+  'Win the Crust Game and you go first next round.',
   'Square Brian sells the helpful stuff. Mista Chunk sells the nasty stuff.',
   'Press Y or M on the board for the map.',
   'One item per turn. Make it count.',

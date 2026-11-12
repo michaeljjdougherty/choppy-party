@@ -672,7 +672,7 @@ export function seatView(env: THREE.Texture, state: SeatState, players: PlayerIn
   fitCamera(camera, (R + 230) * 2, (R * 0.62 + 160) * 2, 400, 0.8);
   // a parlour: wooden floor, a big round rug, lamps and plants round the walls
   const fw = ((R + 260) * 2) * PX, fd = ((R * 0.62 + 190) * 2) * PX;
-  const floor = mesh(new THREE.PlaneGeometry(fw + 20, fd + 20), woodFloorMaterial((fw + 20) / 5, (fd + 20) / 5, '#e8d0b8'), { cast: false, receive: true });
+  const floor = mesh(new THREE.PlaneGeometry(fw + 20, fd + 20), woodFloorMaterial((fw + 20) / 5, (fd + 20) / 5, '#cfb8a4'), { cast: false, receive: true });
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(0, 0, wz(400));
   scene.add(floor);

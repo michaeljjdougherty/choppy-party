@@ -7,7 +7,7 @@ import { earthGlobe, moonMaterial } from '../look/moon';
 import { movingTruck, rectRugTexture } from '../look/truck';
 import { BALL_R, type MoonState } from '../../../shared/games/moonball';
 import { bpmAt, songT, type ShantyState } from '../../../shared/games/shantyShuffle';
-import { beltR, beltXY, DISHES, type Dish, type SushiState } from '../../../shared/games/sushiBelt';
+import { beltR, beltXY, DISHES, DISH_MODEL, type Dish, type SushiState } from '../../../shared/games/sushiBelt';
 import { COUCH_L, LANE_H, LANE_W, ROUTE, RUG, TABLES, TRUCK, WALLS, type MovingState } from '../../../shared/games/movingDay';
 import { place, texture } from '../assets';
 import { ChoppyModel } from '../choppy';
@@ -131,6 +131,10 @@ export function zombieView(env: THREE.Texture, state: ZombieState, players: Play
 /* ---------------------------------------------------------------- Chili Challenge */
 
 const PEPPER_COLOR: Record<Pepper, string> = { green: '#45c23a', red: '#e8322a', gold: '#ffc21a' };
+const PEPPER_NAME: Record<Pepper, string> = { green: 'MILD green', red: 'HOT red', gold: 'GOLD SCORCHER!' };
+/** What's still in a bowl, e.g. "🟢4 🔴3 🟡1". */
+const bowlLeft = (bowl: Pepper[]) =>
+  (['green', 'red', 'gold'] as Pepper[]).map((p) => `${p === 'green' ? '🟢' : p === 'red' ? '🔴' : '🟡'}${bowl.filter((q) => q === p).length}`).join(' ');
 
 export function chiliView(env: THREE.Texture, state: ChiliState, players: PlayerInfo[]): View {
   const scene = makeScene(env, { sky: 'day', skyTop: '#ffb36b', skyBottom: '#fff0d6', fog: ['#ffe2bd', 40, 110], sunColor: '#fff2dc', shadowSize: 24 });
@@ -177,6 +181,8 @@ export function chiliView(env: THREE.Texture, state: ChiliState, players: Player
     chew: number;
     shown: number;
     aura: THREE.Sprite;
+    /** What they just bit and how hot it was, shown over their head for a moment. */
+    bit: { pepper: Pepper; heat: number; at: number } | null;
   }
   const seats = new Map<string, Seat>();
   state.eaters.forEach((e, i) => {
@@ -210,17 +216,21 @@ export function chiliView(env: THREE.Texture, state: ChiliState, players: Player
     const aura = glowSprite('#ff3a10', 2.6, 0);
     aura.position.set(x, 2.2, -0.4);
     scene.add(aura);
-    seats.set(e.id, { x, model, peppers, meter, meterMat, chew: 0, shown: e.bowl.length, aura });
+    seats.set(e.id, { x, model, peppers, meter, meterMat, chew: 0, shown: e.bowl.length, aura, bit: null });
   });
   let last = state;
+  let now = 0;
   return {
     scene,
     camera,
     update(s: ChiliState, _p, t, dt) {
       last = s;
+      now = t;
       for (const b of s.bites) {
         const st = seats.get(b.id)!;
         st.chew = 0.4;
+        const e = s.eaters.find((q) => q.id === b.id);
+        st.bit = { pepper: b.pepper, heat: e?.lastHeat ?? 0, at: t };
         fx.emit(new THREE.Vector3(st.x, 2.4, -0.2), { n: b.pepper === 'gold' ? 22 : 10, color: PEPPER_COLOR[b.pepper], speed: [1.5, 4], size: [0.3, 0], life: [0.3, 0.7], up: 2 });
         sfx.plate();
         if (b.pepper === 'gold') shake(0.12);
@@ -256,12 +266,14 @@ export function chiliView(env: THREE.Texture, state: ChiliState, players: Player
       return last.eaters.map((e) => {
         const st = seats.get(e.id)!;
         const p = who(players, e.id);
+        const fresh = !!st.bit && now - st.bit.at < 1.6;
         return {
           pos: new THREE.Vector3(st.x, 3.3, -0.6),
           text: p?.name ?? '',
           color: p?.color,
-          sub: e.burst ? 'BURST!' : `${e.eaten} 🌶  ${Math.round(e.heat)}°${e.locked ? ' ✔' : ''}`,
-          subColor: e.burst ? '#ff5a3a' : e.heat > 70 ? '#ffb000' : '#ffffff',
+          // right after a bite: which pepper it was and how hot; otherwise what's left in the bowl
+          sub: e.burst ? 'BURST!' : fresh ? `${PEPPER_NAME[st.bit!.pepper]} +${st.bit!.heat}°` : `${bowlLeft(e.bowl)}  ${Math.round(e.heat)}°${e.locked ? ' ✔' : ''}`,
+          subColor: e.burst ? '#ff5a3a' : fresh ? PEPPER_COLOR[st.bit!.pepper] : e.heat > 70 ? '#ffb000' : '#ffffff',
         };
       });
     },
@@ -504,13 +516,7 @@ export function shantyView(env: THREE.Texture, state: ShantyState, players: Play
 
 /* ---------------------------------------------------------------- Sushi Belt */
 
-const DISH_PROP: Record<Dish, string> = {
-  'salmon-roll': 'food/maki-salmon',
-  'roe-roll': 'food/maki-roe',
-  'veggie-roll': 'food/maki-vegetable',
-  'salmon-nigiri': 'food/sushi-salmon',
-  'egg-nigiri': 'food/sushi-egg',
-};
+const DISH_PROP = DISH_MODEL;
 
 export function sushiView(env: THREE.Texture, state: SushiState, players: PlayerInfo[]): View {
   const scene = makeScene(env, { skyTop: '#3a2a2a', skyBottom: '#8a5a4a', fog: ['#3a2a2a', 40, 100], sunColor: '#fff0dc', sunIntensity: 1.8, shadowSize: 24 });

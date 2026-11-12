@@ -24,7 +24,9 @@ import { music, syncMusic } from './soundtrack';
 import { playSplash, splashActive } from './splash';
 import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
-import { bakeItemIcons } from './three/itemIcons';
+import { bakeItemIcons, bakeModelIcons, modelIcon } from './three/itemIcons';
+import { DISH_ICONS, DISH_MODEL } from '../shared/games/sushiBelt';
+DISH_ICONS.get = (d) => modelIcon(DISH_MODEL[d]);
 import { MainMenu } from './menu';
 import { CustomizeScreen } from './customize';
 import { customizeView } from './three/views/customize';
@@ -856,6 +858,7 @@ function renderScreens(wallT: number, dt: number) {
     }
     case 'play': {
       const g = getGame(s.gameId!);
+      if (s.gameId === 'sushi-belt') bakeModelIcons(stage.renderer, Object.values(DISH_MODEL));
       g.draw(ctx, s.game, inGame(s));
       // shared 3, 2, 1, GO! before every minigame (the party holds the game still until GO)
       countIn(ctx, s.phaseT, countTotal(g), g.goWord);

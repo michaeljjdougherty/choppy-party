@@ -145,16 +145,22 @@ export function mineCartView(env: THREE.Texture, state: CartState, players: Play
   }
   // canyon walls, warning signs before every gap, and a pit under it
   const rocks = ['pirate/rocks-a', 'pirate/rocks-b', 'pirate/rocks-c', 'forest/rocks-high', 'pirate/rocks-sand-b'];
+  // on a bend, a rock beside one stretch can land on another stretch: keep everything clear of the whole track
+  const trackPts: THREE.Vector3[] = [];
+  for (let d = -PRE; d <= end; d += 60) trackPts.push(at(d).p);
+  const clear = (q: THREE.Vector3, r: number) => trackPts.every((t) => Math.hypot(t.x - q.x, t.z - q.z) > half + r);
   for (let d = -PRE, i = 0; d < end; d += 300, i++) {
     const { p, right } = at(d);
     for (const side of [-1, 1]) {
       const off = half + 3.5 + ((i * 7 + (side > 0 ? 3 : 0)) % 5) * 1.2;
       const q = p.clone().addScaledVector(right, side * off);
-      place(scene, rocks[(i + (side > 0 ? 2 : 0)) % rocks.length], q.x, -0.2, q.z, { s: 1.1 + ((i * 13) % 7) * 0.18, ry: i * 1.7 });
+      const sc = 1.1 + ((i * 13) % 7) * 0.18;
+      if (clear(q, 1.6 * sc)) place(scene, rocks[(i + (side > 0 ? 2 : 0)) % rocks.length], q.x, -0.2, q.z, { s: sc, ry: i * 1.7 });
       // tall canyon walls further out
       if (i % 2 === 0) {
         const w = p.clone().addScaledVector(right, side * (half + 12 + (i % 3) * 2));
-        place(scene, 'forest/rocks-high', w.x, -0.5, w.z, { s: 4 + (i % 3), ry: i });
+        const ws = 4 + (i % 3);
+        if (clear(w, 1.5 * ws)) place(scene, 'forest/rocks-high', w.x, -0.5, w.z, { s: ws, ry: i });
       }
     }
   }
@@ -224,7 +230,9 @@ export function mineCartView(env: THREE.Texture, state: CartState, players: Play
         v.g.position.copy(p);
         v.g.rotation.y = -a.h;
         const g = segAt(s, c.d);
-        const roll = c.derail > 0 ? 1.5 * (i % 2 ? 1 : -1) : Math.sign(g.c || 1) * c.tip * 0.55;
+        const gone = (c.out ?? -1) >= 0;
+        v.g.visible = !gone || s.t - 3 - (c.out ?? 0) < 1.5;
+        const roll = c.derail > 0 || gone ? 1.5 * (i % 2 ? 1 : -1) : Math.sign(g.c || 1) * c.tip * 0.55;
         v.body.rotation.z += (roll - v.body.rotation.z) * Math.min(1, dt * 10);
         v.body.position.y = c.derail > 0 ? 0.3 : 0;
         v.m.group.rotation.z = -c.lean * 0.35;
@@ -244,7 +252,8 @@ export function mineCartView(env: THREE.Texture, state: CartState, players: Play
         void id;
         sfx.boing();
       }
-      const ds = s.carts.map((c) => c.d).sort((a, b) => b - a);
+      const live = s.carts.filter((c) => (c.out ?? -1) < 0);
+      const ds = (live.length ? live : s.carts).map((c) => c.d).sort((a, b) => b - a);
       const target = ds[0] * 0.65 + ds[ds.length - 1] * 0.35;
       camD += (target - camD) * Math.min(1, dt * 2.5);
       const dist = 1 + n * 0.07;
@@ -257,7 +266,7 @@ export function mineCartView(env: THREE.Texture, state: CartState, players: Play
     tags(): Tag[] {
       return last.carts.map((c) => {
         const p = who(players, c.id);
-        return { id: c.id, pos: cartPos(c).p.setY(2.1 + c.z * PX), text: p?.name ?? '', color: p?.color, sub: c.finish >= 0 ? `${c.finish.toFixed(1)}s` : c.derail > 0 ? 'DERAILED!' : undefined, subColor: c.derail > 0 ? '#ff5a5f' : undefined };
+        return { id: c.id, pos: cartPos(c).p.setY(2.1 + c.z * PX), text: p?.name ?? '', color: p?.color, sub: c.finish >= 0 ? `${c.finish.toFixed(1)}s` : (c.out ?? -1) >= 0 ? 'LEFT BEHIND!' : c.derail > 0 ? 'DERAILED!' : undefined, subColor: c.derail > 0 || (c.out ?? -1) >= 0 ? '#ff5a5f' : undefined };
       });
     },
   };

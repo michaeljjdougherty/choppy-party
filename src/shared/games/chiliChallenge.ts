@@ -137,6 +137,16 @@ export const chiliChallenge: Minigame<ChiliState> = {
       s.eaters.map((e) => ({ id: e.id, label: e.burst ? 'BURST' : `${e.eaten} 🌶${e.locked ? ' ✔' : ''}`, out: e.burst })),
     );
     if (s.endAt !== undefined) text(ctx, 'Pencils... er, forks down!', 640, 150, 40, { color: '#ffd23f' });
+    else if (s.t >= READY) {
+      // the pepper legend, so everyone knows what a bite can cost
+      const row: [string, string][] = [
+        [`Green: mild +${PEPPER_HEAT.green[0]}-${PEPPER_HEAT.green[1]}`, '#45c23a'],
+        [`Red: hot +${PEPPER_HEAT.red[0]}-${PEPPER_HEAT.red[1]}`, '#ff4a3a'],
+        [`Gold: scorcher +${PEPPER_HEAT.gold[0]}-${PEPPER_HEAT.gold[1]}`, '#ffc21a'],
+        [`Burst over ${BURST}`, '#ffffff'],
+      ];
+      row.forEach(([t, c], i) => text(ctx, t, 640 + (i - 1.5) * 270, 690, 20, { color: c }));
+    }
   },
 
   bot(s, id, k: BotCtx) {

@@ -10,7 +10,7 @@ import { stick, type BotCtx } from '../botkit';
  * side lanes. Lean into each curve (stick toward the turn) to keep your speed. Lean the wrong way, or not
  * at all on a sharp bend, and the cart tips up on two wheels; tip too far and you derail for 2 seconds.
  * Gaps in the track need a hop (A) at the right moment. First to the station wins; when time runs out,
- * the rest rank by distance.
+ * the rest rank by distance. Fall too far behind the pack and the dust swallows you: you're out.
  */
 const READY = 3;
 const LIMIT = 58;
@@ -21,6 +21,9 @@ const HOP = 560;
 const GRAV = 1500;
 const DERAIL = 2;
 export const GAP_LEN = 170;
+/** Fall this far behind the leader (after the first few seconds) and you're out (Michael: no hopeless stragglers). */
+export const BEHIND = 2600;
+const GRACE = 6;
 /** How hard the track turns per px at curvature 1 (radians). */
 export const TURN = Math.PI / 2 / 650;
 
@@ -43,6 +46,8 @@ export interface Cart {
   derail: number; // seconds left off the rails
   finish: number; // race time, -1 while racing
   crashes: number;
+  /** Race time they fell too far behind and were knocked out (-1 = still in). Optional for old snapshots. */
+  out?: number;
 }
 export interface CartState {
   t: number;
@@ -116,7 +121,18 @@ export const mineCart: Minigame<CartState> = {
     s.hops = [];
     if (s.t < READY || s.endAt !== undefined) return;
     const race = s.t - READY;
+    const lead = Math.min(TRACK, Math.max(...s.carts.filter((c) => (c.out ?? -1) < 0).map((c) => c.d)));
     for (const c of s.carts) {
+      if ((c.out ?? -1) >= 0) {
+        c.v = 0;
+        continue;
+      }
+      if (c.finish < 0 && race > GRACE && lead - c.d > BEHIND) {
+        c.out = race;
+        c.v = 0;
+        s.derails.push(c.id);
+        continue;
+      }
       if (c.finish >= 0) {
         c.v = Math.max(0, c.v - 500 * dt);
         c.d += c.v * dt;
@@ -165,25 +181,29 @@ export const mineCart: Minigame<CartState> = {
       else if (segAt(s, c.d).gap && c.z <= 0) crash('gap');
       if (c.d >= TRACK) c.finish = race;
     }
-    if (s.carts.every((c) => c.finish >= 0) || race >= LIMIT) s.endAt = s.t;
+    if (s.carts.every((c) => c.finish >= 0 || (c.out ?? -1) >= 0) || race >= LIMIT) s.endAt = s.t;
   },
 
   isOver: (s) => s.endAt !== undefined && s.t - s.endAt > 2,
 
   results(s): ResultRow[] {
     return s.carts
-      .map((c) => (c.finish >= 0 ? { id: c.id, value: 100000 - Math.round(c.finish * 100), label: `${c.finish.toFixed(2)}s` } : { id: c.id, value: Math.round(c.d / 10), label: `${Math.round((c.d / TRACK) * 100)}% of the way` }))
+      .map((c) => (c.finish >= 0 ? { id: c.id, value: 100000 - Math.round(c.finish * 100), label: `${c.finish.toFixed(2)}s` } : (c.out ?? -1) >= 0 ? { id: c.id, value: Math.round(c.out! * 10), label: `Left behind at ${Math.round((c.d / TRACK) * 100)}%` } : { id: c.id, value: 5000 + Math.round(c.d / 10), label: `${Math.round((c.d / TRACK) * 100)}% of the way` }))
       .sort((a, b) => b.value - a.value);
   },
 
   draw(ctx, s, players) {
     if (s.t >= READY && s.endAt === undefined) drawTimer(ctx, READY + LIMIT - s.t);
+    const lead = Math.min(TRACK, Math.max(...s.carts.filter((c) => (c.out ?? -1) < 0).map((c) => c.d)));
     playerChips(
       ctx,
       players,
-      s.carts.map((c) => ({ id: c.id, label: c.finish >= 0 ? `${c.finish.toFixed(1)}s` : c.derail > 0 ? 'DERAILED' : `${Math.min(99, Math.round((c.d / TRACK) * 100))}%`, hot: c.tip > 0.5, out: c.derail > 0 })),
+      s.carts.map((c) => {
+        const gone = (c.out ?? -1) >= 0;
+        const behind = !gone && c.finish < 0 && s.t - READY > GRACE && lead - c.d > BEHIND * 0.6;
+        return { id: c.id, label: c.finish >= 0 ? `${c.finish.toFixed(1)}s` : gone ? 'LEFT BEHIND' : c.derail > 0 ? 'DERAILED' : behind ? 'CATCH UP!' : `${Math.min(99, Math.round((c.d / TRACK) * 100))}%`, hot: c.tip > 0.5 || behind, out: gone || c.derail > 0 };
+      }),
     );
-    const lead = Math.max(...s.carts.map((c) => c.d));
     if (s.t > READY && s.endAt === undefined && segAt(s, lead + 500).gap && !segAt(s, lead).gap) text(ctx, 'GAP AHEAD: hop with A!', 640, 150, 32, { color: '#ffd23f' });
   },
 

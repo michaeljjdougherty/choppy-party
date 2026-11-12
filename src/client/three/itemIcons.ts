@@ -17,6 +17,24 @@ export function itemIcon(id: ItemId): HTMLCanvasElement | null {
 export function bakeItemIcons(renderer: THREE.WebGLRenderer): void {
   if (baked) return;
   baked = true;
+  for (const [id, cv] of bake(renderer, (Object.keys(ITEMS) as ItemId[]).map((id) => [id, ITEMS[id].model]))) icons.set(id as ItemId, cv);
+}
+
+/** Pictures of any Kenney model by path (e.g. the Sushi Belt dishes), baked the first time they're asked for. */
+const modelIcons = new Map<string, HTMLCanvasElement>();
+export function modelIcon(model: string): HTMLCanvasElement | null {
+  return modelIcons.get(model) ?? null;
+}
+export function bakeModelIcons(renderer: THREE.WebGLRenderer, models: string[]): void {
+  const todo = models.filter((m) => !modelIcons.has(m));
+  if (!todo.length) return;
+  for (const [m, cv] of bake(renderer, todo.map((m) => [m, m]))) modelIcons.set(m, cv);
+  // a model that failed to load still counts as tried
+  for (const m of todo) if (!modelIcons.has(m)) modelIcons.set(m, document.createElement('canvas'));
+}
+
+function bake(renderer: THREE.WebGLRenderer, list: [string, string][]): [string, HTMLCanvasElement][] {
+  const out: [string, HTMLCanvasElement][] = [];
   const S = 128;
   const rt = new THREE.WebGLRenderTarget(S, S, { samples: 4 });
   rt.texture.colorSpace = THREE.SRGBColorSpace;
@@ -33,10 +51,10 @@ export function bakeItemIcons(renderer: THREE.WebGLRenderer): void {
   const prevShadow = renderer.shadowMap.enabled;
   renderer.shadowMap.enabled = false;
   renderer.setClearColor('#000000', 0);
-  for (const id of Object.keys(ITEMS) as ItemId[]) {
+  for (const [id, model] of list) {
     let o: THREE.Object3D;
     try {
-      o = prop(ITEMS[id].model, 1);
+      o = prop(model, 1);
     } catch {
       continue;
     }
@@ -66,10 +84,11 @@ export function bakeItemIcons(renderer: THREE.WebGLRenderer): void {
     // the render target is upside down compared with a canvas
     for (let y = 0; y < S; y++) img.data.set(buf.subarray((S - 1 - y) * S * 4, (S - y) * S * 4), y * S * 4);
     g.putImageData(img, 0, 0);
-    icons.set(id, cv);
+    out.push([id, cv]);
   }
   renderer.setRenderTarget(prevTarget);
   renderer.setClearColor(prevClear, prevAlpha);
   renderer.shadowMap.enabled = prevShadow;
   rt.dispose();
+  return out;
 }

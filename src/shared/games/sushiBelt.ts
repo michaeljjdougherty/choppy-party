@@ -16,6 +16,16 @@ const TIME = 45;
 export const DISHES = ['salmon-roll', 'roe-roll', 'veggie-roll', 'salmon-nigiri', 'egg-nigiri'] as const;
 export type Dish = (typeof DISHES)[number];
 export const DISH_NAME: Record<Dish, string> = { 'salmon-roll': 'Salmon Roll', 'roe-roll': 'Roe Roll', 'veggie-roll': 'Veggie Roll', 'salmon-nigiri': 'Salmon Nigiri', 'egg-nigiri': 'Egg Nigiri' };
+/** The Kenney Food Kit model for each dish (the view uses them, and the ticket shows pictures of them). */
+export const DISH_MODEL: Record<Dish, string> = {
+  'salmon-roll': 'food/maki-salmon',
+  'roe-roll': 'food/maki-roe',
+  'veggie-roll': 'food/maki-vegetable',
+  'salmon-nigiri': 'food/sushi-salmon',
+  'egg-nigiri': 'food/sushi-egg',
+};
+/** Set by the client: a little picture of a dish for the tickets (null = draw a coloured dot). */
+export const DISH_ICONS: { get: (d: Dish) => CanvasImageSource | null } = { get: () => null };
 export const DISH_COLOR: Record<Dish, string> = { 'salmon-roll': '#ff8a5c', 'roe-roll': '#ff4d3d', 'veggie-roll': '#5cc94a', 'salmon-nigiri': '#ffb08a', 'egg-nigiri': '#ffd23f' };
 const REACH = 0.018; // of the loop
 const SEAT_HALF = 0.03; // how far you can slide either side of your seat
@@ -197,14 +207,27 @@ export const sushiBelt: Minigame<SushiState> = {
       ctx.fill();
       ctx.fillStyle = p?.color ?? '#999';
       ctx.fillRect(x, y, w, 6);
-      const dot = Math.min(16, (w - 12) / Math.max(1, d.ticket.length) - 4);
+      // a picture of each dish still needed, so you know exactly what to grab off the belt
+      const dot = Math.min(40, (w - 12) / Math.max(1, d.ticket.length) - 3);
+      const x0 = x + w / 2 - (d.ticket.length * (dot + 3) - 3) / 2;
       d.ticket.forEach((dish, j) => {
-        ctx.fillStyle = DISH_COLOR[dish];
+        const cx = x0 + dot / 2 + j * (dot + 3);
+        ctx.fillStyle = DISH_COLOR[dish] + '55';
         ctx.beginPath();
-        ctx.arc(x + 10 + dot / 2 + j * (dot + 4), y + 30, dot / 2, 0, Math.PI * 2);
+        ctx.arc(cx, y + 28, dot / 2, 0, Math.PI * 2);
         ctx.fill();
+        const icon = DISH_ICONS.get(dish);
+        if (icon && (icon as HTMLCanvasElement).width) ctx.drawImage(icon, cx - dot / 2 - 2, y + 26 - dot / 2 - 2, dot + 4, dot + 4);
+        else {
+          ctx.fillStyle = DISH_COLOR[dish];
+          ctx.beginPath();
+          ctx.arc(cx, y + 28, dot / 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
       });
-      text(ctx, d.held ? 'Oops!' : `${d.size - d.ticket.length}/${d.size}`, x + w / 2, y + 55, 14, { color: d.held ? '#ff4d5a' : '#5a4630', outline: false, weight: 800 });
+      // the next dish by name too
+      const next = d.ticket[0];
+      text(ctx, d.held ? 'Wrong dish! B to put back' : next ? `${DISH_NAME[next]}  ${d.size - d.ticket.length}/${d.size}` : `${d.size}/${d.size}`, x + w / 2, y + 58, w < 120 ? 11 : 13, { color: d.held ? '#ff4d5a' : '#5a4630', outline: false, weight: 800 });
     });
   },
 

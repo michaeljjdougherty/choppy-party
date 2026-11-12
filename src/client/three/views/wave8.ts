@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { flame, glowTex, wavingFlag } from '../look/fxKit';
 import { barkTexture, endGrainTexture } from '../look/wood';
+import { paintedCrateTexture, trussMaterial } from '../look/crate';
 import { ropeMaterial } from '../look/marble';
 import { rockGeometry, stoneMaterial } from '../life/rocks';
 import type { PlayerInfo } from '../../../shared/types';
@@ -232,21 +233,21 @@ export function crateStackerView(env: THREE.Texture, state: StackState, players:
   place(scene, 'pirate/ship-medium', 22, -0.6, -32, { s: 4, ry: -0.6 });
   place(scene, 'pirate/tower-complete-large', 0, -0.6, -48, { s: 5 });
   for (let i = 0; i < 6; i++) place(scene, i % 2 ? 'pirate/barrel' : 'pirate/crate-bottles', -15 + i * 6 + (i > 2 ? 0 : 0), 0, -3.8, { s: 1.4, ry: i });
-  const crateMat = new THREE.MeshStandardMaterial({ map: texture('floor_wood_planks', 1, 1), color: '#d09a5a', roughness: 0.85 });
-  const edgeMat = toy('#7a4e26', 0.8);
+  // painted shipping crates (bevelled, braced, in the player's colour)
+  const crateGeo = new RoundedBoxGeometry(cw, ch, cw * 0.8, 2, 0.06);
+  const crateMats = new Map<string, THREE.Material>();
   const makeCrate = (tint?: string) => {
+    const key = tint ?? '#d09a5a';
+    let m = crateMats.get(key);
+    if (!m) {
+      m = new THREE.MeshStandardMaterial({ map: paintedCrateTexture(), color: new THREE.Color(key).lerp(new THREE.Color('#ffffff'), 0.25), roughness: 0.6 });
+      m.userData.noDetail = true;
+      crateMats.set(key, m);
+    }
     const g = new THREE.Group();
-    const b = mesh(new THREE.BoxGeometry(cw, ch, cw * 0.8), tint ? new THREE.MeshStandardMaterial({ map: crateMat.map, color: new THREE.Color(tint).lerp(new THREE.Color('#ffe2b8'), 0.55), roughness: 0.85 }) : crateMat);
+    const b = mesh(crateGeo, m);
     b.position.y = ch / 2;
     g.add(b);
-    for (const sx of [-1, 1]) {
-      const e = mesh(new THREE.BoxGeometry(0.1, ch, cw * 0.82), edgeMat, { cast: false });
-      e.position.set(sx * (cw / 2 - 0.04), ch / 2, 0);
-      g.add(e);
-    }
-    const x = mesh(new THREE.BoxGeometry(cw * 1.02, 0.1, cw * 0.82), edgeMat, { cast: false });
-    x.position.y = ch - 0.05;
-    g.add(x);
     return g;
   };
   const fx = new Fx(scene);
@@ -262,8 +263,10 @@ export function crateStackerView(env: THREE.Texture, state: StackState, players:
     root.add(stack);
     // the crane: a mast beside the tower, an arm above, a hook on a rope
     const crane = new THREE.Group();
-    const mast = mesh(new THREE.BoxGeometry(0.4, 1, 0.4), toy('#ffb020', 0.5));
-    const arm = mesh(new THREE.BoxGeometry(10, 0.35, 0.35), toy('#ffb020', 0.5));
+    const mastMat = trussMaterial(1, 2);
+    const mast = mesh(new THREE.BoxGeometry(0.45, 1, 0.45), mastMat);
+    const arm = mesh(new THREE.BoxGeometry(10, 0.4, 0.4), trussMaterial(22, 1));
+    mast.userData.mat = mastMat;
     const ropeM = mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 6), toy('#3a3a3a', 0.8), { cast: false });
     const hookCrate = makeCrate(colorOf(players, k.id));
     crane.add(mast, arm, ropeM, hookCrate);
@@ -304,6 +307,7 @@ export function crateStackerView(env: THREE.Texture, state: StackState, players:
         const hookY = (n + 3.2) * ch + 0.4;
         const hx = k.drop ? k.drop.x * PX : craneX(k) * PX;
         v.mast.scale.y = hookY + 1.2;
+        (v.mast.userData.mat as THREE.MeshStandardMaterial).map!.repeat.set(1, (hookY + 1.2) / 0.45);
         v.mast.position.set(i === 0 ? -5.6 : 5.6, (hookY + 1.2) / 2, -0.9);
         v.arm.position.set(0, hookY + 1.2, -0.9);
         const showHook = !k.over && !k.drop && k.next <= 0;
@@ -842,37 +846,7 @@ export function crateCascadeView(env: THREE.Texture, state: CascadeState, player
   // all the crates in one instanced mesh
   const per = WELL_W * WELL_H + 8;
   // painted crates: a pale wood face with a darker frame and cross-brace, so the paint colour stays bright and readable
-  const crateTex = (() => {
-    const S = 128;
-    const c = document.createElement('canvas');
-    c.width = c.height = S;
-    const g = c.getContext('2d')!;
-    g.fillStyle = '#f2ece2';
-    g.fillRect(0, 0, S, S);
-    for (let i = 0; i < 5; i++) {
-      g.fillStyle = i % 2 ? 'rgba(120,90,60,0.08)' : 'rgba(255,255,255,0.1)';
-      g.fillRect(0, (i * S) / 5, S, S / 5);
-      g.fillStyle = 'rgba(80,60,40,0.18)';
-      g.fillRect(0, (i * S) / 5, S, 1.5);
-    }
-    g.strokeStyle = 'rgba(70,50,30,0.55)';
-    g.lineWidth = 14;
-    g.strokeRect(7, 7, S - 14, S - 14);
-    g.lineWidth = 10;
-    g.beginPath();
-    g.moveTo(14, S - 14);
-    g.lineTo(S - 14, 14);
-    g.stroke();
-    g.fillStyle = 'rgba(40,30,20,0.7)';
-    for (const [x, y] of [[12, 12], [S - 12, 12], [12, S - 12], [S - 12, S - 12]]) {
-      g.beginPath();
-      g.arc(x, y, 3, 0, Math.PI * 2);
-      g.fill();
-    }
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  })();
+  const crateTex = paintedCrateTexture();
   const crateMat = new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.6 });
   crateMat.userData.noDetail = true;
   const crates = new THREE.InstancedMesh(new RoundedBoxGeometry(C * 0.95, C * 0.95, C * 0.95, 2, C * 0.08), crateMat, n * per);

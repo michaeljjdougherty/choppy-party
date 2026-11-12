@@ -84,6 +84,11 @@ export function roadHopperView(env: THREE.Texture, state: HopState, players: Pla
       }
     }
   }
+  // meadow all round, so the field never ends in a void
+  const meadow = mesh(new THREE.PlaneGeometry(220, 160), new THREE.MeshStandardMaterial({ map: texture('floor_ground_grass', 50, 36), color: '#86c766', roughness: 1 }), { cast: false, receive: true });
+  meadow.rotation.x = -Math.PI / 2;
+  meadow.position.set(ax(W / 2), -0.41, az(HROWS / 2));
+  scene.add(meadow);
   const riverRows = [6, 7, 8, 9];
   const riverZ = (az(6) + az(9)) / 2;
   const river = mesh(new THREE.PlaneGeometry(fieldW + 30, C * 4), water.material, { cast: false, receive: true });

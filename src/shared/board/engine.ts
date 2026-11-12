@@ -26,8 +26,9 @@ const outOfTime = (s: BoardState) => (s.clock ?? TURN_TIME) <= 0;
 const BANNER = 2;
 /** The pause on a space before it pays out (tests turn it off to check landings in one step). */
 export const timing = { settle: 0.9 };
-/** The die spins this long before the number shows, then the number stays up for ROLL_SHOW. */
-export const ROLL_SPIN = 1.3;
+/** The punch: the die stops the moment the fist hits it (PUNCH_HIT in), then a beat to read it. */
+export const ROLL_SPIN = 0.3;
+export const PUNCH_HIT = 0.12;
 export const ROLL_SHOW = 2.0;
 /** How long a single die stays up before the next one can be rolled. */
 export const DIE_SHOW = 0.9;

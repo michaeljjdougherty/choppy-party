@@ -174,9 +174,8 @@ export function watch(s: PartyState): void {
 
   if (b) {
     if (now.sub === 'turnIntro' && (was.sub !== 'turnIntro' || now.cur !== was.cur) && !s.board?.tour) sfx.turn();
-    if (now.sub === 'rolling' && was.sub !== 'rolling') sfx.diceSpin();
+    // the dice punch: the hit sound plays in the board view the moment the fist meets the die
     if (now.sub === 'rolled' && was.sub !== 'rolled') {
-      sfx.diceHit();
       const bd = s.board;
       if (bd?.doubles && bd.rolls.length >= bd.diceN) {
         sfx.fanfare();

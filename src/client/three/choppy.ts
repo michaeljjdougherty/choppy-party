@@ -224,6 +224,13 @@ export class ChoppyModel {
     }
   }
 
+  /** Uppercut a dice block over their head: a quick crouch, then stretch up with the fist out. */
+  punch(): void {
+    this.sqv -= 4;
+    setTimeout(() => (this.sqv += 9), 60);
+    this.folk?.punch(0.38);
+  }
+
   /** A cheer: hop, spin and sparkles in the player's colour. Views can call it whenever someone scores. */
   celebrate(): void {
     if (this.clock - this.cheerAt < 0.9) return;

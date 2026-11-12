@@ -1100,6 +1100,7 @@ export class FolkModel {
   private exprT = 0;
   // animation layer: eased speed, idle look-around, and which cheer this character does
   private spd = 0;
+  private punchT = 0;
   private lookT = 1 + Math.random() * 3;
   private lookYaw = 0;
   private seed = Math.random() * 10;
@@ -1382,6 +1383,11 @@ export class FolkModel {
     if (this.hop <= 0.01) this.hopV = 4.6;
   }
 
+  /** An uppercut straight up (hitting a dice block over their head): the right fist shoots up for a moment. */
+  punch(seconds = 0.35): void {
+    this.punchT = seconds;
+  }
+
   private setFace(f: FolkExpr): void {
     if (f === this.face) return;
     this.face = f;
@@ -1483,8 +1489,16 @@ export class FolkModel {
       raiseL = raiseR = 1.2;
       fwdL = fwdR = -0.2;
     }
+    if (this.punchT > 0) {
+      // uppercut: right fist straight up, left arm pulled back down
+      this.punchT -= dt;
+      raiseR = 3.0;
+      fwdR = -0.15;
+      raiseL = 0.25;
+      fwdL = 0.35;
+    }
     this.armL.rotation.z += (-raiseL - this.armL.rotation.z) * k;
-    this.armR.rotation.z += (raiseR - this.armR.rotation.z) * k;
+    this.armR.rotation.z += (raiseR - this.armR.rotation.z) * (this.punchT > 0 ? 1 - Math.exp(-dt * 40) : k);
     this.armL.rotation.x += (fwdL - this.armL.rotation.x) * k;
     this.armR.rotation.x += (fwdR - this.armR.rotation.x) * k;
 

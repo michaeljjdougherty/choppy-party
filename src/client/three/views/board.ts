@@ -4,7 +4,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import type { PartyState } from '../../../shared/party';
 import { COSMO_SPREAD, getBoard, unspread } from '../../../shared/board/boards';
 import { markHazards } from '../hazardMarks';
-import { BOSS_INTRO, RECAP_HOP, RECAP_TITLE, SPIN_STOP, currentPlayer, exits, slowFace } from '../../../shared/board/engine';
+import { BOSS_INTRO, PUNCH_HIT, RECAP_HOP, RECAP_TITLE, ROLL_SPIN, SPIN_STOP, currentPlayer, exits, slowFace } from '../../../shared/board/engine';
 import type { BoardDef, BoardState, SpaceType } from '../../../shared/board/types';
 import { roundedRect } from '../../../shared/board/layout';
 import { groundAt } from '../../../shared/board/terrain';
@@ -1366,6 +1366,11 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
     dice.push(g);
   }
   let wasRolls = 0;
+  // the dice punch: how many dice have been punched / have stopped this roll
+  let punched = 0;
+  let hitRolls = 0;
+  const dieTarget = new THREE.Vector3();
+  const tmpQ2 = new THREE.Quaternion();
   // the turn-order roll: a 12-sided die per player, in that player's colour, lined up under the
   // 2D panel (they ride on the camera so they always sit in the same spot on screen)
   scene.add(camera);
@@ -1796,7 +1801,12 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
         } else {
           m.group.rotation.y += (Math.atan2(camera.position.x - p.x, camera.position.z - p.z) - m.group.rotation.y) * Math.min(1, dt * 4);
         }
-        const hit = id === cur && b.sub === 'rolling' && b.t < 0.45 ? Math.sin((b.t / 0.45) * Math.PI) : 0;
+        // the dice punch: a hop that peaks as the fist meets the die
+        const hit = id === cur && b.sub === 'rolling' && b.t < PUNCH_HIT * 2.4 ? Math.sin((b.t / (PUNCH_HIT * 2.4)) * Math.PI) * 0.9 : 0;
+        if (id === cur && b.sub === 'rolling' && b.rolls.length !== punched) {
+          punched = b.rolls.length;
+          m.punch();
+        }
         m.update(dt, { speed: 0, jump: Math.max(hit, lift / 0.55), happy: id === cur && b.sub === 'rolled', t });
       }
 
@@ -1809,62 +1819,76 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
       const nDice = b.rolls.length ? b.diceN : me?.rollCap ? 1 : Math.max(1, me?.dice ?? 2);
       const rx = Math.cos(camYaw), rz = -Math.sin(camYaw); // camera right
       const final = b.sub === 'rolled' && b.rolls.length >= b.diceN;
-      const landed = b.sub === 'rolled' && b.rolls.length !== wasRolls;
+      // Each press is a punch: the waiting die spins fast through its faces right over their head, the fist
+      // hits it PUNCH_HIT in, and it stops dead on its number, then slides aside for the next one.
+      const contact = b.sub === 'rolling' && b.t >= PUNCH_HIT && hitRolls !== b.rolls.length;
+      if (contact) hitRolls = b.rolls.length;
+      if (b.sub !== 'roll' && b.sub !== 'rolling' && b.sub !== 'rolled') hitRolls = punched = 0;
       dice.forEach((d, i) => {
+        const was = d.visible;
         d.visible = showDice && i < Math.max(nDice, 1);
         if (!d.visible) return;
-        const off = (i - (nDice - 1) / 2) * (final ? 2.3 : 1.6);
-        const done = i < b.rolls.length;
-        const throwing = i === b.rolls.length - 1;
+        const slot = (i - (nDice - 1) / 2) * (final ? 2.3 : 1.6);
+        const throwing = b.sub === 'rolling' && i === b.rolls.length - 1;
+        const stopped = i < b.rolls.length && !(throwing && b.t < PUNCH_HIT);
+        const active = (b.sub === 'roll' && i === b.rolls.length) || throwing;
+        let off = slot;
         let y = cp.y + 2.6;
         let sc = 1;
-        if (b.sub === 'rolling' && throwing) {
-          const k = Math.min(1, b.t / 1.3);
-          const spin = 9 + k * 14;
-          tumble.set(t * spin + i, t * spin * 1.3, t * spin * 0.7);
-          d.quaternion.setFromEuler(tumble);
-          y += k * 0.9;
-          sc = 1 + k * 0.25;
-          d.position.set(cp.x + rx * off + Math.sin(t * 61) * 0.05 * k, y, cp.z + rz * off + Math.cos(t * 53) * 0.05 * k);
-          d.scale.setScalar(sc);
-          return;
-        }
-        if (done && b.weather?.hiddenRoll) {
+        if (active && !stopped) {
+          // spinning over their head, flicking through faces, waiting for the fist
+          off = slot * 0.3;
+          y = cp.y + 2.9 + Math.sin(t * 9) * 0.05;
+          sc = 1.2;
+          if (me?.slowRoll && b.sub === 'roll') faceQ(slowFace(b, me), camYaw, tmpQ);
+          else faceQ(1 + (Math.floor(t * 14 + i * 3) % 6), camYaw, tmpQ);
+          tumble.set(Math.sin(t * 31) * 0.25, Math.sin(t * 23) * 0.25, 0);
+          d.quaternion.copy(tmpQ).multiply(tmpQ2.setFromEuler(tumble));
+        } else if (stopped && b.weather?.hiddenRoll) {
           // hidden in the fog: the dice never settle on a face
           tumble.set(t * 3 + i * 2, t * 3.8 + i, t * 2.2);
           d.quaternion.setFromEuler(tumble);
           y = cp.y + 3.1;
-        } else if (done) {
-          // landed: face the camera with its number, a pop when it first hits
+        } else if (stopped) {
+          // stopped dead on its number; a big pop on the hit, then it slides to its place
           faceQ(b.rolls[i], camYaw, tmpQ);
-          d.quaternion.slerp(tmpQ, Math.min(1, dt * 14));
-          const pop = (b.sub === 'rolled' && (throwing || final)) ? Math.min(1, b.t / 0.45) : 1;
-          sc = 1.15 + Math.sin(pop * Math.PI) * 0.55 * (1 - pop * 0.5) + (final && b.doubles ? Math.sin(t * 9) * 0.06 : 0);
-          y = cp.y + 3.1;
-        } else if (me?.slowRoll && i === b.rolls.length && b.sub === 'roll') {
-          // Slow Roller: the die clicks through its faces, showing the one A will stop on
-          faceQ(slowFace(b, me), camYaw, tmpQ);
-          d.quaternion.slerp(tmpQ, Math.min(1, dt * 16));
-          y = cp.y + 3.0;
-          sc = 1.2;
+          const age = throwing ? b.t - PUNCH_HIT : i === b.rolls.length - 1 && b.sub === 'rolled' ? b.t + ROLL_SPIN - PUNCH_HIT : 9;
+          if (age < 0.05) d.quaternion.copy(tmpQ);
+          else d.quaternion.slerp(tmpQ, Math.min(1, dt * 14));
+          const pop = Math.min(1, age / 0.4);
+          sc = 1.15 + Math.sin(pop * Math.PI) * 0.6 * (1 - pop * 0.5) + (final && b.doubles ? Math.sin(t * 9) * 0.06 : 0);
+          // stays over their head for a beat, then slides out to its place
+          off = slot * (0.3 + 0.7 * Math.min(1, Math.max(0, age - 0.35) / 0.2));
+          y = cp.y + 3.1 + (age < 0.1 ? age * 3 : Math.max(0, 0.3 - (age - 0.1) * 1.5));
         } else {
-          // waiting to be rolled: lazy tumble and bob
+          // later dice: a lazy tumble and bob off to the side
           tumble.set(t * 1.4 + i * 2, t * 1.9 + i, t * 1.1);
           d.quaternion.setFromEuler(tumble);
           y += Math.sin(t * 5 + i) * 0.1;
+          sc = 0.8;
         }
-        d.position.set(cp.x + rx * off, y, cp.z + rz * off);
+        dieTarget.set(cp.x + rx * off, y, cp.z + rz * off);
+        if (!was) d.position.copy(dieTarget);
+        else d.position.lerp(dieTarget, Math.min(1, dt * 18));
         d.scale.setScalar(sc);
       });
-      if (landed && b.rolls.length) {
+      if (contact) {
         const d = dice[b.rolls.length - 1];
-        fx.sparkle(d.position.clone(), '#ffe066', 14);
-        shake(0.18);
-        if (final) {
-          fx.party(dice[0].position.clone().lerp(d.position, 0.5));
-          if (b.doubles) dice.slice(0, b.rolls.length).forEach((dd) => fx.sparkle(dd.position.clone(), '#7cf3ff', 30));
-          shake(0.3);
-        }
+        const at = d.position.clone();
+        fx.bonk(at);
+        fx.sparkle(at, '#ffe066', 14);
+        fx.emit(at, { tex: 'ring', color: '#ffffff', n: 1, speed: [0, 0], life: [0.25, 0.25], size: [0.4, 3] });
+        fx.emit(at, { tex: 'soft', color: '#fff6c8', n: 1, speed: [0, 0], life: [0.12, 0.12], size: [1.5, 3.2], additive: true });
+        shake(0.25);
+        postPulse('impact', 0.5);
+        sfx.diceHit();
+        sfx.bump();
+      }
+      const landed = b.sub === 'rolled' && b.rolls.length !== wasRolls;
+      if (landed && final) {
+        fx.party(dice[0].position.clone().lerp(dice[b.rolls.length - 1].position, 0.5));
+        if (b.doubles) dice.slice(0, b.rolls.length).forEach((dd) => fx.sparkle(dd.position.clone(), '#7cf3ff', 30));
+        shake(0.3);
       }
       if (b.sub !== 'rolled') wasRolls = b.sub === 'roll' || b.sub === 'rolling' ? Math.min(wasRolls, b.rolls.length) : 0;
       else wasRolls = b.rolls.length;

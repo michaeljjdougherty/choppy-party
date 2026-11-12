@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { flame, onTop } from '../look/fxKit';
+import { flame, glowSprite, onTop } from '../look/fxKit';
 import { snowMaterial } from '../look/snow';
+import { gasGiant, hexPlating } from '../look/moon';
+import { rockGeometry, stoneMaterial } from '../life/rocks';
 import type { PlayerInfo } from '../../../shared/types';
 import { GAP_LEN, TRACK, TURN, segAt, type CartState } from '../../../shared/games/mineCart';
 import { ROW, ROWS, P_H, type TideState } from '../../../shared/games/risingTide';
@@ -416,7 +418,23 @@ export function sledView(env: THREE.Texture, state: SledState, players: PlayerIn
   slope.position.set(0, 0, -L / 2 + 10);
   scene.add(slope);
   // the run: groomed snow with blue edge lines
-  const run = mesh(new THREE.PlaneGeometry(W, L), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), { cast: false, receive: true });
+  // groomed piste: fine corduroy ridges from the snow groomer, over the same glittery snow
+  const runMat = snowMaterial(W / 5, L / 5);
+  const cord = document.createElement('canvas');
+  cord.width = 64;
+  cord.height = 4;
+  const cg = cord.getContext('2d')!;
+  for (let i = 0; i < 64; i++) {
+    const v = 128 + Math.sin((i / 64) * Math.PI * 16) * 60;
+    cg.fillStyle = `rgb(${v},${v},${v})`;
+    cg.fillRect(i, 0, 1, 4);
+  }
+  const cordTex = new THREE.CanvasTexture(cord);
+  cordTex.wrapS = cordTex.wrapT = THREE.RepeatWrapping;
+  cordTex.repeat.set(W / 3, L / 3);
+  runMat.bumpMap = cordTex;
+  runMat.bumpScale = 1.2;
+  const run = mesh(new THREE.PlaneGeometry(W, L), runMat, { cast: false, receive: true });
   run.rotation.x = -Math.PI / 2;
   run.position.set(0, 0.01, -L / 2 + 10);
   scene.add(run);
@@ -553,15 +571,16 @@ export function saucerView(env: THREE.Texture, state: SaucerState, players: Play
   scene.add(pivot);
   // the platform: a dark deck with a glowing rim of lights, and an engine glow underneath
   const disc = new THREE.Group();
-  const deck = mesh(new THREE.CylinderGeometry(R0, R0 * 0.94, 0.5, 64), new THREE.MeshStandardMaterial({ map: texture('proto-purple', R0 / 2, R0 / 2), color: '#9aa0c8', roughness: 0.55, metalness: 0.2 }), { cast: true, receive: true });
+  const deckMat = new THREE.MeshStandardMaterial({ color: '#3a3f66', roughness: 0.35, metalness: 0.6, emissive: '#5fd8ff', emissiveMap: hexPlating(R0 / 1.6), emissiveIntensity: 0.55 });
+  deckMat.userData.noDetail = true;
+  const deck = mesh(new THREE.CylinderGeometry(R0, R0 * 0.94, 0.5, 64), deckMat, { cast: true, receive: true });
   deck.position.y = -0.25;
   const rim = mesh(new THREE.TorusGeometry(R0, 0.12, 8, 80), new THREE.MeshStandardMaterial({ color: '#7cf3ff', emissive: '#3fd8ff', emissiveIntensity: 1.6 }), { cast: false });
   rim.rotation.x = Math.PI / 2;
   const belly = mesh(new THREE.ConeGeometry(R0 * 0.9, R0 * 0.8, 48), toy('#4b4f6b', 0.4), { cast: false });
   belly.rotation.x = Math.PI;
   belly.position.y = -0.5 - R0 * 0.4;
-  const glow = new THREE.Mesh(new THREE.CircleGeometry(R0 * 0.35, 32), new THREE.MeshBasicMaterial({ color: '#ff8a3d', transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
-  glow.rotation.x = Math.PI / 2;
+  const glow = glowSprite('#ff8a3d', R0 * 1.4, 0.9);
   glow.position.y = -0.52 - R0 * 0.8;
   disc.add(deck, rim, belly, glow);
   const ring = mesh(new THREE.RingGeometry(R0 * 0.48, R0 * 0.5, 64), new THREE.MeshBasicMaterial({ color: '#b06cff', transparent: true, opacity: 0.6 }), { cast: false });
@@ -570,13 +589,15 @@ export function saucerView(env: THREE.Texture, state: SaucerState, players: Play
   disc.add(ring);
   pivot.add(disc);
   // scenery: a planet, drifting rocks, a far-off station
-  const planet = mesh(new THREE.SphereGeometry(14, 40, 30), new THREE.MeshStandardMaterial({ color: '#ff9a5c', roughness: 0.9 }), { cast: false });
+  const planet = gasGiant(14, ['#ff9a5c', '#ffd2a0', '#c8603a'], true);
   planet.position.set(-34, -22, -46);
   scene.add(planet);
   const rocks: THREE.Object3D[] = [];
   for (let i = 0; i < 9; i++) {
     const a = (i / 9) * Math.PI * 2;
-    const o = place(scene, 'space/meteor', Math.cos(a) * (R0 + 8 + (i % 3) * 3), -3 - (i % 4) * 1.5, wz(CY) + Math.sin(a) * (R0 + 6), { s: 1 + (i % 3) * 0.6 });
+    const o = mesh(rockGeometry(0.5 + (i % 3) * 0.3, i + 2, 0.35), stoneMaterial(i % 2 ? '#8a7a70' : '#6e6470'));
+    o.position.set(Math.cos(a) * (R0 + 8 + (i % 3) * 3), -3 - (i % 4) * 1.5, wz(CY) + Math.sin(a) * (R0 + 6));
+    scene.add(o);
     rocks.push(o);
   }
   place(scene, 'space/satelliteDish_large', R0 + 9, -2, wz(CY) - R0 - 6, { s: 3 });

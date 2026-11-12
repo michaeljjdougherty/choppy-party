@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { glowSprite } from '../look/fxKit';
 import { snowMaterial } from '../look/snow';
+import { moonMaterial } from '../look/moon';
 import type { PlayerInfo } from '../../../shared/types';
 import { tileCentre, type PlazaState } from '../../../shared/games/paintPlaza';
 import type { CountState } from '../../../shared/games/alienCount';
@@ -29,8 +30,8 @@ function fitCamera(camera: THREE.PerspectiveCamera, w: number, h: number, cy = 3
   camera.lookAt(0, 0, wz(cy) + 1);
 }
 
-function ground(scene: THREE.Scene, color: string, r = 90, y = -0.02): void {
-  const g = mesh(new THREE.CircleGeometry(r, 48), toy(color, 0.95), { cast: false, receive: true });
+function ground(scene: THREE.Scene, color: string, r = 90, y = -0.02, mat?: THREE.Material): void {
+  const g = mesh(new THREE.CircleGeometry(r, 48), mat ?? toy(color, 0.95), { cast: false, receive: true });
   g.rotation.x = -Math.PI / 2;
   g.position.y = y;
   scene.add(g);
@@ -185,7 +186,7 @@ export function alienView(env: THREE.Texture, state: CountState, players: Player
   const camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 220);
   camera.position.set(0, 11.5, 15.5);
   camera.lookAt(0, 0, -1.2);
-  ground(scene, '#8a7fb0', 90);
+  ground(scene, '#8a7fb0', 90, -0.02, moonMaterial('#a597cc', 16));
   // the parade road: five lanes of dusty moon track
   const road = mesh(new THREE.PlaneGeometry(40, 11), new THREE.MeshStandardMaterial({ map: texture('floor_ground_dirt', 10, 3), color: '#c7b6e8', roughness: 1 }), { cast: false, receive: true });
   road.rotation.x = -Math.PI / 2;
@@ -197,7 +198,7 @@ export function alienView(env: THREE.Texture, state: CountState, players: Player
   ] as [string, number, number, number, number][])
     place(scene, n, x, 0, z, { s, ry: r });
   // the counters sit along the front, watching the road
-  const bench = mesh(new THREE.BoxGeometry(Math.max(8, state.guessers.length * 1.6), 0.3, 1), toy('#6b5aa8', 0.6), { receive: true });
+  const bench = mesh(new RoundedBoxGeometry(Math.max(8, state.guessers.length * 1.6), 0.3, 1, 3, 0.1), new THREE.MeshStandardMaterial({ color: '#6b5aa8', metalness: 0.5, roughness: 0.35 }), { receive: true });
   bench.position.set(0, 0.15, 6.2);
   scene.add(bench);
   const crowd = state.guessers.map((g, i) => {

@@ -55,6 +55,8 @@ function snapRifle(accent: string): THREE.Group {
   const stock = mesh(new THREE.BoxGeometry(0.1, 0.16, 0.22), toy(accent, 0.5));
   stock.position.set(0, -0.02, -0.38);
   g.add(body, barrel, tip, scope, lens, grip, stock);
+  // the photo surface detail turns to noise this close to your eyes
+  g.userData.noDetail = true;
   return g;
 }
 
@@ -82,6 +84,7 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
   // deck
   const floor = mesh(new THREE.BoxGeometry(W * 2 + 2, 0.3, D * 2 + 2), new THREE.MeshStandardMaterial({ map: texture('floor_tiles_blue_small', W, D), color: '#c4cff5', roughness: 0.55 }), { receive: true });
   floor.position.y = -0.15;
+  floor.userData.noDetail = true;
   scene.add(floor);
   // glowing guide strips down the deck
   const glow = new THREE.MeshBasicMaterial({ color: '#57e1ff' });
@@ -103,15 +106,18 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
     if (w.kind === 'crate') {
       const c = boxed('station/container', sx, w.h, sz);
       c.position.set(cx, 0, cz);
+      c.userData.noDetail = true;
       scene.add(c);
       // a box behind the model in case it is still loading
       const b = mesh(new THREE.BoxGeometry(sx * 0.96, w.h * 0.96, sz * 0.96), toy('#8a96c8', 0.6), { receive: true });
       b.position.set(cx, w.h * 0.48, cz);
+      b.userData.noDetail = true;
       scene.add(b);
       return;
     }
     const m = mesh(new THREE.BoxGeometry(sx, w.h, sz), w.kind === 'pillar' ? pillarMat : wallMat, { receive: true });
     m.position.set(cx, w.h / 2, cz);
+    m.userData.noDetail = true;
     scene.add(m);
     const t = mesh(new THREE.BoxGeometry(sx + 0.04, 0.08, sz + 0.04), trim, { cast: false });
     t.position.set(cx, w.h - 0.25, cz);

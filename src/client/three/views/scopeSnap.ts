@@ -206,7 +206,7 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
   const tracers: THREE.Mesh[] = [];
   const tracerAt = (i: number) => {
     while (tracers.length <= i) {
-      const t = mesh(tracerGeo, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, depthWrite: false }), { cast: false });
+      const t = mesh(tracerGeo, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), { cast: false });
       scene.add(t);
       tracers.push(t);
     }
@@ -271,6 +271,10 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
             muzzleOf.localToWorld(start.set(0, 0, 0.8));
           }
           starts.set(sk, start);
+          // a muzzle flash that really lights the deck, and a pop of sparks where the shot lands
+          const col = ps.find((q) => q.id === tr.by)?.color ?? '#ffffff';
+          fx.flash(start, '#fff0c0', 14, 5);
+          fx.emit(new THREE.Vector3(tr.x1, tr.hit ? 1.1 : EYE - 0.1, tr.z1), { tex: 'star', color: [col, '#ffffff'], n: tr.hit ? 10 : 5, speed: [2, 4], spread: 0.9, up: 1, life: [0.15, 0.35], size: [0.3, 0.05], gravity: 8, additive: true });
           if (!e && shooter) fx.sparkle(start, '#ffe066', 4);
           if (e) {
             e.kick = 1;
@@ -292,7 +296,7 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
         const end = tmpEnd.set(tr.x1, tr.hit ? 1.1 : EYE - 0.1, tr.z1);
         m.visible = true;
         m.position.copy(a).add(end).multiplyScalar(0.5);
-        m.scale.set(0.045, 0.045, a.distanceTo(end));
+        m.scale.set(0.06 * (1 - age / 0.28) + 0.02, 0.06 * (1 - age / 0.28) + 0.02, a.distanceTo(end));
         m.lookAt(end);
         const mat = m.material as THREE.MeshBasicMaterial;
         mat.color.set(ps.find((q) => q.id === tr.by)?.color ?? '#ffffff').lerp(new THREE.Color('#ffffff'), 0.4);

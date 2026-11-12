@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { glowSprite } from '../look/fxKit';
 import { sfx } from '../../sfx';
 import type { PlayerInfo } from '../../../shared/types';
 import { HX0, HX1, HY0, HY1, type PotatoState } from '../../../shared/games/hotPotato';
@@ -64,6 +65,11 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
   scene.add(bomb);
   const glow = new THREE.PointLight('#ff7a2a', 0, 6, 2);
   scene.add(glow);
+  // the lit fuse: a hot spitting glow at its tip, and a red heat that creeps over the bomb
+  const fuseGlow = glowSprite('#ffb040', 1, 1);
+  scene.add(fuseGlow);
+  const heat = glowSprite('#ff2a10', 2.6, 0);
+  scene.add(heat);
   let last = state;
   let sparkT = 0;
   let tickT = 0;
@@ -85,6 +91,11 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
         bomb.rotation.z = Math.sin(t * 12) * 0.2 * urgency;
         glow.position.copy(bomb.position);
         glow.intensity = 4 + urgency * 14;
+        fuseGlow.visible = heat.visible = true;
+        fuseGlow.position.copy(bomb.position).add(new THREE.Vector3(0, 0.75, 0));
+        fuseGlow.scale.setScalar(0.8 + Math.random() * 0.5 + urgency * 0.4);
+        heat.position.copy(bomb.position);
+        heat.material.opacity = urgency * urgency * (0.55 + Math.sin(t * (6 + urgency * 30)) * 0.3);
         // tick... tick... ticktickticktick: the gap shrinks from a second to a blur as the fuse runs out
         tickT -= dt;
         if (tickT <= 0) {
@@ -96,7 +107,10 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
           sparkT = 0.12 - urgency * 0.08;
           fx.emit(bomb.position.clone().add(new THREE.Vector3(0, 0.7, 0)), { tex: 'star', color: ['#ffd23f', '#ff7a2a', '#ffffff'], n: 3, speed: [1, 3], up: 2, life: [0.2, 0.4], size: [0.35, 0.05], additive: true });
         }
-      } else glow.intensity = 0;
+      } else {
+        glow.intensity = 0;
+        fuseGlow.visible = heat.visible = false;
+      }
       for (const p of s.passes) {
         const to = s.sailors.find((a) => a.id === p.to);
         if (to) fx.sparkle(new THREE.Vector3(wx(to.x), 2.4, wz(to.y)), '#ffd23f', 12);

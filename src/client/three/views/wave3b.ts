@@ -9,7 +9,8 @@ import { Fx, shake } from '../fx';
 import { PX, makeScene, mesh, toy, wx, wz } from '../kit';
 import type { Tag, View } from '../stage';
 import { crew, fitProp, pool } from './crew';
-import { makeBeam } from '../look/lightBeam';
+import { makeBeam, type Beam } from '../look/lightBeam';
+import { glowDisc } from '../look/fxKit';
 
 const GRAVES = ['graveyard/gravestone-round', 'graveyard/gravestone-cross', 'graveyard/gravestone-bevel', 'graveyard/gravestone-decorative'];
 
@@ -127,6 +128,8 @@ export function memoryView(env: THREE.Texture, state: MemoryState, players: Play
   // stones: up (back), right, down (front), left
   const spots: [number, number][] = [[0, -6.5], [4.6, -3.6], [0, -0.8], [-4.6, -3.6]];
   const lights: THREE.PointLight[] = [];
+  const pillars: Beam[] = [];
+  const discs: THREE.Mesh[] = [];
   const glows: THREE.MeshStandardMaterial[] = [];
   spots.forEach(([x, z], i) => {
     const plinth = mesh(new THREE.CylinderGeometry(1.4, 1.6, 0.4, 24), toy('#4a4a5a', 0.8), { receive: true });
@@ -139,6 +142,15 @@ export function memoryView(env: THREE.Texture, state: MemoryState, players: Play
     ring.position.set(x, 0.45, z);
     scene.add(ring);
     glows.push(gm);
+    // when it lights: a pillar of spirit light rising off the plinth and a glow pooled on the ground
+    const pillar = makeBeam(STONE_COLORS[i], 6, 0.2, { strength: 0.8 });
+    pillar.aim(new THREE.Vector3(x, 0.3, z), new THREE.Vector3(0, 1, 0), 0);
+    scene.add(pillar.group);
+    pillars.push(pillar);
+    const disc = glowDisc(STONE_COLORS[i], 2.2, 0);
+    disc.position.set(x, 0.42, z);
+    scene.add(disc);
+    discs.push(disc);
     const l = new THREE.PointLight(STONE_COLORS[i], 0, 9, 2);
     l.position.set(x, 2.4, z + 0.6);
     scene.add(l);
@@ -188,6 +200,10 @@ export function memoryView(env: THREE.Texture, state: MemoryState, players: Play
         l.intensity += (hot * 40 - l.intensity) * Math.min(1, dt * 18);
         glows[i].emissiveIntensity = 0.15 + hot * 2.5;
         glows[i].opacity = 0.5 + hot * 0.5;
+        const k = Math.min(1, l.intensity / 40);
+        pillars[i].aim(pillars[i].group.children[0].position, new THREE.Vector3(0, 1, 0), k);
+        pillars[i].update(t, dt);
+        (discs[i].material as THREE.MeshBasicMaterial).opacity = k * 0.8;
       });
       for (const f of s.folk) {
         const m = models.get(f.id)!;

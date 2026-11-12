@@ -1,4 +1,4 @@
-import { coinSlots, shownCoins } from './coinFly';
+import { coinSlots, hpSlots, shownCoins } from './coinFly';
 import { A, B, STICK, X } from './prompts';
 import { slam, sunburst, vignette } from './showtime';
 import { sfx } from './sfx';
@@ -478,6 +478,7 @@ function drawStandings(ctx: CanvasRenderingContext2D, s: PartyState, cur: string
     coinSlots.set(id, { x: 62, y: ly });
     popText(ctx, `keys:${id}`, shownCoins(id, bp.keys), 76, ly + 1, big ? 17 : 14, { align: 'left', color: '#ffffff' });
     const hx = 120, hw = W - hx - 8, hh = Math.min(20, rowH * 0.32);
+    hpSlots.set(id, { x: hx + hw / 2, y: ly });
     ctx.fillStyle = 'rgba(255,255,255,0.18)';
     ctx.fillRect(hx, ly - hh / 2, hw, hh);
     const f = Math.max(0, bp.hp / b.preset.maxHp);

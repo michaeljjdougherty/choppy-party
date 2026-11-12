@@ -3,6 +3,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import type { PlayerInfo } from '../../shared/types';
 import { VIEW_H, VIEW_W } from '../../shared/types';
 import { disposeTree } from './kit';
+import { finishSurfaces, photoSurfaces } from './assets';
 import { shakeOffset } from './fx';
 import type { SquareBrian } from './brian';
 import { Ambience } from './ambience';
@@ -95,7 +96,9 @@ export class Stage {
       this.ambience?.dispose();
       this.ambience = null;
       if (this.view) disposeTree(this.view.scene);
+      photoSurfaces.on = gfx().surface >= 1;
       this.view = make();
+      finishSurfaces(this.view.scene);
       if (key.startsWith('game:')) {
         try {
           this.ambience = new Ambience(this.view.scene);

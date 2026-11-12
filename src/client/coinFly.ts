@@ -10,6 +10,7 @@ import { sfx } from './sfx';
  */
 interface Coin {
   id: string;
+  heart?: boolean;
   from: { x: number; y: number };
   t: number; // seconds until it launches (negative once flying)
   sign: number;
@@ -29,11 +30,13 @@ const shown = new Map<string, number>();
 const seen = new Set<number>();
 /** Where each player's coin count is drawn on the standings (set by the HUD every frame). */
 export const coinSlots = new Map<string, { x: number; y: number }>();
+/** Where each player's HP bar is. */
+export const hpSlots = new Map<string, { x: number; y: number }>();
 
 /** The coin total to draw for a player: lags behind the real one while coins are in the air. */
 export function shownCoins(id: string, real: number): number {
   const v = shown.get(id);
-  if (v === undefined || !coins.some((c) => c.id === id)) {
+  if (v === undefined || !coins.some((c) => c.id === id && !c.heart)) {
     shown.set(id, real);
     return real;
   }
@@ -58,14 +61,21 @@ export function drawCoinFly(ctx: CanvasRenderingContext2D, s: PartyState, dt: nu
   for (const e of b.fx) {
     if (seen.has(e.n)) continue;
     seen.add(e.n);
-    if (e.kind !== 'keys' || !e.id || !e.amount) continue;
+    if (!e.id || !e.amount) continue;
     const n = def.nodes[e.node];
     if (!n) continue;
     const at = project(new THREE.Vector3(n.x, n.y + 1.6, n.z));
+    if (e.kind === 'heal' || e.kind === 'hit') {
+      const up = e.kind === 'heal';
+      pops.push({ x: at.x, y: at.y - 30, label: `${up ? '+' : '−'}${Math.abs(e.amount)} HP`, color: up ? '#4cd97b' : '#ff5a5f', age: 0 });
+      if (up) for (let i = 0; i < Math.min(6, Math.ceil(e.amount / 2)); i++) coins.push({ id: e.id, heart: true, from: at, t: POP_HOLD + i * 0.1, sign: 1 });
+      continue;
+    }
+    if (e.kind !== 'keys') continue;
     const gain = e.amount > 0;
     pops.push({ x: at.x, y: at.y - 30, label: `${gain ? '+' : '−'}${Math.abs(e.amount)}`, color: gain ? '#ffd23f' : '#ff5a5f', age: 0 });
     // the total holds at its old value until the coins arrive
-    if (!coins.some((c) => c.id === e.id)) shown.set(e.id, b.players[e.id].keys - e.amount);
+    if (!coins.some((c) => c.id === e.id && !c.heart)) shown.set(e.id, b.players[e.id].keys - e.amount);
     const count = Math.min(12, Math.abs(e.amount));
     const per = Math.abs(e.amount) / count;
     for (let i = 0; i < count; i++) coins.push({ id: e.id, from: at, t: POP_HOLD + i * 0.09, sign: gain ? per : -per });
@@ -89,7 +99,7 @@ export function drawCoinFly(ctx: CanvasRenderingContext2D, s: PartyState, dt: nu
   const keep: Coin[] = [];
   for (const c of coins) {
     c.t -= dt;
-    const slot = coinSlots.get(c.id);
+    const slot = (c.heart ? hpSlots : coinSlots).get(c.id);
     if (!slot) continue;
     if (c.t > 0) {
       keep.push(c);
@@ -101,6 +111,16 @@ export function drawCoinFly(ctx: CanvasRenderingContext2D, s: PartyState, dt: nu
     const e = u * u * (3 - 2 * u);
     const x = a.x + (z.x - a.x) * e;
     const y = a.y + (z.y - a.y) * e - Math.sin(u * Math.PI) * 120;
+    if (c.heart) {
+      if (u >= 1) continue;
+      keep.push(c);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1 + Math.sin(u * Math.PI) * 0.4, 1 + Math.sin(u * Math.PI) * 0.4);
+      text(ctx, '♥', 0, 0, 28, { color: '#4cd97b' });
+      ctx.restore();
+      continue;
+    }
     if (c.sign < 0 && u < 0.02) shown.set(c.id, (shown.get(c.id) ?? 0) + c.sign);
     if (u >= 1) {
       if (c.sign > 0) {

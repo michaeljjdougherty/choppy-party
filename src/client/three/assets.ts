@@ -97,8 +97,39 @@ export function sky(name: SkyName): THREE.Texture | null {
   return skyCache.get(name) ?? null;
 }
 
+/**
+ * Michael's Poly Haven surfaces (CC0, public/tex/ph) stand in for the Kenney pixel textures on Medium graphics
+ * and up: a smooth photo diffuse plus a normal map, tiled half as often so they don't look busy.
+ */
+const PH: Partial<Record<TexName, string>> = {
+  floor_wood_planks: 'wood_planks',
+  floor_wood_planks_wide: 'plank_flooring',
+  floor_ground_grass: 'leafy_grass',
+  floor_ground_sand: 'sand_01',
+  floor_ground_dirt: 'park_dirt',
+  wall_brick_stone_center: 'castle_wall_slates',
+  floor_stone_pattern_small: 'cobblestone_floor_01',
+  floor_tiles_blue_small: 'stone_tiles_02',
+  floor_tiles_tan_small: 'stone_tiles_02',
+};
+const phCache = new Map<string, { map: THREE.Texture; normal: THREE.Texture }>();
+export const photoSurfaces = { on: true };
+
 /** A tiling texture, repeated `rx` by `ry` times. Pixel-art textures keep crisp pixels. */
 export function texture(name: TexName, rx = 1, ry = rx): THREE.Texture | null {
+  const ph = photoSurfaces.on && PH[name] ? phCache.get(PH[name]!) : undefined;
+  if (ph) {
+    const t = ph.map.clone();
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(Math.max(1, rx * 0.5), Math.max(1, ry * 0.5));
+    t.needsUpdate = true;
+    const nrm = ph.normal.clone();
+    nrm.wrapS = nrm.wrapT = THREE.RepeatWrapping;
+    nrm.repeat.copy(t.repeat);
+    nrm.needsUpdate = true;
+    t.userData.normal = nrm;
+    return t;
+  }
   const base = texCache.get(name);
   if (!base) return null;
   const t = base.clone();
@@ -108,13 +139,31 @@ export function texture(name: TexName, rx = 1, ry = rx): THREE.Texture | null {
   return t;
 }
 
+/** Give materials that use a photo surface its normal map, and lift tints chosen for the darker pixel art. */
+export function finishSurfaces(root: THREE.Object3D): void {
+  const done = new Set<THREE.Material>();
+  root.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+    if (!m) return;
+    for (const mat of Array.isArray(m) ? m : [m]) {
+      const sm = mat as THREE.MeshStandardMaterial;
+      if (done.has(mat) || !sm.isMeshStandardMaterial || !sm.map?.userData?.normal || sm.normalMap) continue;
+      done.add(mat);
+      sm.normalMap = sm.map.userData.normal as THREE.Texture;
+      sm.normalScale.set(0.4, 0.4);
+      sm.color.lerp(new THREE.Color('#ffffff'), 0.35);
+      sm.needsUpdate = true;
+    }
+  });
+}
+
 const cache = new Map<string, GLTF>();
 const loader = new GLTFLoader();
 
 export async function preloadAll(onProgress: (done: number, total: number) => void): Promise<void> {
   const files = [...PROPS.map((p) => `${p}.glb`), ...CHARACTERS.flatMap((c) => (c.model ? [c.model] : []))];
   const tl = new THREE.TextureLoader();
-  const extra = SKIES.length + TEXTURES.length;
+  const extra = SKIES.length + TEXTURES.length + new Set(Object.values(PH)).size;
   let done = 0;
   const total = files.length + extra;
   const side = [
@@ -127,6 +176,18 @@ export async function preloadAll(onProgress: (done: number, total: number) => vo
         skyCache.set(n, t);
       } catch (e) {
         console.warn('Could not load sky', n, e);
+      }
+      onProgress(++done, total);
+    }),
+    ...[...new Set(Object.values(PH))].map(async (id) => {
+      try {
+        const [map, normal] = await Promise.all([tl.loadAsync(`tex/ph/${id}_diff.jpg`), tl.loadAsync(`tex/ph/${id}_nor.jpg`)]);
+        map.colorSpace = THREE.SRGBColorSpace;
+        map.anisotropy = 8;
+        normal.anisotropy = 8;
+        phCache.set(id, { map, normal });
+      } catch (e) {
+        console.warn('Could not load surface', id, e);
       }
       onProgress(++done, total);
     }),

@@ -398,7 +398,7 @@ export function cannonFortView(env: THREE.Texture, state: FortState, players: Pl
   sea.rotation.x = -Math.PI / 2;
   sea.position.set(0, 0, -20);
   scene.add(sea);
-  place(scene, 'pirate/ship-pirate-large', -4, 0, -38, { s: 5, ry: 1.2 });
+  place(scene, 'pirate/ship-pirate-large', -14, 0, -75, { s: 4.2, ry: 1.2 });
   for (let i = 0; i < 5; i++) place(scene, i % 2 ? 'pirate/palm-detailed-bend' : 'pirate/palm-straight', -30 + i * 15, 0, -55, { s: 5 });
   const stone = new THREE.MeshStandardMaterial({ map: texture('wall_brick_stone_center', 1, 1), color: '#cfc6b4', roughness: 1 });
   const fw = FORT_W * PX, fh = FORT_H * PX;

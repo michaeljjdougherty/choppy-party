@@ -1,3 +1,4 @@
+import { capTaps } from './mash';
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
 import { drawTimer, text } from '../draw';
@@ -12,6 +13,8 @@ const PULL = 9; // flag px per tap (team average)
 const READY = 2.5;
 
 export interface RopeState {
+  /** Mash cap budget per player (stops auto clickers). */
+  budget?: Record<string, number>;
   t: number;
   ids: string[];
   teams: Record<string, number>;
@@ -56,7 +59,7 @@ export const ropePull: Minigame<RopeState> = {
     for (const id of s.ids) {
       const team = s.teams[id];
       size[team]++;
-      const taps = (inputs[id] ?? NO_INPUT).aTaps;
+      const taps = capTaps((s.budget ??= {}), id, (inputs[id] ?? NO_INPUT).aTaps, dt);
       s.taps[id] += taps;
       pull[team] += taps;
     }

@@ -1,3 +1,4 @@
+import { capTaps } from './mash';
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
 import { drawTimer, text } from '../draw';
@@ -35,6 +36,8 @@ export interface Digger extends Body {
   digT: number; // shovel swing, for the view
 }
 export interface DigState {
+  /** Mash cap budget per player (stops auto clickers). */
+  budget?: Record<string, number>;
   t: number;
   rng: Rng;
   diggers: Digger[];
@@ -111,7 +114,8 @@ export const treasureDig: Minigame<DigState> = {
       return;
     }
     for (const d of s.diggers) {
-      const inp = inputs[d.id] ?? NO_INPUT;
+      const raw = inputs[d.id] ?? NO_INPUT;
+      const inp = { ...raw, aTaps: capTaps((s.budget ??= {}), d.id, raw.aTaps, dt) };
       d.stun = Math.max(0, d.stun - dt);
       d.digT = Math.max(0, d.digT - dt);
       const on = live(s).find((m) => Math.hypot(m.x - d.x, m.y - d.y) < MOUND_R + 8);

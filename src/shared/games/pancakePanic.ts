@@ -1,6 +1,7 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
 import { drawTimer, text } from '../draw';
+import { capTaps } from './mash';
 
 const READY = 3;
 const MASH = 10;
@@ -10,6 +11,8 @@ export interface PancakeState {
   ids: string[];
   stacks: Record<string, number>;
   flip: Record<string, number>; // animation timer per player
+  /** Mash cap budget per player (stops auto clickers). */
+  budget?: Record<string, number>;
 }
 
 export const pancakePanic: Minigame<PancakeState> = {
@@ -37,7 +40,7 @@ export const pancakePanic: Minigame<PancakeState> = {
     for (const id of s.ids) s.flip[id] = Math.max(0, s.flip[id] - dt);
     if (s.t < READY || s.t > READY + MASH) return;
     for (const id of s.ids) {
-      const taps = (inputs[id] ?? NO_INPUT).aTaps;
+      const taps = capTaps((s.budget ??= {}), id, (inputs[id] ?? NO_INPUT).aTaps, dt);
       if (taps > 0) {
         s.stacks[id] += taps;
         s.flip[id] = 0.18;

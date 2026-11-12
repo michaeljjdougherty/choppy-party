@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { glowSprite, softShadowMat } from '../look/fxKit';
+import { glowSprite, softShadowMat, trail, trailMaterial } from '../look/fxKit';
 import type { PlayerInfo } from '../../../shared/types';
 import type { FuseState } from '../../../shared/games/fuseDraw';
 import { BALL_R, PADDLE_H, PX0, PX1, PY0, PY1, type PaddleState } from '../../../shared/games/paddleClash';
@@ -133,6 +133,11 @@ export function paddleView(env: THREE.Texture, state: PaddleState, players: Play
   });
   const ball = fitProp('pirate/cannon-ball', BALL_R * PX * 2.4);
   scene.add(ball);
+  const streakMat = trailMaterial('#fff6d0', '#ff8a3a');
+  const streak = trail(streakMat, 1, 1);
+  scene.add(streak);
+  const UP = new THREE.Vector3(0, 1, 0);
+  const tmpV = new THREE.Vector3();
   const shadow = new THREE.Mesh(new THREE.PlaneGeometry((BALL_R * PX * 1.2) * 2.4, (BALL_R * PX * 1.2) * 2.4), softShadowMat(0.40));
   shadow.rotation.x = -Math.PI / 2;
   scene.add(shadow);
@@ -157,6 +162,15 @@ export function paddleView(env: THREE.Texture, state: PaddleState, players: Play
       });
       ball.visible = s.serve <= 0 || Math.floor(t * 8) % 2 === 0;
       ball.position.set(wx(s.ball.x), 0.4, wz(s.ball.y));
+      // a hot streak behind the ball that grows the faster it's going (rallies speed it up)
+      const v = Math.hypot(s.ball.vx, s.ball.vy);
+      streak.visible = ball.visible && v > 1;
+      if (streak.visible) {
+        streak.position.copy(ball.position);
+        streak.quaternion.setFromUnitVectors(UP, tmpV.set(-s.ball.vx, 0, -s.ball.vy).normalize());
+        streak.scale.set(BALL_R * PX * 0.9, Math.min(5, v * PX * 0.12), BALL_R * PX * 0.9);
+        streakMat.userData.time.value = t;
+      }
       ball.rotation.z -= s.ball.vx * dt * 0.05;
       shadow.position.set(wx(s.ball.x), 0.01, wz(s.ball.y));
       if (s.hits > hits) {

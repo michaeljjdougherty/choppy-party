@@ -102,6 +102,20 @@ export interface SnapRules {
   /** First to this many points (a player's own, or the team's) wins early. */
   target: number | null;
   limit: number;
+  /** Michael: no hip crosshair, and the aim sways unless you scope, so no-scopes take real skill. */
+  sway?: boolean;
+  /** Which arena: each sniper mode has its own. */
+  map?: SnapMap;
+}
+export type SnapMap = 'station' | 'galleon' | 'yard';
+
+/** Where the dart really goes relative to where you look: a slow figure-eight drift, steadied by the scope. */
+export function aimSway(s: SnapState, p: { id: string; scopeT: number }): { yaw: number; pitch: number } {
+  if (!s.rules.sway) return { yaw: 0, pitch: 0 };
+  const k = s.players.findIndex((q) => q.id === p.id) * 1.7;
+  const steady = p.scopeT >= 0 ? Math.max(0.06, 1 - p.scopeT / ZOOM_IN) : 1;
+  const a = 0.07 * steady;
+  return { yaw: a * (Math.sin(s.t * 1.25 + k) + 0.45 * Math.sin(s.t * 2.9 + k * 2)), pitch: a * 0.6 * Math.sin(s.t * 2.5 + k) };
 }
 
 export interface SnapState {
@@ -111,6 +125,8 @@ export interface SnapState {
   rng: Rng;
   walls: Wall[];
   spawns: [number, number][];
+  /** Extra spots the CPUs wander between (defaults to the spawns). */
+  nav?: [number, number][];
   /** Half sizes of the floor. */
   hw: number;
   hd: number;
@@ -126,17 +142,15 @@ export interface SnapState {
 export const SNAP_HUD = { views: [] as { id: string; x: number; y: number; w: number; h: number }[] };
 
 /** Orbital Dock: a mirrored station deck. The side wings close off in small games. */
-export function buildMap(n: number): { walls: Wall[]; spawns: [number, number][]; hw: number; hd: number } {
+export function buildMap(n: number, map: SnapMap = 'station'): { walls: Wall[]; spawns: [number, number][]; hw: number; hd: number; nav?: [number, number][] } {
+  if (map === 'galleon') return galleonMap(n);
+  if (map === 'yard') return yardMap();
   const small = n <= 4;
   const hw = small ? 11 : 18, hd = 12;
   const walls: Wall[] = [];
   const box = (cx: number, cz: number, w: number, d: number, h: number, kind: Wall['kind']) =>
     walls.push({ x0: cx - w / 2, z0: cz - d / 2, x1: cx + w / 2, z1: cz + d / 2, h, kind });
-  // outer hull
-  box(0, -hd - 0.4, hw * 2 + 1.6, 0.8, 3.4, 'wall');
-  box(0, hd + 0.4, hw * 2 + 1.6, 0.8, 3.4, 'wall');
-  box(-hw - 0.4, 0, 0.8, hd * 2, 3.4, 'wall');
-  box(hw + 0.4, 0, 0.8, hd * 2, 3.4, 'wall');
+  hull(box, hw, hd);
   // the atrium: two big pillars, a crate pile in the middle, cover either side
   for (const sz of [-1, 1]) box(0, sz * 5.5, 2.4, 2.4, 3.4, 'pillar');
   box(0, 0, 1.4, 1.4, 1.3, 'crate');
@@ -164,6 +178,61 @@ export function buildMap(n: number): { walls: Wall[]; spawns: [number, number][]
     spawns.push([sx * (small ? 9.6 : 8.2), 0]);
   }
   return { walls, spawns, hw, hd };
+}
+
+type BoxFn = (cx: number, cz: number, w: number, d: number, h: number, kind: Wall['kind']) => void;
+function hull(box: BoxFn, hw: number, hd: number): void {
+  box(0, -hd - 0.4, hw * 2 + 1.6, 0.8, 3.4, 'wall');
+  box(0, hd + 0.4, hw * 2 + 1.6, 0.8, 3.4, 'wall');
+  box(-hw - 0.4, 0, 0.8, hd * 2, 3.4, 'wall');
+  box(hw + 0.4, 0, 0.8, hd * 2, 3.4, 'wall');
+}
+
+/** Scope Squad: a long galleon deck. Each team holds a cabin at one end; masts and cargo down the middle. */
+function galleonMap(n: number): { walls: Wall[]; spawns: [number, number][]; hw: number; hd: number; nav: [number, number][] } {
+  const hw = n <= 4 ? 15 : 19, hd = 8;
+  const walls: Wall[] = [];
+  const box: BoxFn = (cx, cz, w, d, h, kind) => walls.push({ x0: cx - w / 2, z0: cz - d / 2, x1: cx + w / 2, z1: cz + d / 2, h, kind });
+  hull(box, hw, hd);
+  // three masts down the centre line
+  for (const x of [-7, 0, 7]) box(x, 0, 1.1, 1.1, 3.4, 'pillar');
+  for (const sx of [-1, 1]) {
+    // the team cabin: a wall with a doorway, windows either side
+    box(sx * (hw - 5), -5, 0.7, 6, 3.4, 'wall');
+    box(sx * (hw - 5), 5, 0.7, 6, 3.4, 'wall');
+    // cargo and cannons along the rails
+    for (const sz of [-1, 1]) {
+      box(sx * 3.5, sz * 5.6, 1.4, 1.4, 1.3, 'crate');
+      box(sx * 10.5, sz * 3.2, 1.3, 1.3, 1.3, 'crate');
+      box(sx * 7, sz * 6.4, 2.6, 0.8, 1.2, 'wall');
+    }
+    box(sx * 3.5, 0, 0.8, 2.6, 1.3, 'crate');
+  }
+  const spawns: [number, number][] = [];
+  for (const sx of [-1, 1]) for (const z of [-5.5, -2, 2, 5.5]) spawns.push([sx * (hw - 2), z]);
+  for (const sx of [-1, 1]) spawns.push([sx * (hw - 3.2), 0]);
+  // CPUs roam the open deck, not just the cabins
+  const nav: [number, number][] = [...spawns];
+  for (const x of [-10.5, -5, -1.8, 1.8, 5, 10.5]) for (const z of [-4, 0, 4]) if (!(Math.abs(x) === 10.5 && z === 0)) nav.push([x, z]);
+  return { walls, spawns, hw, hd, nav };
+}
+
+/** Dart Duel: a tight cargo yard, a maze of crates, one player each end. */
+function yardMap(): { walls: Wall[]; spawns: [number, number][]; hw: number; hd: number; nav: [number, number][] } {
+  const hw = 12, hd = 9;
+  const walls: Wall[] = [];
+  const box: BoxFn = (cx, cz, w, d, h, kind) => walls.push({ x0: cx - w / 2, z0: cz - d / 2, x1: cx + w / 2, z1: cz + d / 2, h, kind });
+  hull(box, hw, hd);
+  box(0, 0, 1.6, 1.6, 2.6, 'pillar'); // the crane tower in the middle
+  for (const sx of [-1, 1]) {
+    box(sx * 4, -3.5, 2.6, 1.2, 1.4, 'crate');
+    box(sx * 4, 3.5, 1.2, 2.6, 1.4, 'crate');
+    box(sx * 7.5, 0, 1, 4.4, 2.4, 'wall');
+    box(sx * 2.2, sx * 6.5, 3, 1, 2.4, 'wall');
+    box(sx * 9, sx * -6, 1.3, 1.3, 1.3, 'crate');
+    box(sx * 6, sx * 6.8, 1.3, 1.3, 1.3, 'crate');
+  }
+  return { walls, spawns: [[-10.5, -6.5], [10.5, 6.5]], hw, hd, nav: [[-10.5, -6.5], [10.5, 6.5], [-10, 6], [10, -6], [-5.5, 0], [5.5, 0], [0, -4.5], [0, 4.5], [-3, 7.5], [3, -7.5]] };
 }
 
 const fwd = (yaw: number) => ({ x: Math.cos(yaw), z: Math.sin(yaw) });
@@ -289,7 +358,7 @@ function shoot(s: SnapState, p: Sniper): void {
   // spread: wide from the hip, tightening to nothing as the zoom settles
   const k = scoped ? Math.max(0, 1 - p.scopeT / ZOOM_IN) : 1;
   const spread = scoped ? HIP_SPREAD * 0.4 * k + 0.002 : HIP_SPREAD;
-  const a = p.yaw + (rand(s.rng) * 2 - 1) * spread;
+  const a = p.yaw + aimSway(s, p).yaw + (rand(s.rng) * 2 - 1) * spread;
   const d = fwd(a);
   let end = rayWall(s.walls, p.x, p.z, d.x, d.z);
   let victim: Sniper | null = null;
@@ -377,7 +446,7 @@ function makeSnap(def: SnapDef): Minigame<SnapState> {
 
   setup(players: PlayerInfo[], seed: number): SnapState {
     const rng = { seed };
-    const map = buildMap(players.length);
+    const map = buildMap(players.length, def.rules.map);
     const s: SnapState = { t: 0, rng, rules: def.rules, teamScore: [0, 0], ...map, players: [], tracers: [], feed: [], popsAt: [] };
     const teams = def.rules.teams ? teamsOf(players) : null;
     // spread everyone over the spawn points (each team on its own half), facing open space
@@ -542,8 +611,8 @@ export const scopeSnap = makeSnap({
   mode: 'Free-for-all',
   min: 2,
   max: 10,
-  rules: { teams: false, target: null, limit: LIMIT },
-  blurb: 'First person! Foam-dart snipers, one hit pops you. Your scope only holds for 1 second, so snap in and fire fast. Scoped hit +1, quick scope +2, no scope +3. Knife someone up close to take a point off them. Highest score in 60 seconds wins!',
+  rules: { teams: false, target: null, limit: LIMIT, sway: true, map: 'station' },
+  blurb: 'First person! Foam-dart snipers, one hit pops you. Your scope only holds for 1 second, so snap in and fire fast. Scoped hit +1, quick scope +2, no scope +3. Knife someone up close to take a point off them. Highest score in 60 seconds wins! No crosshair: your aim sways until you scope in.',
 });
 
 export const scopeSquad = makeSnap({
@@ -552,8 +621,8 @@ export const scopeSquad = makeSnap({
   mode: 'Team',
   min: 2,
   max: 10,
-  rules: { teams: true, target: 15, limit: 75 },
-  blurb: 'Team Scope Snap! Red vs Blue foam-dart snipers, and your darts pass through teammates. Every pop scores for your team (quick scope +2, no scope +3); a knife takes a point off theirs. First team to 15, or the higher score after 75 seconds, wins!',
+  rules: { teams: true, target: 15, limit: 60, sway: true, map: 'galleon' },
+  blurb: 'Team Scope Snap! Red vs Blue foam-dart snipers, and your darts pass through teammates. Every pop scores for your team (quick scope +2, no scope +3); a knife takes a point off theirs. First team to 15, or the higher score after 60 seconds, wins! No crosshair: your aim sways until you scope in.',
 });
 
 export const dartDuel = makeSnap({
@@ -562,8 +631,8 @@ export const dartDuel = makeSnap({
   mode: 'Duel',
   min: 2,
   max: 2,
-  rules: { teams: false, target: 5, limit: 60 },
-  blurb: 'One-on-one Scope Snap on a tight deck. 1-second scope, one hit pops. Scoped +1, quick scope +2, no scope +3, and a knife takes a point off them. First to 5 points wins!',
+  rules: { teams: false, target: null, limit: 60, sway: true, map: 'yard' },
+  blurb: 'One-on-one Scope Snap on a tight deck, for one minute. No crosshair, and your aim sways unless you scope in, so no-scopes take nerve. Scoped +1, quick scope +2, no scope +3, and a knife takes a point off them. Most points wins!',
 });
 
 const PLAY_WORD: Record<Play['kind'], string> = { scope: 'POP!', quick: 'QUICK SCOPE!', noscope: 'NO SCOPE!', knife: 'KNIFED!' };
@@ -663,8 +732,8 @@ function drawViewHud(ctx: CanvasRenderingContext2D, s: SnapState, players: Playe
     ctx.stroke();
     if (me.scopeT <= QUICK) text(ctx, 'QUICK!', cx, cy + r * 0.55, 22 * unit, { color: '#7cf0ff' });
   } else {
-    // hip fire: a wide, bouncy crosshair that shows how far darts can stray
-    const gap = 26 * unit, len = 14 * unit;
+    // hip fire: a wide, bouncy crosshair that shows how far darts can stray (none at all in Dart Duel)
+    const gap = s.rules.sway ? 1e5 : 26 * unit, len = 14 * unit;
     ctx.strokeStyle = me.fireCd > 0 ? 'rgba(255,255,255,0.45)' : '#ffffff';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -678,10 +747,12 @@ function drawViewHud(ctx: CanvasRenderingContext2D, s: SnapState, players: Playe
       ctx.lineTo(cx + dx * (gap + len), cy + dy * (gap + len));
     }
     ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 2, 0, Math.PI * 2);
-    ctx.fill();
+    if (!s.rules.sway) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
     // scope recharging after a snap
     if (me.scopeCd > 0.4) {
       const k = 1 - me.scopeCd / SCOPE_CD;
@@ -775,9 +846,10 @@ function snapBot(s: SnapState, id: string, k: BotCtx): TickInput {
   // walk: toward a waypoint, the target, or away when too close (and not going for the knife)
   if (mem.next <= 0 || mem.early < 0) {
     mem.next = 2.5 + rand(k.r) * 3;
-    mem.early = Math.floor(rand(k.r) * s.spawns.length);
+    mem.early = Math.floor(rand(k.r) * (s.nav ?? s.spawns).length);
   }
-  let gx = s.spawns[mem.early][0], gz = s.spawns[mem.early][1];
+  const pts = s.nav ?? s.spawns;
+  let gx = pts[mem.early % pts.length][0], gz = pts[mem.early % pts.length][1];
   // hunting: some waypoints are where a rival was last heard
   const prey = s.players.filter((q) => rivals(me, q) && q.alive);
   if (!tgt && prey.length && mem.early % 3 !== 0) {
@@ -816,7 +888,8 @@ function snapBot(s: SnapState, id: string, k: BotCtx): TickInput {
   out.x = dx * -f.z + dz * f.x;
   out.y = -(dx * f.x + dz * f.z);
   if (!tgt) return out;
-  const onTarget = Math.abs(diff) < Math.atan2(BODY_R * 0.8, td);
+  // with the aim sway on, a bot waits for the drift to carry its sights across the target too
+  const onTarget = Math.abs(diff - aimSway(s, me).yaw) < Math.atan2(BODY_R * 0.8, td);
   // knife when close and facing them
   if (td < KNIFE_RANGE * 0.9 && Math.abs(diff) < 0.5 && me.knifeCd <= 0 && mem.wait > L.react) {
     out.b = out.bPressed = true;

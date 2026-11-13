@@ -84,6 +84,12 @@ export function relight(renderer: THREE.WebGLRenderer, scene: THREE.Scene, m: Li
           d.shadow.map?.dispose();
           d.shadow.map = null as unknown as THREE.WebGLRenderTarget;
         }
+        // bias by shadow texel size, so big arenas and small shadow maps don't get striped "shadow acne"
+        const cam = d.shadow.camera;
+        const texel = Math.max(cam.right - cam.left, cam.top - cam.bottom) / Math.max(256, size || 1024);
+        if (o.userData.lookNB === undefined) o.userData.lookNB = d.shadow.normalBias;
+        d.shadow.normalBias = Math.max(o.userData.lookNB, texel * 1.5);
+        d.shadow.bias = Math.min(d.shadow.bias, -0.0004);
         d.shadow.radius = g.softShadows ? 5 : 1;
         d.shadow.blurSamples = g.softShadows ? 16 : 8;
       }

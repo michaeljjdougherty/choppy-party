@@ -10,7 +10,7 @@ import type { PlayerInfo } from '../../../shared/types';
 import { tileCentre, type PlazaState } from '../../../shared/games/paintPlaza';
 import type { CountState } from '../../../shared/games/alienCount';
 import { TRACK, type LightsState } from '../../../shared/games/lightsOut';
-import { BALL_R, LANE_LEN, LANE_W, type BowlState } from '../../../shared/games/pumpkinBowling';
+import { BALL_R, GHOST_Y, LANE_LEN, LANE_W, PIN_GAP, ghostX, type BowlState } from '../../../shared/games/pumpkinBowling';
 import { bases, type CrownState } from '../../../shared/games/captureCrown';
 import { seatPos, type SeatState } from '../../../shared/games/lastSeat';
 import { place, texture } from '../assets';
@@ -446,8 +446,39 @@ export function bowlView(env: THREE.Texture, state: BowlState, players: PlayerIn
     if (nm === 'graveyard/fire-basket') onTop(o, flame(0.9, { light: 6 }), 0.85);
     if (nm === 'graveyard/pumpkin-tall-carved' || nm === 'graveyard/candle-multiple') onTop(o, lampGlow('#ff9a3a', 1.6), 0.5);
   }
-  scene.add(groundFog([-wide / 2 - 8, back - 6, wide / 2 + 8, 9], { count: 16, opacity: 0.3 }));
-  const pins = pool(scene, () => fitProp('graveyard/gravestone-round', 0.62, 'y'));
+  // mist only behind the pins and down the sides, never over the lanes (it hid the pins)
+  scene.add(groundFog([-wide / 2 - 8, back - 6, wide / 2 + 8, back + 1.5], { count: 8, opacity: 0.3 }));
+  // a pale moonlit pin deck at the end of each lane, so the dark gravestones stand out against it
+  state.bowlers.forEach((_, i) => {
+    const deck = mesh(new THREE.PlaneGeometry(LANE_W * PX, 3.2), new THREE.MeshStandardMaterial({ color: '#e8e0ff', emissive: '#b8a8ff', emissiveIntensity: 0.55, roughness: 0.5 }), { cast: false, receive: true });
+    (deck.material as THREE.Material).userData.noDetail = true;
+    deck.rotation.x = -Math.PI / 2;
+    deck.position.set(laneX(i), 0.135, zOf(LANE_LEN + PIN_GAP * 1.3));
+    scene.add(deck);
+  });
+  const pins = pool(scene, () => {
+    // bigger, pale stone pins with a cold rim glow so they read from the back of the room
+    const o = fitProp('graveyard/gravestone-round', 0.85, 'y');
+    o.traverse((c) => {
+      const m = c as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mat = (m.material as THREE.MeshStandardMaterial).clone();
+      mat.color.lerp(new THREE.Color('#ffffff'), 0.35);
+      mat.emissive = new THREE.Color('#9a8cd8');
+      mat.emissiveIntensity = 0.35;
+      m.material = mat;
+    });
+    return o;
+  });
+  // the lane ghost (rolls 3 and 4): drifts side to side and shoves the pumpkin off line
+  const ghosts = pool(scene, () => {
+    const g = new THREE.Group();
+    g.add(fitProp('graveyard/character-ghost', 1.3, 'y'));
+    const glow = glowSprite('#bfe8ff', 2.2, 0.55);
+    glow.position.y = 0.7;
+    g.add(glow);
+    return g;
+  });
   // the pumpkin balls glow from inside as they roll
   const balls = pool(scene, () => {
     const g = new THREE.Group();
@@ -492,6 +523,7 @@ export function bowlView(env: THREE.Texture, state: BowlState, players: PlayerIn
       pins.begin();
       balls.begin();
       aims.begin();
+      ghosts.begin();
       s.bowlers.forEach((b, i) => {
         const x0 = laneX(i);
         for (const p of b.pins) {
@@ -499,6 +531,12 @@ export function bowlView(env: THREE.Texture, state: BowlState, players: PlayerIn
           const tip = p.down ? Math.min(1, p.fall / 0.35) * (Math.PI / 2) : 0;
           o.position.set(x0 + p.x * PX + (p.down ? p.dir * Math.min(1, p.fall / 0.35) * 0.25 : 0), 0.12, zOf(p.y));
           o.rotation.set(0, 0, p.dir * tip);
+        }
+        const plan = s.plans?.[b.roll];
+        if (plan?.ghost && b.phase !== 'done') {
+          const g = ghosts.take();
+          g.position.set(x0 + ghostX(s, i, plan.ghost) * PX, 0.25 + Math.sin(t * 3 + i) * 0.12, zOf(GHOST_Y));
+          g.rotation.y = Math.PI + Math.cos(s.t * plan.ghost + i * 1.3) * 0.5;
         }
         const aiming = b.phase === 'aim' || b.phase === 'charge';
         if (aiming || b.phase === 'rolling') {

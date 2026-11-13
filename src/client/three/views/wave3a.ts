@@ -101,7 +101,7 @@ export function hotPotatoView(env: THREE.Texture, state: PotatoState, players: P
         // tick... tick... ticktickticktick: the gap shrinks from a second to a blur as the fuse runs out
         tickT -= dt;
         if (tickT <= 0) {
-          tickT = Math.max(0.07, 0.9 * Math.pow(1 - urgency, 1.6));
+          tickT = Math.max(0.07, 0.9 * Math.pow(Math.max(0, 1 - urgency), 1.6));
           sfx.tick(urgency);
         }
         sparkT -= dt;

@@ -157,7 +157,7 @@ export function coinsView(env: THREE.Texture, state: CloudburstState, players: P
             const r = ANVIL_HIT * PX * (0.5 + Math.sqrt(p) * 0.7);
             blast.position.y = 0.8;
             blast.scale.setScalar(r * 3);
-            blast.material.opacity = 0.95 * (1 - p) ** 1.5;
+            blast.material.opacity = 0.95 * Math.max(0, 1 - p) ** 1.5;
           }
         }
         // blink before vanishing

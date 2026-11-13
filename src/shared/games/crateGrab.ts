@@ -39,6 +39,8 @@ export interface CrateGrabState {
   crates: Crate[];
   grabbers: Grabber[];
   score: [number, number];
+  /** When each team reached its current score (ties go to whoever got there first). */
+  scoreAt?: [number, number];
 }
 
 const baseOf = (team: number) => (team === 0 ? CX0 + BASE_W / 2 : CX1 - BASE_W / 2);
@@ -113,6 +115,7 @@ export const crateGrab: Minigame<CrateGrabState> = {
         g.carrying = false;
         g.delivered++;
         s.score[g.team]++;
+        (s.scoreAt ??= [0, 0])[g.team] = s.t;
       }
     }
     // a hard bump from a rival knocks a crate loose
@@ -137,7 +140,8 @@ export const crateGrab: Minigame<CrateGrabState> = {
   isOver: (s) => s.t >= READY + TIME,
 
   results(s): ResultRow[] {
-    const winner = s.score[0] === s.score[1] ? 2 : s.score[0] > s.score[1] ? 0 : 1;
+    const at = s.scoreAt ?? [0, 0];
+    const winner = s.score[0] !== s.score[1] ? (s.score[0] > s.score[1] ? 0 : 1) : at[0] === at[1] ? 2 : at[0] < at[1] ? 0 : 1;
     const teams = Object.fromEntries(s.grabbers.map((g) => [g.id, g.team]));
     const by = (id: string) => s.grabbers.find((g) => g.id === id)!.delivered;
     return teamResults(s.grabbers.map((g) => g.id), teams, winner, by, (id) => `${by(id)} ${by(id) === 1 ? 'crate' : 'crates'}`);

@@ -16,7 +16,7 @@ export const PROPS = [
   // board residents (Kenney mini characters, animated)
   'chars/character-male-b', 'chars/character-male-e', 'chars/character-female-a', 'chars/character-female-c', 'chars/character-knight', 'chars/character-robot', 'chars/character-zombie',
   // pirate kit
-  'pirate/palm-detailed-straight', 'pirate/palm-detailed-bend', 'pirate/palm-bend', 'pirate/ship-pirate-large', 'pirate/ship-pirate-medium',
+  'pirate/palm-detailed-straight', 'pirate/palm-detailed-bend', 'pirate/palm-bend', 'pirate/ship-pirate-large', 'pirate/ship-large', 'pirate/ship-ghost', 'pirate/flag-pirate-high', 'pirate/ship-pirate-medium',
   'pirate/ship-small', 'pirate/ship-wreck', 'pirate/chest', 'pirate/barrel', 'pirate/crate', 'pirate/crate-bottles', 'pirate/bottle-large',
   'pirate/flag-pirate', 'pirate/flag-high-pennant', 'pirate/rocks-a', 'pirate/rocks-b', 'pirate/rocks-c', 'pirate/rocks-sand-a',
   'pirate/rocks-sand-b', 'pirate/structure', 'pirate/structure-roof', 'pirate/structure-platform-dock', 'pirate/tower-complete-small',

@@ -89,7 +89,7 @@ function whoosh(dur = 0.45, vol = 0.18): void {
   const d = buf.getChannelData(0);
   for (let i = 0; i < d.length; i++) {
     const k = i / d.length;
-    d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * k) ** 1.5;
+    d[i] = (Math.random() * 2 - 1) * Math.max(0, Math.sin(Math.PI * k)) ** 1.5;
   }
   const src = a.createBufferSource();
   src.buffer = buf;

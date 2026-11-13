@@ -18,7 +18,7 @@ const R = 22;
 const SPEED = 300;
 const READY = 3;
 const TIME = 50;
-const DRAIN = 2.2; // oxygen per second per broken console
+const DRAIN = 1.1; // oxygen per second per broken console (2.2 drained both teams to 0 every game)
 const PAD = 52; // how close you must stand to work a console
 
 export interface Console {
@@ -68,7 +68,7 @@ export const stationRepair: Minigame<RepairState> = {
     const rng = { seed };
     const consoles: Console[] = [];
     for (const team of [0, 1])
-      for (const [x, y] of SPOTS) consoles.push({ team, x: team === 0 ? x : 1280 - x, y, code: [], at: 0, breakIn: randRange(rng, 0.5, 4), fixed: 0 });
+      for (const [x, y] of SPOTS) consoles.push({ team, x: team === 0 ? x : 1280 - x, y, code: [], at: 0, breakIn: randRange(rng, 1, 6), fixed: 0 });
     const count = [0, 0];
     return {
       t: 0,
@@ -131,9 +131,11 @@ export const stationRepair: Minigame<RepairState> = {
           c.code = [];
           c.at = 0;
           c.fixed = 0.8;
-          c.breakIn = randRange(s.rng, 3.5, 7) * (1 - k * 0.45);
+          // bigger crews get busier consoles, so oxygen stays a race at any team size
+          const crew = s.techs.filter((q) => q.team === t.team).length;
+          c.breakIn = randRange(s.rng, 5, 9) * (1 - k * 0.4) * (3 / (crew + 2));
           t.fixes++;
-          s.oxygen[t.team] = Math.min(100, s.oxygen[t.team] + 2);
+          s.oxygen[t.team] = Math.min(100, s.oxygen[t.team] + 4);
           s.wins.push(ci);
         }
       } else {
@@ -148,7 +150,9 @@ export const stationRepair: Minigame<RepairState> = {
 
   results(s): ResultRow[] {
     const [a, b] = s.oxygen.map((o) => Math.round(o));
-    const win = a === b ? 2 : a > b ? 0 : 1;
+    // a tie on oxygen goes to the team with more fixes per tech
+    const rate = (team: number) => { const crew = s.techs.filter((t) => t.team === team); return crew.reduce((n, t) => n + t.fixes, 0) / Math.max(1, crew.length); };
+    const win = a !== b ? (a > b ? 0 : 1) : rate(0) === rate(1) ? 2 : rate(0) > rate(1) ? 0 : 1;
     const teams = Object.fromEntries(s.techs.map((t) => [t.id, t.team]));
     const fixes = (id: string) => s.techs.find((t) => t.id === id)?.fixes ?? 0;
     return teamResults(s.techs.map((t) => t.id), teams, win, fixes, (id) => `${TEAM_NAME[teams[id]]}: ${Math.round(s.oxygen[teams[id]])}% oxygen, ${fixes(id)} fixes`);

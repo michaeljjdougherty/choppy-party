@@ -10,7 +10,7 @@ import { ROW, ROWS, P_H, type TideState } from '../../../shared/games/risingTide
 import { COURSE, GATE_HALF, sledTime, type SledState } from '../../../shared/games/sledSlalom';
 import { CX, CY, type SaucerState } from '../../../shared/games/bumperSaucers';
 import { CHESTS, type MimicState } from '../../../shared/games/mimicChest';
-import { BANDS, PACE_COLOR, bandPos, type BandState } from '../../../shared/games/barrelBands';
+import { PACE_COLOR, POP, bandPos, type BandState } from '../../../shared/games/barrelBands';
 import { place, texture } from '../assets';
 import { ChoppyModel, LOCAL } from '../choppy';
 import { Fx, shake } from '../fx';
@@ -107,7 +107,7 @@ export function mineCartView(env: THREE.Texture, state: CartState, players: Play
   const mid = pts[Math.floor(pts.length / 2)];
   ground(scene, 900, mid.x, mid.z, new THREE.MeshStandardMaterial({ map: texture('floor_ground_sand', 160, 160), color: '#d9a46a', roughness: 1 }));
   // gravel bed, wooden sleepers, then two steel rails per lane
-  ribbon(-half - 0.5, half + 0.5, 0.02, new THREE.MeshStandardMaterial({ map: texture('floor_ground_dirt', 3, 1), color: '#8a6a4e', roughness: 1 }), 8);
+  ribbon(-half - 0.5, half + 0.5, 0.035, new THREE.MeshStandardMaterial({ map: texture('floor_ground_dirt', 3, 1), color: '#8a6a4e', roughness: 1 }), 8);
   const sleeper = texture('floor_wood_planks', 1, 1);
   if (sleeper) sleeper.rotation = Math.PI / 2;
   const railMat = toy('#9aa3ad', 0.3);
@@ -140,7 +140,7 @@ export function mineCartView(env: THREE.Texture, state: CartState, players: Play
     for (const s of [-0.42, 0.42]) {
       // a rail: a polished top on a darker web, so it reads as a raised steel rail
       ribbon(c + s - 0.06, c + s + 0.06, 0.16, railMat);
-      ribbon(c + s - 0.09, c + s + 0.09, 0.15, railDark);
+      ribbon(c + s - 0.09, c + s + 0.09, 0.12, railDark); // 0.04 under the top, so the two never flicker
     }
   }
   // canyon walls, warning signs before every gap, and a pit under it
@@ -911,7 +911,7 @@ export function barrelView(env: THREE.Texture, state: BandState, players: Player
     g.add(mallet);
     g.position.set(bx(i), 0, wz(360));
     scene.add(g);
-    return { g, r, band, bandMat: band.material as THREE.MeshStandardMaterial, done, m, mallet, swing: 0, lastBand: -1 };
+    return { g, r, band, bandMat: band.material as THREE.MeshStandardMaterial, done, m, mallet, swing: 0, lastBand: -1, barrel, target, popped: false };
   });
   const y = (off: number) => BH / 2 - off * (BH / 2) * 0.92;
   let last = state;
@@ -922,8 +922,23 @@ export function barrelView(env: THREE.Texture, state: BandState, players: Player
       last = s;
       s.coopers.forEach((c, i) => {
         const v = rows[i];
-        const live = c.band < BANDS;
+        const live = c.popAt === undefined;
         v.band.visible = live;
+        // the barrel swells and strains as the pressure builds, then bursts
+        const p = Math.min(1, c.total / POP);
+        const strain = p > 0.8 ? Math.sin(t * 40 + i) * 0.015 * (p - 0.8) * 5 : 0;
+        v.barrel.scale.set(1 + p * 0.16 + strain, 1 + p * 0.04, 1 + p * 0.16 - strain);
+        v.target.scale.set(1 + p * 0.16, 1, 1 + p * 0.16);
+        if (!live && !v.popped) {
+          v.popped = true;
+          v.barrel.visible = v.target.visible = v.done.visible = false;
+          const at = v.g.position.clone().setY(BH / 2);
+          fx.blast(at, 1.6);
+          fx.emit(at, { n: 26, color: ['#9c6b3e', '#7a5530', '#c99a68'], speed: [4, 9], up: 5, size: [0.35, 0.15], life: [0.6, 1.2], gravity: 14 });
+          fx.party(at.clone().setY(BH + 0.5));
+          shake(0.25);
+          sfx.boom();
+        }
         if (live) {
           const off = c.stopped ?? bandPos(c);
           v.band.position.y = y(off);
@@ -934,7 +949,7 @@ export function barrelView(env: THREE.Texture, state: BandState, players: Player
         }
         v.swing = Math.max(0, v.swing - dt * 3.5);
         v.mallet.rotation.z = -Math.sin(v.swing * Math.PI) * 1.6;
-        v.m.update(dt, { speed: 0, happy: s.endAt !== undefined && c.total >= Math.max(...s.coopers.map((q) => q.total)) });
+        v.m.update(dt, { speed: 0, happy: c.popAt !== undefined || (s.endAt !== undefined && c.total >= Math.max(...s.coopers.map((q) => q.total))) });
         void t;
       });
       for (const h of s.hits) {
@@ -948,6 +963,12 @@ export function barrelView(env: THREE.Texture, state: BandState, players: Player
         ring.rotation.x = Math.PI / 2;
         ring.position.y = y(c.stopped ?? 1);
         v.done.add(ring);
+        // keep the latest few rings so a full minute of bands doesn't bury the barrel
+        while (v.done.children.length > 8) {
+          const o = v.done.children[0] as THREE.Mesh;
+          v.done.remove(o);
+          o.geometry.dispose();
+        }
         const at = v.g.position.clone().setY(y(c.stopped ?? 1));
         if (h.score >= 10) {
           fx.sparkle(at, '#ffd23f', 18);
@@ -972,7 +993,7 @@ export function barrelView(env: THREE.Texture, state: BandState, players: Player
           pos: rows[i].g.position.clone().setY(BH + 0.8),
           text: p?.name ?? '',
           color: p?.color,
-          sub: fresh ? (lastScore > 0 ? `+${lastScore}` : 'MISS') : `${c.total} pts`,
+          sub: c.popAt !== undefined ? 'POPPED!' : fresh ? (lastScore > 0 ? `+${lastScore}` : 'MISS') : `${Math.min(c.total, POP)} / ${POP}`,
           subColor: fresh ? scoreColor(lastScore) : undefined,
         };
       });

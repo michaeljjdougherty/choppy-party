@@ -131,12 +131,23 @@ describe('Scope Squad and Dart Duel', () => {
     expect(scopeSquad.results(s)[0].id).not.toBe('b');
   });
 
-  it('a duel ends when someone reaches 5', async () => {
+  it('a duel runs the full minute (no first-to-5), then the higher score wins', async () => {
     const { dartDuel } = await import('../src/shared/games/scopeSnap');
     const s = dartDuel.setup(two(), 2);
     s.t = READY + 1;
     s.players[0].score = 5;
     dartDuel.step(s, {}, DT);
+    expect(s.endAt).toBeUndefined();
+    s.t = READY + 60;
+    dartDuel.step(s, {}, DT);
     expect(s.endAt).toBeDefined();
+    expect(dartDuel.results(s)[0].id).toBe(s.players[0].id);
+  });
+
+  it('every sniper mode has its own map and no hip crosshair', async () => {
+    const { scopeSnap, scopeSquad, dartDuel } = await import('../src/shared/games/scopeSnap');
+    const maps = [scopeSnap, scopeSquad, dartDuel].map((g) => g.setup(two(), 1).rules);
+    expect(new Set(maps.map((r) => r.map)).size).toBe(3);
+    expect(maps.every((r) => r.sway)).toBe(true);
   });
 });

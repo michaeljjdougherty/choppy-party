@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { PlayerInfo } from '../../../shared/types';
 import { TEAM_HEX } from '../../../shared/games/hud';
-import { EYE, SNAP_HUD, ZOOM_IN, type SnapState, type Wall } from '../../../shared/games/scopeSnap';
-import { place } from '../assets';
+import { EYE, SNAP_HUD, ZOOM_IN, aimSway, type SnapState, type Wall } from '../../../shared/games/scopeSnap';
+import { place, texture } from '../assets';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { hazardMaterial, panelMaterial, treadMaterial } from '../look/scifi';
 import { ChoppyModel, LOCAL } from '../choppy';
@@ -82,65 +82,74 @@ interface Eye {
 }
 
 export function scopeSnapView(env: THREE.Texture, state: SnapState, players: PlayerInfo[]): View {
-  const scene = makeScene(env, { sky: 'space-nebula', skyTop: '#0b0e2a', skyBottom: '#2b2060', fog: ['#1a1d44', 45, 140], sunColor: '#dfe6ff', sunIntensity: 2.0, shadowSize: 22, sunDir: [10, 24, 6] });
+  const map = state.rules.map ?? 'station';
+  const scene =
+    map === 'galleon'
+      ? makeScene(env, { sky: 'day', skyTop: '#ff8a5c', skyBottom: '#ffd9a8', fog: ['#f0b890', 45, 140], sunColor: '#ffd2a0', sunIntensity: 2.0, shadowSize: 26, sunDir: [14, 16, 6] })
+      : map === 'yard'
+        ? makeScene(env, { sky: 'day', skyTop: '#5fb4ff', skyBottom: '#fff0d0', fog: ['#e6dcc6', 40, 120], sunColor: '#fff2d6', sunIntensity: 2.2, shadowSize: 18, sunDir: [8, 22, 10] })
+        : makeScene(env, { sky: 'space-nebula', skyTop: '#0b0e2a', skyBottom: '#2b2060', fog: ['#1a1d44', 45, 140], sunColor: '#dfe6ff', sunIntensity: 2.0, shadowSize: 22, sunDir: [10, 24, 6] });
   const W = state.hw, D = state.hd;
-  // deck
-  const floor = mesh(new THREE.BoxGeometry(W * 2 + 2, 0.3, D * 2 + 2), treadMaterial(W / 1.5, D / 1.5, '#d0d8ff'), { receive: true });
-  floor.position.y = -0.15;
-  floor.userData.noDetail = true;
-  scene.add(floor);
-  // glowing guide strips down the deck
-  const glow = new THREE.MeshBasicMaterial({ color: '#57e1ff' });
-  for (const z of [-D + 1.2, D - 1.2]) {
-    const st = mesh(new THREE.BoxGeometry(W * 2 - 2, 0.03, 0.12), glow, { cast: false });
-    st.position.set(0, 0.02, z);
-    scene.add(st);
-  }
-  const ring = mesh(new THREE.RingGeometry(2.6, 2.85, 48), new THREE.MeshBasicMaterial({ color: '#ffb020', side: THREE.DoubleSide }), { cast: false });
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.02;
-  scene.add(ring);
-  const wallMats = new Map<string, THREE.Material>();
-  const wallMat = (sx: number, h: number, sz: number) => {
-    const k = `${Math.round(Math.max(sx, sz))}:${Math.round(h)}`;
-    let m = wallMats.get(k);
-    if (!m) wallMats.set(k, (m = panelMaterial(Math.max(1, Math.round(Math.max(sx, sz) / 2)), Math.max(1, Math.round(h / 2)))));
-    return m;
-  };
-  const trim = new THREE.MeshBasicMaterial({ color: '#57e1ff' });
-  const addWall = (w: Wall) => {
-    const sx = w.x1 - w.x0, sz = w.z1 - w.z0;
-    const cx = (w.x0 + w.x1) / 2, cz = (w.z0 + w.z1) / 2;
-    if (w.kind === 'crate') {
-      const c = boxed('station/container', sx, w.h, sz);
-      c.position.set(cx, 0, cz);
-      c.userData.noDetail = true;
-      scene.add(c);
-      // a box behind the model in case it is still loading
-      const b = mesh(new THREE.BoxGeometry(sx * 0.96, w.h * 0.96, sz * 0.96), toy('#8a96c8', 0.6), { receive: true });
-      b.position.set(cx, w.h * 0.48, cz);
-      b.userData.noDetail = true;
-      scene.add(b);
-      return;
+  if (map !== 'station') themedArena(scene, state, map);
+  else {
+    // deck
+    const floor = mesh(new THREE.BoxGeometry(W * 2 + 2, 0.3, D * 2 + 2), treadMaterial(W / 1.5, D / 1.5, '#d0d8ff'), { receive: true });
+    floor.position.y = -0.15;
+    floor.userData.noDetail = true;
+    scene.add(floor);
+    // glowing guide strips down the deck
+    const glow = new THREE.MeshBasicMaterial({ color: '#57e1ff' });
+    for (const z of [-D + 1.2, D - 1.2]) {
+      const st = mesh(new THREE.BoxGeometry(W * 2 - 2, 0.03, 0.12), glow, { cast: false });
+      st.position.set(0, 0.02, z);
+      scene.add(st);
     }
-    const m = mesh(new RoundedBoxGeometry(sx, w.h, sz, 2, Math.min(0.08, sx * 0.2, sz * 0.2)), w.kind === 'pillar' ? hazardMaterial(Math.max(1, Math.round(sx)), Math.max(1, Math.round(w.h))) : wallMat(sx, w.h, sz), { receive: true });
-    m.position.set(cx, w.h / 2, cz);
-    m.userData.noDetail = true;
-    scene.add(m);
-    const t = mesh(new THREE.BoxGeometry(sx + 0.04, 0.08, sz + 0.04), trim, { cast: false });
-    t.position.set(cx, w.h - 0.25, cz);
-    scene.add(t);
-  };
-  state.walls.forEach(addWall);
-  // the station around the deck, seen over the hull
-  for (const sx of [-1, 1]) {
-    place(scene, 'space/satelliteDish_large', sx * (W + 10), 0, -D - 14, { s: 6, ry: sx * 0.6 });
-    place(scene, 'space/rocket_baseA', sx * (W + 12), 0, D + 12, { s: 5 });
-    place(scene, 'space/hangar_roundGlass', sx * (W + 22), 0, 0, { s: 7, ry: sx > 0 ? -Math.PI / 2 : Math.PI / 2 });
-    place(scene, 'station/computer-system', sx * (W - 0.4), 0, -D + 0.6, { s: 1.6, ry: 0 });
-  }
-  for (let x = -W + 3; x <= W - 3; x += 6) place(scene, 'space/machine_generator', x, 0, -D - 5, { s: 3 });
+    const ring = mesh(new THREE.RingGeometry(2.6, 2.85, 48), new THREE.MeshBasicMaterial({ color: '#ffb020', side: THREE.DoubleSide }), { cast: false });
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02;
+    scene.add(ring);
+    const wallMats = new Map<string, THREE.Material>();
+    const wallMat = (sx: number, h: number, sz: number) => {
+      const k = `${Math.round(Math.max(sx, sz))}:${Math.round(h)}`;
+      let m = wallMats.get(k);
+      if (!m) wallMats.set(k, (m = panelMaterial(Math.max(1, Math.round(Math.max(sx, sz) / 2)), Math.max(1, Math.round(h / 2)))));
+      return m;
+    };
+    const trim = new THREE.MeshBasicMaterial({ color: '#57e1ff' });
+    const addWall = (w: Wall) => {
+      const sx = w.x1 - w.x0, sz = w.z1 - w.z0;
+      const cx = (w.x0 + w.x1) / 2, cz = (w.z0 + w.z1) / 2;
+      if (w.kind === 'crate') {
+        const c = boxed('station/container', sx, w.h, sz);
+        c.position.set(cx, 0, cz);
+        c.userData.noDetail = true;
+        scene.add(c);
+        // a box behind the model in case it is still loading
+        const b = mesh(new THREE.BoxGeometry(sx * 0.96, w.h * 0.96, sz * 0.96), toy('#8a96c8', 0.6), { receive: true });
+        b.position.set(cx, w.h * 0.48, cz);
+        b.userData.noDetail = true;
+        scene.add(b);
+        return;
+      }
+      const m = mesh(new RoundedBoxGeometry(sx, w.h, sz, 2, Math.min(0.08, sx * 0.2, sz * 0.2)), w.kind === 'pillar' ? hazardMaterial(Math.max(1, Math.round(sx)), Math.max(1, Math.round(w.h))) : wallMat(sx, w.h, sz), { receive: true });
+      m.position.set(cx, w.h / 2, cz);
+      m.userData.noDetail = true;
+      scene.add(m);
+      const t = mesh(new THREE.BoxGeometry(sx + 0.04, 0.08, sz + 0.04), trim, { cast: false });
+      t.position.set(cx, w.h - 0.25, cz);
+      scene.add(t);
+    };
+    state.walls.forEach(addWall);
+    // the station around the deck, seen over the hull
+    for (const sx of [-1, 1]) {
+      place(scene, 'space/satelliteDish_large', sx * (W + 10), 0, -D - 14, { s: 6, ry: sx * 0.6 });
+      place(scene, 'space/rocket_baseA', sx * (W + 12), 0, D + 12, { s: 5 });
+      place(scene, 'space/hangar_roundGlass', sx * (W + 22), 0, 0, { s: 7, ry: sx > 0 ? -Math.PI / 2 : Math.PI / 2 });
+      place(scene, 'station/computer-system', sx * (W - 0.4), 0, -D + 0.6, { s: 1.6, ry: 0 });
+    }
+    for (let x = -W + 3; x <= W - 3; x += 6) place(scene, 'space/machine_generator', x, 0, -D - 5, { s: 3 });
 
+  }
   const fx = new Fx(scene);
   // the players
   const local = players.filter((p) => !p.bot && LOCAL.has(p.id)).slice(0, 4);
@@ -327,7 +336,9 @@ export function scopeSnapView(env: THREE.Texture, state: SnapState, players: Pla
         const bob = p.y <= 0 ? Math.sin(p.moving * 11) * 0.04 * moving : 0;
         if (p.alive) {
           e.cam.position.set(p.x, p.y + EYE + bob, p.z);
-          e.cam.rotation.set(p.pitch, -yawNow - Math.PI / 2, 0);
+          // the aim sway: what you see drifts with where the dart will really go
+          const sw = aimSway(s, p);
+          e.cam.rotation.set(p.pitch + sw.pitch, -(yawNow + sw.yaw) - Math.PI / 2, 0);
         } else {
           // popped: float up and look down at the spot
           e.cam.position.set(p.x, EYE + 2.5, p.z + 0.01);
@@ -394,4 +405,74 @@ function predictedYaw(e: Eye, p: SnapState['players'][number]): number {
   e.lastTotal = tot.x;
   e.baseYaw = e.yaw;
   return e.yaw;
+}
+
+/** The Scope Squad galleon and the Dart Duel cargo yard: their own floors, walls, cover and surroundings. */
+function themedArena(scene: THREE.Scene, state: SnapState, map: 'galleon' | 'yard'): void {
+  const W = state.hw, D = state.hd;
+  const ship = map === 'galleon';
+  const floor = mesh(
+    new THREE.BoxGeometry(W * 2 + 2, 0.3, D * 2 + 2),
+    new THREE.MeshStandardMaterial({ map: texture(ship ? 'floor_wood_planks' : 'floor_ground_sand', W / 2, D / 2), color: ship ? '#c9925a' : '#e2c48e', roughness: 0.85 }),
+    { receive: true },
+  );
+  floor.position.y = -0.15;
+  scene.add(floor);
+  if (ship) {
+    // the sea all round the hull, and other ships on the horizon
+    const sea = mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#2a7fb0', roughness: 0.25, metalness: 0.2 }), { cast: false, receive: false });
+    sea.rotation.x = -Math.PI / 2;
+    sea.position.y = -2.5;
+    scene.add(sea);
+    const hullMesh = mesh(new THREE.BoxGeometry(W * 2 + 4, 2.6, D * 2 + 3), toy('#6a3f22', 0.8), { receive: true });
+    hullMesh.position.y = -1.6;
+    scene.add(hullMesh);
+    place(scene, 'pirate/ship-pirate-large', -W - 30, -2.5, -D - 30, { s: 14, ry: 0.6 });
+    place(scene, 'pirate/ship-large', W + 34, -2.5, D + 20, { s: 12, ry: -2.2 });
+    place(scene, 'pirate/ship-ghost', 10, -2.5, -D - 55, { s: 12, ry: 1.4 });
+  } else {
+    place(scene, 'pirate/palm-detailed-bend', -W - 6, 0, -D - 4, { s: 5 });
+    place(scene, 'pirate/palm-detailed-straight', W + 6, 0, D + 4, { s: 5.5 });
+    place(scene, 'pirate/ship-wreck', W + 14, 0, -D - 10, { s: 7, ry: 0.4 });
+    for (let x = -W; x <= W; x += 5) place(scene, 'pirate/barrel', x, 0, -D - 2.2, { s: 1.4, ry: x });
+  }
+  const wood = new THREE.MeshStandardMaterial({ map: texture(ship ? 'floor_wood_planks_wide' : 'wall_timber', 2, 1), color: ship ? '#a0703e' : '#d8b080', roughness: 0.8 });
+  const trim = toy(ship ? '#ffd23f' : '#c0283a', 0.4);
+  for (const w of state.walls) {
+    const sx = w.x1 - w.x0, sz = w.z1 - w.z0;
+    const cx = (w.x0 + w.x1) / 2, cz = (w.z0 + w.z1) / 2;
+    if (w.kind === 'crate') {
+      const c = boxed(ship ? 'pirate/crate' : 'pirate/crate-bottles', sx, w.h, sz);
+      c.position.set(cx, 0, cz);
+      scene.add(c);
+      const b = mesh(new THREE.BoxGeometry(sx * 0.94, w.h * 0.94, sz * 0.94), toy('#8a5a32', 0.8), { receive: true });
+      b.position.set(cx, w.h * 0.47, cz);
+      scene.add(b);
+      continue;
+    }
+    if (w.kind === 'pillar') {
+      if (ship) {
+        // a mast: a thick pole up into the sky with a furled sail
+        const pole = mesh(new THREE.CylinderGeometry(sx * 0.35, sx * 0.45, 16, 14), toy('#7a4a26', 0.7));
+        pole.position.set(cx, 8, cz);
+        scene.add(pole);
+        const sail = mesh(new THREE.CylinderGeometry(0.35, 0.35, 7, 10), toy('#f4ead2', 0.9));
+        sail.rotation.x = Math.PI / 2;
+        sail.position.set(cx, 9, cz);
+        scene.add(sail);
+        place(scene, 'pirate/flag-pirate-high', cx, 15.5, cz, { s: 2 });
+      } else {
+        const tower = mesh(new RoundedBoxGeometry(sx, w.h, sz, 2, 0.06), toy('#ffb020', 0.5), { receive: true });
+        tower.position.set(cx, w.h / 2, cz);
+        scene.add(tower);
+      }
+      continue;
+    }
+    const m = mesh(new RoundedBoxGeometry(sx, w.h, sz, 2, Math.min(0.06, sx * 0.2, sz * 0.2)), wood, { receive: true });
+    m.position.set(cx, w.h / 2, cz);
+    scene.add(m);
+    const t = mesh(new THREE.BoxGeometry(sx + 0.05, 0.1, sz + 0.05), trim, { cast: false });
+    t.position.set(cx, w.h + 0.05, cz);
+    scene.add(t);
+  }
 }

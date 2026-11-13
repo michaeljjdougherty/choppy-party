@@ -26,7 +26,10 @@ import { drawConfetti, resetJuice, watch } from './juice';
 import { drawBoardHud } from './boardHud';
 import { bakeItemIcons, bakeModelIcons, modelIcon } from './three/itemIcons';
 import { DISH_ICONS, DISH_MODEL } from '../shared/games/sushiBelt';
+import { COUNT_HUD } from '../shared/games/alienCount';
 DISH_ICONS.get = (d) => modelIcon(DISH_MODEL[d]);
+// Alien Count: only the humans on this device see their own number while guessing
+COUNT_HUD.mine = (id) => !!session?.localIds().has(id) && !session?.view()?.players.find((p) => p.id === id)?.bot;
 import { MainMenu } from './menu';
 import { CustomizeScreen } from './customize';
 import { customizeView } from './three/views/customize';
@@ -1337,6 +1340,10 @@ Promise.all([preloadAll(drawLoading), loadSamples(), document.fonts.load("40px '
     if (!st?.board) return;
     Object.values(st.board.players).forEach((p, i) => Object.assign(p.stats, { wins: i, damageTaken: 4 + i * 3, sevens: 3 - i, doubles: i % 3, spaces: 50 + i * 9, damageDealt: 12 - i * 2, kos: i }));
     devEndBoard(st);
+  },
+  /** Test helper: finish any screen wipe now (headless frames are too slow to watch it). */
+  noWipe() {
+    wipeT = 9;
   },
   /** Test helper: start whatever is selected in a local lobby. */
   start() {

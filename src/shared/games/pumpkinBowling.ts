@@ -15,7 +15,7 @@ export const LANE_LEN = 900; // from the foul line to the head pin
 export const LANE_W = 150;
 export const BALL_R = 18;
 export const PIN_R = 11;
-const PIN_GAP = 34;
+export const PIN_GAP = 34;
 const AIM_TIME = 9; // seconds to throw before the lane rolls for you
 const ROLL_SHOW = 3.2;
 const READY = 3;
@@ -42,18 +42,32 @@ export interface Bowler {
   pins: Pin[];
   scores: number[];
   last: number;
+  /** The ghost shoved this roll. */
+  spooked?: boolean;
 }
+/** What each roll throws at you (the same for everyone, so it's fair). */
+export interface RollPlan {
+  /** Rack slides this far across the lane. */
+  off: number;
+  /** A ghost drifts across the lane and knocks the pumpkin off line (0 = none, else its speed). */
+  ghost: number;
+}
+export const GHOST_Y = 520; // how far down the lane the ghost drifts
+export const GHOST_R = 20;
+/** Where the ghost is across lane `lane` at time t (it swings side to side). */
+export const ghostX = (s: BowlState, lane: number, ghost: number) => Math.sin(s.t * ghost + lane * 1.3) * (LANE_W / 2 - GHOST_R);
 export interface BowlState {
   t: number;
   rng: Rng;
+  plans?: RollPlan[];
   bowlers: Bowler[];
   hits: { lane: number; n: number }[]; // pins that fell this tick (view)
 }
 
-export function rack(): Pin[] {
+export function rack(off = 0): Pin[] {
   const out: Pin[] = [];
   for (let row = 0; row < 4; row++)
-    for (let i = 0; i <= row; i++) out.push({ x: (i - row / 2) * PIN_GAP, y: LANE_LEN + row * PIN_GAP * 0.87, down: false, fall: 0, dir: 0 });
+    for (let i = 0; i <= row; i++) out.push({ x: (i - row / 2) * PIN_GAP + off, y: LANE_LEN + row * PIN_GAP * 0.87, down: false, fall: 0, dir: 0 });
   return out;
 }
 
@@ -65,17 +79,22 @@ export const pumpkinBowling: Minigame<BowlState> = {
   mode: 'Free-for-all',
   ready: READY,
   goWord: 'BOWL!',
-  blurb: 'Bowl a carved pumpkin at the gravestone pins! Stick to aim, hold A to power up, let go to roll. Four rolls each, most pins down wins.',
+  blurb: 'Bowl a carved pumpkin at the gravestone pins! Stick to aim, hold A to power up, let go to roll. Each roll gets trickier: the pins move, then a ghost drifts across the lane. Four rolls, most pins down wins.',
   controls: 'Stick: aim   A: hold for power, let go to roll',
   minPlayers: 1,
   maxPlayers: 10,
 
   setup(players: PlayerInfo[], seed: number): BowlState {
+    // every roll gets harder: centred, slid to one side, then a ghost drifting across, then a faster ghost on a slid rack
+    const rng = { seed };
+    const side = () => (rand(rng) < 0.5 ? -1 : 1) * randRange(rng, 18, 26);
+    const plans: RollPlan[] = [{ off: 0, ghost: 0 }, { off: side(), ghost: 0 }, { off: 0, ghost: 1.6 }, { off: side(), ghost: 2.6 }];
     return {
       t: 0,
-      rng: { seed },
+      rng,
+      plans,
       hits: [],
-      bowlers: players.map((p) => ({ id: p.id, roll: 0, phase: 'aim', phaseT: 0, aim: 0, power: 0, bx: 0, by: 0, bvx: 0, bvy: 0, spin: 0, pins: rack(), scores: [], last: 0 })),
+      bowlers: players.map((p) => ({ id: p.id, roll: 0, phase: 'aim', phaseT: 0, aim: 0, power: 0, bx: 0, by: 0, bvx: 0, bvy: 0, spin: 0, pins: rack(plans[0].off), scores: [], last: 0 })),
     };
   },
 
@@ -109,6 +128,16 @@ export const pumpkinBowling: Minigame<BowlState> = {
         if (Math.abs(b.bx) > LANE_W / 2 - BALL_R * 0.4) {
           b.bx = Math.sign(b.bx) * (LANE_W / 2 - BALL_R * 0.4);
           b.bvx = 0;
+        }
+        // the ghost: touch it and the pumpkin is shoved off its line
+        const plan = s.plans?.[b.roll];
+        if (plan?.ghost && Math.abs(b.by - GHOST_Y) < BALL_R + GHOST_R && b.phaseT > 0) {
+          const gx = ghostX(s, lane, plan.ghost);
+          if (Math.abs(b.bx - gx) < BALL_R + GHOST_R && !b.spooked) {
+            b.spooked = true;
+            b.bvx = (b.bx >= gx ? 1 : -1) * 260;
+            b.bvy *= 0.75;
+          }
         }
         let fell = 0;
         for (const p of b.pins) {
@@ -144,7 +173,8 @@ export const pumpkinBowling: Minigame<BowlState> = {
           if (b.roll >= ROLLS) b.phase = 'done';
           else {
             b.phase = 'aim';
-            b.pins = rack();
+            b.pins = rack(s.plans?.[b.roll]?.off ?? 0);
+            b.spooked = false;
             b.aim = 0;
             b.power = 0;
           }
@@ -165,6 +195,9 @@ export const pumpkinBowling: Minigame<BowlState> = {
     if (s.t < READY) return;
     const roll = Math.min(ROLLS, Math.min(...s.bowlers.map((b) => b.roll)) + 1);
     text(ctx, `Roll ${roll} of ${ROLLS}`, 640, 110, 30, { color: '#ffb347' });
+    const plan = s.plans?.[roll - 1];
+    const tip = plan?.ghost ? (plan.off ? 'Faster ghost, and the pins moved!' : 'Watch the ghost! Roll past it') : plan?.off ? 'The pins moved! Re-aim' : '';
+    if (tip) text(ctx, tip, 640, 148, 22, { color: '#d9c8ff' });
   },
 
   bot(s, id, k: BotCtx) {
@@ -173,7 +206,7 @@ export const pumpkinBowling: Minigame<BowlState> = {
     if (b.phase !== 'aim' && b.phase !== 'charge') return NO_INPUT;
     // pick a line (dead centre for the best bots, with a little skill-based error) and a power to let go at
     if (remember(k.mem, `pb:${b.roll}`, randRange(k.r, 0.6, 1.8))) {
-      k.mem.m = (rand(k.r) * 2 - 1) * (1 - k.sk.smart) * 0.7 + (rand(k.r) * 2 - 1) * k.sk.aim * 0.004;
+      k.mem.m = (s.plans?.[b.roll]?.off ?? 0) / (LANE_W / 2 - BALL_R) + (rand(k.r) * 2 - 1) * (1 - k.sk.smart) * 0.7 + (rand(k.r) * 2 - 1) * k.sk.aim * 0.004;
       k.mem.n = Math.round((0.8 + rand(k.r) * 0.2 - (1 - k.sk.smart) * rand(k.r) * 0.5) * 100);
     }
     if (k.mem.t < k.mem.wait) return NO_INPUT;

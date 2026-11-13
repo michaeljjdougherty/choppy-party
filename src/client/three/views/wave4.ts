@@ -581,7 +581,7 @@ export function crazeView(env: THREE.Texture, state: CrazeState, players: Player
   camera.lookAt(0, 0, 1.6);
   const pit = mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ map: texture('proto-dark', 20, 20), roughness: 0.9 }), { cast: false, receive: true });
   pit.rotation.x = -Math.PI / 2;
-  pit.position.y = -6;
+  pit.position.y = -6.6; // below where the dropped tiles rest (-6.2), or their tops flicker against it
   scene.add(pit);
   // light rigs on tall trusses either side, each throwing a coloured beam that sweeps the floor
   const truss = new THREE.MeshStandardMaterial({ color: '#3a3a48', metalness: 0.7, roughness: 0.35 });

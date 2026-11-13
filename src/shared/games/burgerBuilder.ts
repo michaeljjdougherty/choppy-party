@@ -26,6 +26,8 @@ export interface Kitchen {
   burgers: number;
   wrong: number; // seconds of the "oops" wobble
   done: number; // seconds of the "order up!" celebration
+  /** When the score last went up (a tie goes to whoever got there first). */
+  at?: number;
 }
 export interface Cook {
   id: string;
@@ -112,6 +114,7 @@ export const burgerBuilder: Minigame<BurgerState> = {
       if (ing === want) {
         k.stack.push(ing);
         c.placed++;
+        k.at = s.t;
         s.events.push({ team: c.team, kind: 'good', by: c.id });
         if (k.stack.length === k.ticket.length) {
           k.burgers++;
@@ -132,7 +135,8 @@ export const burgerBuilder: Minigame<BurgerState> = {
   results(s): ResultRow[] {
     const [a, b] = s.kitchens;
     const sc = (k: Kitchen) => k.burgers * 100 + (k.done > 0 ? 0 : k.stack.length);
-    const win = sc(a) === sc(b) ? 2 : sc(a) > sc(b) ? 0 : 1;
+    const at = (k: Kitchen) => k.at ?? 0;
+    const win = sc(a) !== sc(b) ? (sc(a) > sc(b) ? 0 : 1) : at(a) === at(b) ? 2 : at(a) < at(b) ? 0 : 1;
     const teams = Object.fromEntries(s.cooks.map((c) => [c.id, c.team]));
     const placed = (id: string) => s.cooks.find((c) => c.id === id)?.placed ?? 0;
     return teamResults(s.cooks.map((c) => c.id), teams, win, placed, (id) => `${TEAM_NAME[teams[id]]}: ${s.kitchens[teams[id]].burgers} burgers`);

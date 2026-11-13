@@ -1,6 +1,6 @@
 import type { Minigame, PlayerInfo, Inputs, ResultRow } from '../types';
 import { NO_INPUT } from '../types';
-import { text } from '../draw';
+import { drawTimer, text } from '../draw';
 import { rand, randRange, type Rng } from '../rng';
 import { playerChips } from './hud';
 import { press, remember, type BotCtx } from '../botkit';
@@ -11,9 +11,14 @@ import { press, remember, type BotCtx } from '../botkit';
  * every band moves at its own speed (shown by its colour), and the last one counts double.
  */
 const READY = 3;
-export const BANDS = 10;
-const SETTLE = 1.1; // seconds the hammered band shows before the next one starts
-const TIMEOUT = 5; // a band nobody hammers slides off the end
+/** Michael: about a minute, and hitting the goal pops your barrel. */
+export const TIME = 60;
+/** Points that pop the barrel. */
+export const POP = 100;
+/** Size of the speed cycle (bands repeat it, getting quicker as the clock runs down). */
+export const BANDS = 12;
+const SETTLE = 0.8; // seconds the hammered band shows before the next one starts
+const TIMEOUT = 4; // a band nobody hammers slides off the end
 export type Pace = 'slow' | 'medium' | 'fast' | 'tricky';
 export const PACE_COLOR: Record<Pace, string> = { slow: '#4cd97b', medium: '#ffd23f', fast: '#ff5a5f', tricky: '#b06cff' };
 const PACE_SPEED: Record<Pace, number> = { slow: 0.55, medium: 0.85, fast: 1.25, tricky: 1.35 };
@@ -41,6 +46,8 @@ export interface Cooper {
   settle: number;
   scores: number[];
   total: number;
+  /** When the barrel popped (game time), if it did. */
+  popAt?: number;
 }
 export interface BandState {
   t: number;
@@ -49,6 +56,8 @@ export interface BandState {
   coopers: Cooper[];
   /** This tick's hammer hits, for the view. */
   hits: { id: string; score: number }[];
+  /** Barrels that popped this tick, for the view. */
+  pops?: string[];
   endAt?: number;
 }
 
@@ -60,7 +69,7 @@ export const barrelBands: Minigame<BandState> = {
   mode: 'Free-for-all',
   ready: READY,
   goWord: 'HAMMER!',
-  blurb: 'An iron band slides up and down your barrel. Press A to hammer it in place: dead on the gold line is PERFECT! 8 bands, each at its own speed, and the last one counts double.',
+  blurb: `An iron band slides up and down your barrel. Press A to hammer it in place: dead on the gold line is PERFECT! Every band adds pressure. Reach ${100} points and your barrel POPS. First to pop wins, and the bands get faster as the minute runs out.`,
   controls: 'A: hammer the band',
   minPlayers: 1,
   maxPlayers: 10,
@@ -83,61 +92,71 @@ export const barrelBands: Minigame<BandState> = {
   step(s: BandState, inputs: Inputs, dt: number): void {
     s.t += dt;
     s.hits = [];
+    s.pops = [];
     if (s.t < READY || s.endAt !== undefined) return;
+    // the bands speed up as the minute runs down
+    const rush = 1 + Math.min(1, (s.t - READY) / TIME) * 0.45;
     for (const c of s.coopers) {
-      if (c.band >= BANDS) continue;
+      if (c.popAt !== undefined) continue;
       if (c.stopped !== null) {
         c.settle -= dt;
         if (c.settle <= 0) {
           c.band++;
           c.stopped = null;
           c.age = 0;
-          if (c.band < BANDS) {
-            c.pace = s.paces[c.band];
-            c.phase = randRange(s.rng, 0, Math.PI * 2);
-          }
+          c.pace = s.paces[c.band % BANDS];
+          c.phase = randRange(s.rng, 0, Math.PI * 2);
         }
         continue;
       }
       c.age += dt;
       // tricky bands start fast and slow right down
-      const speed = PACE_SPEED[c.pace] * (c.pace === 'tricky' ? Math.max(0.35, 1.6 - c.age * 0.6) : 1);
+      const speed = PACE_SPEED[c.pace] * rush * (c.pace === 'tricky' ? Math.max(0.35, 1.6 - c.age * 0.6) : 1);
       c.phase += speed * Math.PI * dt;
       const inp = inputs[c.id] ?? NO_INPUT;
       const timeout = c.age > TIMEOUT;
       if ((inp.aPressed && c.age > 0.25) || timeout) {
         const off = timeout ? 1 : bandPos(c);
-        const sc = bandScore(off) * (c.band === BANDS - 1 ? 2 : 1);
+        const sc = bandScore(off);
         c.stopped = off;
         c.settle = SETTLE;
         c.scores.push(sc);
         c.total += sc;
         s.hits.push({ id: c.id, score: sc });
+        if (c.total >= POP) {
+          c.popAt = s.t;
+          s.pops.push(c.id);
+        }
       }
     }
-    if (s.coopers.every((c) => c.band >= BANDS)) s.endAt = s.t;
+    if (s.t >= READY + TIME || s.coopers.every((c) => c.popAt !== undefined)) s.endAt = s.t;
   },
 
   isOver: (s) => s.endAt !== undefined && s.t - s.endAt > 2,
 
   results(s): ResultRow[] {
-    return s.coopers.map((c) => ({ id: c.id, value: c.total, label: `${c.total} pts` })).sort((a, b) => b.value - a.value);
+    // popped barrels first (sooner is better), then everyone else by points
+    return s.coopers
+      .map((c) => ({ id: c.id, value: c.popAt !== undefined ? 100000 - Math.round(c.popAt * 100) : Math.min(c.total, POP - 1), label: c.popAt !== undefined ? `POPPED in ${Math.round(c.popAt - READY)}s` : `${c.total} / ${POP} pts` }))
+      .sort((a, b) => b.value - a.value);
   },
 
   draw(ctx, s, players) {
     playerChips(
       ctx,
       players,
-      s.coopers.map((c) => ({ id: c.id, label: `${c.total} pts · ${Math.min(c.band + 1, BANDS)}/${BANDS}` })),
+      s.coopers.map((c) => ({ id: c.id, label: c.popAt !== undefined ? 'POPPED!' : `${Math.min(c.total, POP)} / ${POP}` })),
     );
-    const any = s.coopers.find((c) => c.band === BANDS - 1 && c.stopped === null);
-    if (any && s.endAt === undefined) text(ctx, 'LAST BAND: DOUBLE POINTS!', 640, 150, 34, { color: '#ffd23f' });
-    if (s.endAt !== undefined) text(ctx, 'All banded up!', 640, 150, 40, { color: '#ffd23f' });
+    if (s.t >= READY && s.endAt === undefined) {
+      drawTimer(ctx, READY + TIME - s.t);
+      text(ctx, `Reach ${POP} points to POP your barrel!`, 640, 150, 26, { color: '#ffd23f' });
+    }
+    if (s.endAt !== undefined) text(ctx, s.coopers.some((c) => c.popAt !== undefined) ? 'Barrels popped!' : "Time's up!", 640, 150, 40, { color: '#ffd23f' });
   },
 
   bot(s, id, k: BotCtx) {
     const c = s.coopers.find((q) => q.id === id);
-    if (!c || s.t < READY || c.band >= BANDS || c.stopped !== null) return NO_INPUT;
+    if (!c || s.t < READY || c.popAt !== undefined || c.stopped !== null) return NO_INPUT;
     // each band: aim for a crossing of the middle, hammering a little late or early depending on skill
     if (remember(k.mem, `band:${c.band}`, randRange(k.r, 0.4, 1.2))) k.mem.m = randRange(k.r, -1, 1);
     if (k.mem.t < k.mem.wait) return NO_INPUT;

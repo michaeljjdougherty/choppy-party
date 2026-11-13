@@ -112,6 +112,9 @@ export class Stage {
         }
       }
       this.view.camera.aspect = VIEW_W / VIEW_H;
+      // a near plane of 0.1 wastes most of the depth buffer on the first metre; minigame cameras sit
+      // 15+ units away, so 0.5 gives 5x the depth precision and stops floor decals flickering
+      if (key.startsWith('game:') && !this.view.fps && this.view.camera.near < 0.5) this.view.camera.near = 0.5;
       this.view.camera.updateProjectionMatrix();
       this.needsDress = true;
       this.dressed = null;

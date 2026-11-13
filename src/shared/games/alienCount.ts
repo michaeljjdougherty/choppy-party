@@ -11,8 +11,10 @@ import { press, remember, stick, type BotCtx } from '../botkit';
  * correct lock-in each round gets a bonus point. Three rounds, each busier than the last.
  */
 export const ROUNDS = 3;
+/** Set by the client: true for players on this device, so you only see your own number while guessing. */
+export const COUNT_HUD = { mine: (_id: string) => true };
 const INTRO = 2.5; // "Round N: count the aliens!"
-const PARADE = [9, 10, 11];
+const PARADE = [12, 13, 14]; // Michael: it went too fast
 const GUESS = 7;
 const REVEAL = 3.5;
 const READY = 1;
@@ -51,27 +53,27 @@ export interface CountState {
 
 function parade(s: CountState): void {
   const r = s.round;
-  const aliens = randInt(s.rng, 6 + r * 3, 10 + r * 4);
-  const others = randInt(s.rng, 4 + r * 2, 7 + r * 3);
+  const aliens = randInt(s.rng, 5 + r * 2, 8 + r * 3);
+  const others = randInt(s.rng, 3 + r * 2, 5 + r * 2);
   const dur = PARADE[r] ?? 10;
   const list: Runner[] = [];
   const add = (alien: boolean) =>
     list.push({
       alien,
-      at: randRange(s.rng, 0, dur - 2.2),
-      dur: randRange(s.rng, 1.3, 2.2) * (1 - r * 0.12),
+      at: randRange(s.rng, 0, dur - 3.4),
+      dur: randRange(s.rng, 2.4, 3.4) * (1 - r * 0.08),
       lane: randInt(s.rng, 0, 4),
       dir: rand(s.rng) < 0.5 ? 1 : -1,
-      style: alien ? (rand(s.rng) < 0.4 ? 1 : 0) : rand(s.rng) < 0.25 + r * 0.1 ? 2 : 0,
+      style: rand(s.rng) < 0.4 ? 1 : 0, // (the green-suit decoy astronaut looked like a glitched alien, so it's gone)
       kind: randInt(s.rng, 0, 1),
     });
   for (let i = 0; i < aliens; i++) add(true);
   for (let i = 0; i < others; i++) add(false);
   // from the second round, bursts: several cross at once
   if (r >= 1)
-    for (let b = 0; b < r + 1; b++) {
-      const at = randRange(s.rng, 1, dur - 3);
-      for (const rr of list.slice(b * 4, b * 4 + 4)) rr.at = at + randRange(s.rng, 0, 0.4);
+    for (let b = 0; b < r; b++) {
+      const at = randRange(s.rng, 1, dur - 4);
+      for (const rr of list.slice(b * 3, b * 3 + 3)) rr.at = at + randRange(s.rng, 0, 0.6);
     }
   s.runners = list.sort((a, b) => a.at - b.at);
   s.answer = aliens;
@@ -88,7 +90,7 @@ export const alienCount: Minigame<CountState> = {
   mode: 'Free-for-all',
   ready: READY,
   goWord: 'COUNT!',
-  blurb: 'Aliens and astronauts dash across the moon base. Count only the aliens! Then dial in your guess and lock it in. Spot on scores 3, one off scores 1.',
+  blurb: 'Aliens and astronauts walk across the moon base. Count only the aliens! Then dial in your guess and lock it in. Spot on scores 3, one off scores 1.',
   controls: 'Stick: up / down to change your number   A: lock in',
   minPlayers: 1,
   maxPlayers: 10,
@@ -183,10 +185,12 @@ export const alienCount: Minigame<CountState> = {
         ctx.strokeStyle = p?.color ?? '#fff';
         ctx.lineWidth = 4;
         ctx.stroke();
-        const hide = s.phase === 'guess' && g.locked;
-        text(ctx, hide ? '✔' : String(g.guess), x, 604, 44, { color: '#ffffff' });
+        // while guessing you only see your own number; everyone else's stays secret until the reveal
+        const mine = COUNT_HUD.mine(g.id);
+        const shown = s.phase === 'reveal' || mine ? String(g.guess) : g.locked ? '✔' : '?';
+        text(ctx, shown, x, 604, 44, { color: '#ffffff' });
         text(ctx, p?.name ?? '', x, 648, 15, { color: '#ffffff', weight: 800 });
-        if (s.phase === 'guess' && !g.locked) {
+        if (s.phase === 'guess' && !g.locked && mine) {
           text(ctx, '▲', x, 572, 16, { color: '#ffd23f' });
           text(ctx, '▼', x, 636, 16, { color: '#ffd23f' });
         }

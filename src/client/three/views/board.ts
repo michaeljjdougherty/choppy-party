@@ -3,6 +3,7 @@ import { buildSetPieces } from '../life/setPieces';
 import { buzzPlayer } from '../../rumble';
 import { STORES } from '../../../shared/board/items';
 import * as THREE from 'three';
+import { partyDie } from '../look/die';
 import type { PlayerInfo } from '../../../shared/types';
 import type { PartyState } from '../../../shared/party';
 import { COSMO_SPREAD, getBoard, unspread } from '../../../shared/board/boards';
@@ -1352,19 +1353,11 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   let bossNode: string | null = null;
   let chunkLanded = false;
   let chunkLeave = -1;
-  // the dice: Geug's red die model, up to three of them in a row over the current player
-  const dieBody = toy('#d81e2c', 0.22);
-  const diePips = toy('#ffffff', 0.35);
+  // the dice: the title-screen die (cream, gold rim, red numbers), up to three in a row over the current player
   const dice: THREE.Group[] = [];
   for (let i = 0; i < 3; i++) {
     const g = new THREE.Group();
-    const m = prop('misc/dice', 0.55);
-    m.traverse((o) => {
-      const me = o as THREE.Mesh;
-      if (me.isMesh) me.material = me.name.includes('pips') || o.parent?.name.includes('pips') ? diePips : dieBody;
-    });
-    if (!m.children.length) g.add(mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), dieBody));
-    else g.add(m);
+    g.add(partyDie(1.1));
     g.visible = false;
     scene.add(g);
     dice.push(g);
@@ -1381,8 +1374,9 @@ export function boardView(env: THREE.Texture, party: PartyState, players: Player
   const d12s = players.map((p) => {
     const g = new THREE.Group();
     const m = prop('misc/d12', 1);
-    const body = toy(p.color, 0.25);
-    const nums = toy('#ffffff', 0.35);
+    // matches the title-screen die: cream body, numbers in the player's colour
+    const body = toy('#fff3dc', 0.3);
+    const nums = toy(p.color, 0.3);
     body.fog = nums.fog = false;
     m.traverse((o) => {
       const me = o as THREE.Mesh;
